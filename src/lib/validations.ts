@@ -13,19 +13,21 @@ export const paginationSchema = z.object({
 
 // ==================== Auth ====================
 
+export const emailSchema = z.email('Invalid email address')
+
 export const sendOtpSchema = z.object({
-  phone: phoneSchema,
+  email: emailSchema,
 })
 
 export const verifyOtpSchema = z.object({
-  phone: phoneSchema,
+  email: emailSchema,
   otp: z.string().length(6, 'OTP must be 6 digits'),
 })
 
 export const registerSchema = z.object({
-  phone: phoneSchema,
+  email: emailSchema,
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  email: z.email('Invalid email address').optional(),
+  phone: phoneSchema.optional(),
 })
 
 // ==================== Address ====================
