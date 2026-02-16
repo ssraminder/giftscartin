@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendOtp } from '@/lib/msg91'
+import { sendOtpEmail } from '@/lib/brevo'
 import { sendOtpSchema } from '@/lib/validations'
 
 const OTP_EXPIRY_MINUTES = 10
@@ -22,12 +22,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const { phone } = parsed.data
+    const { email } = parsed.data
 
-    // Rate limit: check if an OTP was sent recently for this phone
+    // Rate limit: check if an OTP was sent recently for this email
     const recentOtp = await prisma.otpVerification.findFirst({
       where: {
-        phone,
+        email,
         createdAt: { gt: new Date(Date.now() - OTP_COOLDOWN_SECONDS * 1000) },
       },
       orderBy: { createdAt: 'desc' },
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     if (recentOtp) {
       return NextResponse.json(
-        { success: false, error: `Please wait before requesting another OTP` },
+        { success: false, error: 'Please wait before requesting another OTP' },
         { status: 429 }
       )
     }
@@ -46,14 +46,14 @@ export async function POST(request: Request) {
     // Store OTP in database
     await prisma.otpVerification.create({
       data: {
-        phone,
+        email,
         otp,
         expiresAt,
       },
     })
 
-    // Send OTP via MSG91
-    const result = await sendOtp(phone)
+    // Send OTP via Brevo email
+    const result = await sendOtpEmail(email, otp)
 
     if (!result.success) {
       return NextResponse.json(

@@ -16,12 +16,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const { phone, otp } = parsed.data
+    const { email, otp } = parsed.data
 
-    // Find the most recent unexpired, unverified OTP for this phone
+    // Find the most recent unexpired, unverified OTP for this email
     const otpRecord = await prisma.otpVerification.findFirst({
       where: {
-        phone,
+        email,
         verified: false,
         expiresAt: { gt: new Date() },
       },
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { phone },
+      where: { email },
     })
 
     return NextResponse.json({
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       data: {
         message: 'OTP verified successfully',
         isNewUser: !existingUser,
-        phone,
+        email,
       },
     })
   } catch (error) {

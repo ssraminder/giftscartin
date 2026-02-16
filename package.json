@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@getbrevo/brevo": "^3.0.1",
     "@netlify/plugin-nextjs": "^5.15.8",
     "@prisma/client": "5.22.0",
     "@radix-ui/react-avatar": "^1.1.11",

@@ -14,12 +14,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const { phone, name, email } = parsed.data
+    const { email, name, phone } = parsed.data
 
-    // Ensure OTP was verified for this phone
+    // Ensure OTP was verified for this email
     const verifiedOtp = await prisma.otpVerification.findFirst({
       where: {
-        phone,
+        email,
         verified: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -27,32 +27,32 @@ export async function POST(request: Request) {
 
     if (!verifiedOtp) {
       return NextResponse.json(
-        { success: false, error: 'Phone number not verified. Please verify OTP first.' },
+        { success: false, error: 'Email not verified. Please verify OTP first.' },
         { status: 403 }
       )
     }
 
-    // Check if user already exists
+    // Check if user already exists by email
     const existingUser = await prisma.user.findUnique({
-      where: { phone },
+      where: { email },
     })
 
     if (existingUser) {
       return NextResponse.json(
-        { success: false, error: 'User with this phone number already exists' },
+        { success: false, error: 'User with this email already exists' },
         { status: 409 }
       )
     }
 
-    // Check email uniqueness if provided
-    if (email) {
-      const emailExists = await prisma.user.findUnique({
-        where: { email },
+    // Check phone uniqueness if provided
+    if (phone) {
+      const phoneExists = await prisma.user.findUnique({
+        where: { phone },
       })
 
-      if (emailExists) {
+      if (phoneExists) {
         return NextResponse.json(
-          { success: false, error: 'Email address already in use' },
+          { success: false, error: 'Phone number already in use' },
           { status: 409 }
         )
       }
@@ -61,9 +61,9 @@ export async function POST(request: Request) {
     // Create user
     const user = await prisma.user.create({
       data: {
-        phone,
+        email,
         name,
-        email: email || null,
+        phone: phone || '',
       },
       select: {
         id: true,

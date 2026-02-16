@@ -39,14 +39,14 @@ enum UserRole {
 
 model OtpVerification {
   id        String   @id @default(cuid())
-  phone     String
+  email     String
   otp       String
   expiresAt DateTime
   verified  Boolean  @default(false)
   attempts  Int      @default(0)
   createdAt DateTime @default(now())
 
-  @@index([phone, otp])
+  @@index([email, otp])
   @@map("otp_verifications")
 }
 

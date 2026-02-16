@@ -5,17 +5,17 @@ import { prisma } from './prisma'
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
-      name: 'Phone Login',
+      name: 'Email Login',
       credentials: {
-        phone: { label: 'Phone', type: 'text' },
+        email: { label: 'Email', type: 'email' },
         otp: { label: 'OTP', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.phone || !credentials?.otp) return null
+        if (!credentials?.email || !credentials?.otp) return null
 
         const otpRecord = await prisma.otpVerification.findFirst({
           where: {
-            phone: credentials.phone,
+            email: credentials.email,
             otp: credentials.otp,
             verified: false,
             expiresAt: { gt: new Date() },
@@ -30,16 +30,16 @@ export const authOptions: NextAuthOptions = {
         })
 
         let user = await prisma.user.findUnique({
-          where: { phone: credentials.phone },
+          where: { email: credentials.email },
         })
 
         if (!user) {
           user = await prisma.user.create({
-            data: { phone: credentials.phone },
+            data: { email: credentials.email, phone: '' },
           })
         }
 
-        return { id: user.id, phone: user.phone, name: user.name, role: user.role }
+        return { id: user.id, email: user.email, name: user.name, role: user.role }
       },
     }),
   ],
@@ -48,15 +48,15 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.role = user.role
-        token.phone = user.phone
+        token.email = user.email ?? ''
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id
-        session.user.role = token.role
-        session.user.phone = token.phone
+        session.user.id = token.id as string
+        session.user.role = token.role as string
+        session.user.email = token.email as string
       }
       return session
     },
