@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { uploadSchema } from '@/lib/validations'
 
 export async function POST(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const filePath = `${folder}/${session.user.id}/${timestamp}-${sanitizedName}`
 
     // Create a signed upload URL using Supabase Storage
-    const { data, error } = await supabase.storage
+    const { data, error } = await getSupabase().storage
       .from('giftindia')
       .createSignedUploadUrl(filePath)
 
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build the public URL for after upload
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrlData } = getSupabase().storage
       .from('giftindia')
       .getPublicUrl(filePath)
 
