@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GiftIndia
 
-## Getting Started
+Online gifting platform connecting customers with local vendors for fresh cakes, flowers, and gifts delivery across India. Starting with Chandigarh as the pilot city.
 
-First, run the development server:
+## Tech Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Framework:** Next.js 14 (App Router) with TypeScript
+- **Styling:** Tailwind CSS + shadcn/ui components
+- **Database:** Supabase PostgreSQL via Prisma ORM
+- **Auth:** NextAuth.js v4 with phone + OTP (custom credentials provider)
+- **Payments:** Razorpay
+- **Email:** Brevo (Sendinblue)
+- **Storage:** Supabase Storage (product images, vendor logos)
+- **State Management:** Zustand (cart and UI state)
+- **Hosting:** Netlify
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Local Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Install dependencies:**
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. **Configure environment variables:**
 
-To learn more about Next.js, take a look at the following resources:
+   Copy `.env.example` to `.env.local` and fill in the values:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   cp .env.example .env.local
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   Required variables:
+   - `DATABASE_URL` — Supabase pooler connection (port 6543)
+   - `DIRECT_URL` — Supabase direct connection (port 5432, for migrations)
+   - `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key
+   - `NEXTAUTH_SECRET` — Random secret for NextAuth session encryption
+   - `NEXTAUTH_URL` — `http://localhost:3000` for local dev
+   - `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` — Razorpay credentials
+   - `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` — Email service
 
-## Deploy on Vercel
+3. **Set up the database:**
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   ```bash
+   npx prisma db push
+   npx prisma generate
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+4. **Seed sample data (optional):**
+
+   ```bash
+   npx prisma db seed
+   ```
+
+5. **Start the dev server:**
+
+   ```bash
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Deploy
+
+Push to GitHub and connect the repository to Netlify. Netlify auto-deploys using the configuration in `netlify.toml`.
+
+Set all environment variables from `.env.example` in Netlify's site settings.
+
+## Phase 1 Features
+
+- **Homepage:** Hero banner, category grid, trending products, occasion navigation
+- **Product Browsing:** Category listing with filters, product detail with image gallery
+- **Delivery Slots:** Standard, fixed-slot, midnight, early morning, and express delivery options
+- **Cart & Checkout:** Add to cart, delivery date/slot selection, address entry, Razorpay payment
+- **Authentication:** Phone + OTP login via NextAuth.js
+- **Order Tracking:** Order history and status tracking
+- **City Selection:** Pincode-based serviceability check (Chandigarh, Mohali, Panchkula)
+- **Vendor Dashboard:** Shell layout (full implementation in Phase 3)
+- **Admin Panel:** Shell layout (full implementation in Phase 3)
+- **API Routes:** Products, categories, cart, orders, payments, serviceability, file upload
+- **Mobile-First Design:** Responsive UI optimized for mobile devices
