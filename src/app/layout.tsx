@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { CityProvider } from "@/components/providers/city-provider"
+import { CartHydration } from "@/components/providers/cart-provider"
 
 export const metadata: Metadata = {
   title: "GiftIndia - Send Cakes, Flowers & Gifts Online",
@@ -18,7 +19,10 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased">
         <SessionProvider>
-          <CityProvider>{children}</CityProvider>
+          <CityProvider>
+            <CartHydration />
+            {children}
+          </CityProvider>
         </SessionProvider>
       </body>
     </html>

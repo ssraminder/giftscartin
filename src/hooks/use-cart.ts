@@ -109,6 +109,7 @@ export const useCart = create<CartStore>()(
     }),
     {
       name: "giftindia-cart",
+      skipHydration: true,
     }
   )
 )
