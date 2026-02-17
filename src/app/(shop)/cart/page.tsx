@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, ShoppingCart } from "lucide-react"
+import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -22,6 +22,7 @@ export default function CartPage() {
   // Coupon state (placeholder logic — no real backend call yet)
   const [couponCode, setCouponCode] = useState<string | null>(null)
   const [discount, setDiscount] = useState(0)
+  const [couponExpanded, setCouponExpanded] = useState(false)
 
   // Hydration guard for Zustand persisted store
   const [mounted, setMounted] = useState(false)
@@ -53,87 +54,146 @@ export default function CartPage() {
   // Empty cart state
   if (items.length === 0) {
     return (
-      <div className="container mx-auto flex flex-col items-center justify-center px-4 py-16 text-center">
-        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-          <ShoppingCart className="h-10 w-10 text-muted-foreground" />
+      <div className="min-h-[60vh] flex items-center justify-center px-4">
+        <div className="flex flex-col items-center text-center max-w-sm">
+          {/* Large gradient circle with cart icon */}
+          <div className="relative mb-8">
+            <div className="flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-pink-50 via-rose-50 to-orange-50 border border-pink-100/50">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-pink-100 to-rose-100">
+                <ShoppingCart className="h-10 w-10 text-pink-400" />
+              </div>
+            </div>
+            <div className="absolute -top-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-sm">
+              <Sparkles className="h-4 w-4 text-amber-400" />
+            </div>
+          </div>
+
+          <h1 className="text-2xl font-bold text-gray-800">Your cart is empty</h1>
+          <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
+            Looks like you haven&apos;t added anything to your cart yet.
+            Explore our collection of cakes, flowers, and gifts!
+          </p>
+
+          <Link
+            href="/"
+            className="btn-gradient mt-8 inline-flex items-center justify-center px-8 py-3 text-sm"
+          >
+            <ShoppingCart className="mr-2 h-4 w-4" />
+            Start Shopping
+          </Link>
+
+          <Link
+            href="/"
+            className="mt-3 text-sm text-muted-foreground hover:text-primary transition-colors"
+          >
+            Browse popular categories
+          </Link>
         </div>
-        <h1 className="mt-6 text-xl font-semibold">Your cart is empty</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Looks like you haven&apos;t added anything to your cart yet.
-        </p>
-        <Button asChild className="mt-6">
-          <Link href="/">Continue Shopping</Link>
-        </Button>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild className="h-8 w-8">
-            <Link href="/">
-              <ArrowLeft className="h-4 w-4" />
+    <div className="bg-[#FFF9F5] min-h-screen">
+      <div className="container mx-auto px-4 py-6 sm:py-8">
+        {/* Cart Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-sm border border-gray-100 hover:shadow-md transition-all"
+            >
+              <ArrowLeft className="h-4 w-4 text-gray-600" />
             </Link>
+            <div>
+              <h1 className="text-xl font-bold sm:text-2xl text-gray-800">
+                Shopping Cart
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {items.length} {items.length === 1 ? "item" : "items"} in your cart
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-lg"
+            onClick={clearCart}
+          >
+            Clear All
           </Button>
-          <h1 className="text-lg font-semibold sm:text-xl">
-            Shopping Cart ({items.length} {items.length === 1 ? "item" : "items"})
-          </h1>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs text-muted-foreground hover:text-destructive"
-          onClick={clearCart}
-        >
-          Clear All
-        </Button>
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Cart Items */}
-        <div className="lg:col-span-2">
-          <div className="rounded-xl border bg-card p-4">
-            {items.map((item, index) => (
-              <div key={item.productId}>
-                <CartItem item={item} />
-                {index < items.length - 1 && <Separator />}
-              </div>
-            ))}
-          </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Left Column: Cart Items */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Cart Items Card */}
+            <div className="card-premium p-4 sm:p-5">
+              {items.map((item, index) => (
+                <div key={item.productId}>
+                  <CartItem item={item} />
+                  {index < items.length - 1 && (
+                    <Separator className="my-1 bg-gray-100" />
+                  )}
+                </div>
+              ))}
+            </div>
 
-          {/* Coupon */}
-          <div className="mt-4 rounded-xl border bg-card p-4">
-            <h3 className="mb-3 text-sm font-semibold">Have a coupon?</h3>
-            <CouponInput
-              appliedCode={couponCode}
-              discount={discount}
-              onApply={handleApplyCoupon}
-              onRemove={handleRemoveCoupon}
-            />
-          </div>
+            {/* Coupon Section */}
+            <div className="card-premium overflow-hidden">
+              <button
+                onClick={() => setCouponExpanded(!couponExpanded)}
+                className="flex w-full items-center justify-between p-4 sm:p-5 text-left hover:bg-gray-50/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-pink-50 to-rose-50">
+                    <Tag className="h-4 w-4 text-pink-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Have a coupon?</p>
+                    <p className="text-xs text-muted-foreground">Apply coupon code for extra savings</p>
+                  </div>
+                </div>
+                {couponExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </button>
 
-          {/* Continue Shopping */}
-          <div className="mt-4">
-            <Button variant="link" asChild className="px-0 text-sm">
-              <Link href="/">
-                <ArrowLeft className="mr-1 h-3.5 w-3.5" />
+              {couponExpanded && (
+                <div className="border-t border-gray-100 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+                  <CouponInput
+                    appliedCode={couponCode}
+                    discount={discount}
+                    onApply={handleApplyCoupon}
+                    onRemove={handleRemoveCoupon}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Continue Shopping */}
+            <div className="pt-1">
+              <Link
+                href="/"
+                className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors group"
+              >
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
                 Continue Shopping
               </Link>
-            </Button>
+            </div>
           </div>
-        </div>
 
-        {/* Order Summary Sidebar */}
-        <div className="lg:col-span-1">
-          <div className="sticky top-20">
-            <CartSummary
-              subtotal={subtotal}
-              deliveryCharge={deliveryCharge}
-              discount={discount}
-            />
+          {/* Right Column: Order Summary Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-20">
+              <CartSummary
+                subtotal={subtotal}
+                deliveryCharge={deliveryCharge}
+                discount={discount}
+              />
+            </div>
           </div>
         </div>
       </div>

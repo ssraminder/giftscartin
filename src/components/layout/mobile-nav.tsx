@@ -42,25 +42,28 @@ export function MobileNav() {
       <Button
         variant="ghost"
         size="icon"
-        className="md:hidden"
+        className="md:hidden h-10 w-10 rounded-full"
         onClick={() => setOpen(true)}
         aria-label="Open menu"
       >
         <Menu className="h-5 w-5" />
       </Button>
 
-      <SheetContent side="left" className="w-[280px] p-0">
-        <SheetHeader className="p-4 pb-2">
-          <SheetTitle className="text-left text-lg font-bold text-primary">
+      <SheetContent side="left" className="w-[300px] p-0 bg-white">
+        <SheetHeader className="p-5 pb-3 bg-gradient-to-r from-[#E91E63] to-[#FF6B9D]">
+          <SheetTitle className="text-left text-lg font-bold text-white flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20">
+              <Gift className="h-4 w-4 text-white" />
+            </div>
             GiftIndia
           </SheetTitle>
-          <SheetDescription className="text-left text-xs">
+          <SheetDescription className="text-left text-xs text-white/80">
             Fresh gifts delivered across India
           </SheetDescription>
         </SheetHeader>
 
         {/* City Selector */}
-        <div className="px-4 py-2">
+        <div className="px-5 py-3">
           <CitySelector variant="compact" />
         </div>
 
@@ -75,9 +78,9 @@ export function MobileNav() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-primary"
+                className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-pink-50 hover:text-[#E91E63]"
               >
-                <Icon className="h-4 w-4 text-muted-foreground" />
+                <Icon className="h-4.5 w-4.5 text-gray-400" />
                 {link.label}
               </Link>
             )
@@ -91,25 +94,25 @@ export function MobileNav() {
           <Link
             href="/cart"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-primary"
+            className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-pink-50 hover:text-[#E91E63]"
           >
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            <ShoppingCart className="h-4.5 w-4.5 text-gray-400" />
             My Cart
           </Link>
           <Link
             href="/orders"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-primary"
+            className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-pink-50 hover:text-[#E91E63]"
           >
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <Package className="h-4.5 w-4.5 text-gray-400" />
             My Orders
           </Link>
           <Link
             href="/login"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors hover:bg-muted hover:text-primary"
+            className="flex items-center gap-3 px-5 py-3 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-pink-50 hover:text-[#E91E63]"
           >
-            <User className="h-4 w-4 text-muted-foreground" />
+            <User className="h-4.5 w-4.5 text-gray-400" />
             Login / Sign Up
           </Link>
         </div>

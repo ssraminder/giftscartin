@@ -1,17 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, Minus, Plus, ShoppingCart, Star, Truck } from "lucide-react"
+import { ChevronRight, MapPin, Minus, Plus, ShoppingCart, Star, Truck, Shield, Clock, Package, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { ProductGallery } from "@/components/product/product-gallery"
 import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
 import { AddonSelector } from "@/components/product/addon-selector"
 import { ReviewList } from "@/components/product/review-list"
+import { ProductCard } from "@/components/product/product-card"
 import { formatPrice } from "@/lib/utils"
 import { useCart } from "@/hooks/use-cart"
 import type { Product, ProductAddon, Review, AddonSelection } from "@/types"
@@ -126,10 +128,33 @@ const ALL_PRODUCTS: Record<string, Product & { categorySlug: string; categoryNam
   },
 }
 
+// ── Helper: render star rating ────────────────────────────────────
+
+function StarRating({ rating, size = "sm" }: { rating: number; size?: "sm" | "md" }) {
+  const sizeClass = size === "md" ? "h-5 w-5" : "h-4 w-4"
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`${sizeClass} ${
+            star <= Math.round(rating)
+              ? "fill-amber-400 text-amber-400"
+              : star - 0.5 <= rating
+                ? "fill-amber-400/50 text-amber-400"
+                : "fill-gray-200 text-gray-200"
+          }`}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────
 
 export default function ProductDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const slug = params.slug as string
 
   const productData = ALL_PRODUCTS[slug]
@@ -139,17 +164,28 @@ export default function ProductDetailPage() {
   const [selectedAddons, setSelectedAddons] = useState<AddonSelection[]>([])
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null)
   const [deliverySlot, setDeliverySlot] = useState<string | null>(null)
+  const [pincode, setPincode] = useState("")
+  const [pincodeChecked, setPincodeChecked] = useState(false)
+  const [activeTab, setActiveTab] = useState<"description" | "reviews" | "delivery">("description")
 
   if (!productData) {
     return (
-      <div className="container mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold">Product Not Found</h1>
-        <p className="mt-2 text-muted-foreground">
-          We couldn&apos;t find the product you&apos;re looking for.
-        </p>
-        <Link href="/" className="mt-4 inline-block text-primary hover:underline">
-          Go back to home
-        </Link>
+      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 py-20">
+        <div className="text-center">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#FFF0F5]">
+            <Package className="h-10 w-10 text-[#E91E63]" />
+          </div>
+          <h1 className="text-2xl font-bold text-[#1A1A2E]">Product Not Found</h1>
+          <p className="mt-2 text-muted-foreground max-w-md">
+            We couldn&apos;t find the product you&apos;re looking for. It may have been removed or the link might be incorrect.
+          </p>
+          <Link
+            href="/"
+            className="mt-6 inline-flex items-center gap-2 btn-gradient px-6 py-3 rounded-lg text-sm"
+          >
+            Back to Home
+          </Link>
+        </div>
       </div>
     )
   }
@@ -163,173 +199,424 @@ export default function ProductDetailPage() {
     addItem(product, quantity, selectedAddons)
   }
 
+  const handleBuyNow = () => {
+    addItem(product, quantity, selectedAddons)
+    router.push("/cart")
+  }
+
+  const handleCheckPincode = () => {
+    if (pincode.length === 6) {
+      setPincodeChecked(true)
+    }
+  }
+
+  // Get related products (same category, excluding current)
+  const relatedProducts = Object.values(ALL_PRODUCTS)
+    .filter((p) => p.categorySlug === categorySlug && p.slug !== slug)
+    .slice(0, 4)
+
   return (
-    <div className="container mx-auto px-4 py-4 sm:py-6">
+    <div className="bg-[#FAFAFA] min-h-screen">
       {/* Breadcrumbs */}
-      <nav className="flex items-center gap-1 text-xs text-muted-foreground mb-4">
-        <Link href="/" className="hover:text-primary transition-colors">Home</Link>
-        <ChevronRight className="h-3 w-3" />
-        <Link href={`/category/${categorySlug}`} className="hover:text-primary transition-colors">
-          {categoryName}
-        </Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground font-medium line-clamp-1">{product.name}</span>
-      </nav>
+      <div className="bg-white border-b">
+        <div className="container mx-auto px-4 py-3">
+          <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Link href="/" className="hover:text-[#E91E63] transition-colors">
+              Home
+            </Link>
+            <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
+            <Link
+              href={`/category/${categorySlug}`}
+              className="hover:text-[#E91E63] transition-colors"
+            >
+              {categoryName}
+            </Link>
+            <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
+            <span className="text-[#1A1A2E] font-medium line-clamp-1">{product.name}</span>
+          </nav>
+        </div>
+      </div>
 
-      {/* Main content: gallery + details */}
-      <div className="grid gap-6 md:grid-cols-2 lg:gap-10">
-        {/* Left — Gallery */}
-        <ProductGallery images={product.images} name={product.name} />
+      {/* Main product section */}
+      <div className="container mx-auto px-4 py-6 lg:py-10">
+        <div className="grid gap-8 lg:grid-cols-[1fr_0.67fr] lg:gap-12">
 
-        {/* Right — Product info */}
-        <div className="space-y-5">
-          {/* Name and badges */}
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              {product.isVeg && <Badge variant="success" className="text-[10px] px-1.5 py-0">VEG</Badge>}
-              {product.tags.includes("bestseller") && <Badge variant="accent" className="text-[10px] px-1.5 py-0">Bestseller</Badge>}
-            </div>
-            <h1 className="text-xl font-bold sm:text-2xl lg:text-3xl">{product.name}</h1>
-            {product.weight && (
-              <p className="text-sm text-muted-foreground mt-0.5">{product.weight}</p>
-            )}
+          {/* ── Left Column: Gallery (60%) ────────────────────── */}
+          <div className="card-premium p-4 sm:p-6">
+            <ProductGallery images={product.images} name={product.name} />
           </div>
 
-          {/* Rating */}
-          {product.totalReviews > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded bg-green-600 px-2 py-0.5">
-                <Star className="h-3 w-3 fill-white text-white" />
-                <span className="text-xs font-semibold text-white">{product.avgRating.toFixed(1)}</span>
-              </div>
-              <span className="text-sm text-muted-foreground">
-                {product.totalReviews} {product.totalReviews === 1 ? "review" : "reviews"}
-              </span>
-            </div>
-          )}
+          {/* ── Right Column: Product Details (40%) ───────────── */}
+          <div className="space-y-6">
 
-          {/* Price */}
-          <div>
-            <span className="text-2xl font-bold text-foreground">{formatPrice(product.basePrice)}</span>
-            <p className="text-xs text-muted-foreground mt-0.5">Inclusive of all taxes</p>
-          </div>
-
-          {/* Description */}
-          {product.description && (
-            <p className="text-sm leading-relaxed text-muted-foreground">{product.description}</p>
-          )}
-
-          {/* Occasion tags */}
-          {product.occasion.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            {/* Badges row */}
+            <div className="flex flex-wrap items-center gap-2">
+              {product.tags.includes("bestseller") && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#E91E63] to-[#FF6B9D] px-3 py-1 text-xs font-semibold text-white">
+                  Bestseller
+                </span>
+              )}
               {product.occasion.map((occ) => (
-                <Badge key={occ} variant="outline" className="text-[10px] capitalize">
+                <Badge key={occ} variant="outline" className="text-xs capitalize border-[#E91E63]/20 text-[#E91E63]/80 bg-[#FFF0F5]">
                   {occ.replace(/-/g, " ")}
                 </Badge>
               ))}
             </div>
-          )}
 
-          <Separator />
+            {/* Product name */}
+            <div>
+              <h1 className="text-2xl font-bold text-[#1A1A2E] sm:text-3xl lg:text-[2rem] leading-tight">
+                {product.name}
+              </h1>
+              {product.weight && (
+                <p className="mt-1 text-sm text-muted-foreground">{product.weight}</p>
+              )}
+            </div>
 
-          {/* Delivery info */}
-          <div className="flex items-center gap-2 text-sm">
-            <Truck className="h-4 w-4 text-primary" />
-            <span>Delivery available in Chandigarh, Mohali &amp; Panchkula</span>
-          </div>
+            {/* Star rating with amber stars */}
+            {product.totalReviews > 0 && (
+              <div className="flex items-center gap-3">
+                <StarRating rating={product.avgRating} size="md" />
+                <span className="text-sm font-semibold text-[#1A1A2E]">
+                  {product.avgRating.toFixed(1)}
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  ({product.totalReviews} {product.totalReviews === 1 ? "review" : "reviews"})
+                </span>
+              </div>
+            )}
 
-          <Separator />
+            {/* Price */}
+            <div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-[#E91E63]">
+                  {formatPrice(product.basePrice)}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">Inclusive of all taxes</p>
+            </div>
 
-          {/* Delivery slot picker */}
-          <DeliverySlotPicker
-            selectedDate={deliveryDate}
-            selectedSlot={deliverySlot}
-            onDateChange={setDeliveryDate}
-            onSlotChange={setDeliverySlot}
-          />
+            {/* Veg/Non-veg indicator (Indian standard green dot) */}
+            <div className="flex items-center gap-2">
+              <div className={`flex h-5 w-5 items-center justify-center rounded-sm border-2 ${product.isVeg ? "border-green-600" : "border-red-600"}`}>
+                <div className={`h-2.5 w-2.5 rounded-full ${product.isVeg ? "bg-green-600" : "bg-red-600"}`} />
+              </div>
+              <span className="text-sm text-muted-foreground">
+                {product.isVeg ? "Vegetarian" : "Non-Vegetarian"}
+              </span>
+            </div>
 
-          <Separator />
+            {/* Short description */}
+            {product.shortDesc && (
+              <p className="text-sm text-[#1A1A2E]/70 leading-relaxed">
+                {product.shortDesc} &mdash; {product.description?.split(".")[0]}.
+              </p>
+            )}
 
-          {/* Add-ons */}
-          <AddonSelector
-            addons={SAMPLE_ADDONS}
-            selected={selectedAddons}
-            onChange={setSelectedAddons}
-          />
+            <Separator />
 
-          {selectedAddons.length > 0 && <Separator />}
+            {/* ── Delivery section card ────────────────────────── */}
+            <div className="card-premium border border-gray-100 overflow-hidden">
+              <div className="bg-[#FFF9F5] px-4 py-3 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <Truck className="h-5 w-5 text-[#E91E63]" />
+                  <h3 className="font-semibold text-[#1A1A2E]">Check Delivery Availability</h3>
+                </div>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* Pincode input */}
+                <div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Enter delivery pincode"
+                        maxLength={6}
+                        value={pincode}
+                        onChange={(e) => {
+                          setPincode(e.target.value.replace(/\D/g, ""))
+                          setPincodeChecked(false)
+                        }}
+                        className="pl-10 h-11"
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="h-11 px-5 border-[#E91E63] text-[#E91E63] hover:bg-[#FFF0F5] hover:text-[#E91E63] font-semibold"
+                      onClick={handleCheckPincode}
+                      disabled={pincode.length !== 6}
+                    >
+                      Check
+                    </Button>
+                  </div>
+                  {pincodeChecked && (
+                    <p className="mt-2 flex items-center gap-1.5 text-sm text-green-600">
+                      <Shield className="h-4 w-4" />
+                      Delivery available to {pincode}. Earliest delivery: Today
+                    </p>
+                  )}
+                </div>
 
-          {/* Quantity + Add to cart */}
-          <div className="space-y-3">
+                {/* Delivery slot picker */}
+                <DeliverySlotPicker
+                  selectedDate={deliveryDate}
+                  selectedSlot={deliverySlot}
+                  onDateChange={setDeliveryDate}
+                  onSlotChange={setDeliverySlot}
+                />
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* ── Add-ons ──────────────────────────────────────── */}
+            <AddonSelector
+              addons={SAMPLE_ADDONS}
+              selected={selectedAddons}
+              onChange={setSelectedAddons}
+            />
+
+            {selectedAddons.length > 0 && <Separator />}
+
+            {/* ── Quantity selector ────────────────────────────── */}
             <div className="flex items-center gap-4">
-              <span className="text-sm font-medium">Quantity</span>
-              <div className="flex items-center gap-2 rounded-lg border">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9"
+              <span className="text-sm font-semibold text-[#1A1A2E]">Quantity</span>
+              <div className="flex items-center rounded-full border-2 border-gray-200">
+                <button
+                  className="flex h-10 w-10 items-center justify-center rounded-l-full text-[#1A1A2E] hover:bg-gray-50 transition-colors disabled:opacity-30"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                   disabled={quantity <= 1}
                 >
                   <Minus className="h-4 w-4" />
-                </Button>
-                <span className="w-8 text-center text-sm font-semibold">{quantity}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9"
+                </button>
+                <span className="flex h-10 w-12 items-center justify-center border-x-2 border-gray-200 text-sm font-bold text-[#1A1A2E]">
+                  {quantity}
+                </span>
+                <button
+                  className="flex h-10 w-10 items-center justify-center rounded-r-full text-[#1A1A2E] hover:bg-gray-50 transition-colors disabled:opacity-30"
                   onClick={() => setQuantity((q) => Math.min(10, q + 1))}
                   disabled={quantity >= 10}
                 >
                   <Plus className="h-4 w-4" />
-                </Button>
+                </button>
               </div>
             </div>
 
             {/* Price summary if addons or qty > 1 */}
             {(selectedAddons.length > 0 || quantity > 1) && (
-              <div className="rounded-lg bg-muted/50 p-3 space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {product.name} x {quantity}
-                  </span>
-                  <span>{formatPrice(product.basePrice * quantity)}</span>
+              <div className="rounded-xl bg-[#FFF9F5] border border-[#E91E63]/10 p-4 space-y-2 text-sm">
+                <div className="flex justify-between text-[#1A1A2E]/70">
+                  <span>{product.name} x {quantity}</span>
+                  <span className="font-medium">{formatPrice(product.basePrice * quantity)}</span>
                 </div>
                 {selectedAddons.map((addon) => (
-                  <div key={addon.addonId} className="flex justify-between">
-                    <span className="text-muted-foreground">{addon.name} x {quantity}</span>
-                    <span>{formatPrice(addon.price * quantity)}</span>
+                  <div key={addon.addonId} className="flex justify-between text-[#1A1A2E]/70">
+                    <span>{addon.name} x {quantity}</span>
+                    <span className="font-medium">{formatPrice(addon.price * quantity)}</span>
                   </div>
                 ))}
                 <Separator className="my-1" />
-                <div className="flex justify-between font-semibold">
+                <div className="flex justify-between font-bold text-[#1A1A2E]">
                   <span>Total</span>
-                  <span>{formatPrice(totalPrice)}</span>
+                  <span className="text-[#E91E63]">{formatPrice(totalPrice)}</span>
                 </div>
               </div>
             )}
 
-            <Button
-              size="lg"
-              className="w-full gap-2 text-base"
-              onClick={handleAddToCart}
-            >
-              <ShoppingCart className="h-5 w-5" />
-              Add to Cart — {formatPrice(totalPrice)}
-            </Button>
+            {/* ── Action buttons ───────────────────────────────── */}
+            <div className="flex gap-3">
+              <button
+                className="flex-1 btn-gradient flex items-center justify-center gap-2 h-14 text-base rounded-xl shadow-lg"
+                onClick={handleAddToCart}
+              >
+                <ShoppingCart className="h-5 w-5" />
+                Add to Cart &mdash; {formatPrice(totalPrice)}
+              </button>
+              <button
+                className="flex-1 h-14 rounded-xl border-2 border-[#E91E63] text-[#E91E63] font-semibold text-base hover:bg-[#FFF0F5] transition-all duration-200"
+                onClick={handleBuyNow}
+              >
+                Buy Now
+              </button>
+            </div>
+
+            {/* Trust badges */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-[#FFF9F5] p-3 text-center">
+                <Truck className="h-5 w-5 text-[#E91E63]" />
+                <span className="text-[11px] font-medium text-[#1A1A2E]/70">Same Day Delivery</span>
+              </div>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-[#FFF9F5] p-3 text-center">
+                <Shield className="h-5 w-5 text-[#E91E63]" />
+                <span className="text-[11px] font-medium text-[#1A1A2E]/70">100% Fresh</span>
+              </div>
+              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-[#FFF9F5] p-3 text-center">
+                <Clock className="h-5 w-5 text-[#E91E63]" />
+                <span className="text-[11px] font-medium text-[#1A1A2E]/70">On-Time Guarantee</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Reviews section */}
-      <div className="mt-10 sm:mt-14">
-        <h2 className="text-xl font-bold sm:text-2xl mb-4">Customer Reviews</h2>
-        <ReviewList
-          reviews={SAMPLE_REVIEWS}
-          avgRating={product.avgRating}
-          totalReviews={product.totalReviews}
-        />
+      {/* ── Below-fold: Tabs section ────────────────────────────── */}
+      <div className="bg-white border-t mt-8">
+        <div className="container mx-auto px-4">
+          {/* Tab headers */}
+          <div className="flex border-b">
+            {(
+              [
+                { key: "description", label: "Description" },
+                { key: "reviews", label: "Reviews" },
+                { key: "delivery", label: "Delivery Info" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative px-6 py-4 text-sm font-semibold transition-colors ${
+                  activeTab === tab.key
+                    ? "text-[#E91E63]"
+                    : "text-muted-foreground hover:text-[#1A1A2E]"
+                }`}
+              >
+                {tab.label}
+                {tab.key === "reviews" && product.totalReviews > 0 && (
+                  <span className="ml-1 text-xs text-muted-foreground">({product.totalReviews})</span>
+                )}
+                {activeTab === tab.key && (
+                  <span className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-gradient-to-r from-[#E91E63] to-[#FF6B9D]" />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="py-8">
+            {/* Description tab */}
+            {activeTab === "description" && (
+              <div className="max-w-3xl space-y-6">
+                <div>
+                  <h3 className="text-lg font-bold text-[#1A1A2E] mb-3">About this product</h3>
+                  <p className="text-sm text-[#1A1A2E]/70 leading-relaxed whitespace-pre-line">
+                    {product.description}
+                  </p>
+                </div>
+                {product.weight && (
+                  <div className="flex items-center gap-8 rounded-xl bg-[#FFF9F5] p-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Weight</p>
+                      <p className="text-sm font-semibold text-[#1A1A2E]">{product.weight}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Type</p>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`flex h-4 w-4 items-center justify-center rounded-sm border-2 ${product.isVeg ? "border-green-600" : "border-red-600"}`}>
+                          <div className={`h-2 w-2 rounded-full ${product.isVeg ? "bg-green-600" : "bg-red-600"}`} />
+                        </div>
+                        <p className="text-sm font-semibold text-[#1A1A2E]">{product.isVeg ? "Vegetarian" : "Non-Vegetarian"}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Category</p>
+                      <p className="text-sm font-semibold text-[#1A1A2E]">{categoryName}</p>
+                    </div>
+                  </div>
+                )}
+                {product.occasion.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-[#1A1A2E] mb-2">Perfect for</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {product.occasion.map((occ) => (
+                        <span
+                          key={occ}
+                          className="inline-flex items-center rounded-full bg-[#FFF0F5] px-3 py-1.5 text-xs font-medium text-[#E91E63] capitalize"
+                        >
+                          {occ.replace(/-/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Reviews tab */}
+            {activeTab === "reviews" && (
+              <div className="max-w-3xl">
+                <ReviewList
+                  reviews={SAMPLE_REVIEWS}
+                  avgRating={product.avgRating}
+                  totalReviews={product.totalReviews}
+                />
+              </div>
+            )}
+
+            {/* Delivery info tab */}
+            {activeTab === "delivery" && (
+              <div className="max-w-3xl space-y-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF0F5]">
+                    <Truck className="h-5 w-5 text-[#E91E63]" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-[#1A1A2E]">Delivery Areas</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      We currently deliver to Chandigarh, Mohali &amp; Panchkula. Enter your pincode above to check availability for your area.
+                    </p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF0F5]">
+                    <Clock className="h-5 w-5 text-[#E91E63]" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-[#1A1A2E]">Delivery Slots</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Choose from Standard (9AM-9PM, Free), Fixed Slot (2-hour window, +49), Midnight (11PM-11:59PM, +199), Early Morning (6AM-8AM, +149), or Express (within 2-3 hours, +249).
+                    </p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF0F5]">
+                    <Info className="h-5 w-5 text-[#E91E63]" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-[#1A1A2E]">Important Notes</h4>
+                    <ul className="mt-1 space-y-1 text-sm text-muted-foreground list-disc list-inside">
+                      <li>Orders placed before 4 PM qualify for same-day delivery</li>
+                      <li>Free delivery on orders above {formatPrice(499)}</li>
+                      <li>Actual product appearance may slightly vary from images</li>
+                      <li>Contact us for bulk or corporate orders</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* ── Related products section ─────────────────────────────── */}
+      {relatedProducts.length > 0 && (
+        <div className="bg-[#FFF9F5] border-t py-10 sm:py-14">
+          <div className="container mx-auto px-4">
+            <h2 className="section-title text-[#1A1A2E] mb-8">You May Also Like</h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6 mt-10">
+              {relatedProducts.map((rp) => {
+                const { categorySlug, categoryName, ...relProduct } = rp
+                void categorySlug; void categoryName
+                return (
+                  <ProductCard key={relProduct.id} product={relProduct} />
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
