@@ -1,8 +1,15 @@
 import type { Metadata } from "next"
+import { Inter } from "next/font/google"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { CityProvider } from "@/components/providers/city-provider"
 import { CartHydration } from "@/components/providers/cart-provider"
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+})
 
 export const metadata: Metadata = {
   title: "GiftIndia - Send Cakes, Flowers & Gifts Online",
@@ -16,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body className="font-sans antialiased">
         <SessionProvider>
           <CityProvider>
