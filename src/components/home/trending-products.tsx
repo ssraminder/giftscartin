@@ -1,85 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { ArrowRight, ChefHat, Clock, HeadphonesIcon, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ProductCard } from "@/components/product/product-card"
-import type { Product } from "@/types"
-
-const TRENDING_PRODUCTS: Product[] = [
-  {
-    id: "1", name: "Chocolate Truffle Cake", slug: "chocolate-truffle-cake",
-    description: "Rich chocolate truffle cake with ganache frosting", shortDesc: "Rich & decadent",
-    categoryId: "cakes", basePrice: 599, images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "anniversary"], weight: "500g",
-    isVeg: true, isActive: true, avgRating: 4.5, totalReviews: 128, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "2", name: "Red Velvet Cake", slug: "red-velvet-cake",
-    description: "Classic red velvet with cream cheese frosting", shortDesc: "Classic favorite",
-    categoryId: "cakes", basePrice: 699, images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "valentines-day"], weight: "500g",
-    isVeg: true, isActive: true, avgRating: 4.7, totalReviews: 95, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "3", name: "Red Roses Bouquet", slug: "red-roses-bouquet",
-    description: "12 premium red roses with elegant wrapping", shortDesc: "Romantic & elegant",
-    categoryId: "flowers", basePrice: 699, images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["valentines-day", "anniversary"], weight: null,
-    isVeg: true, isActive: true, avgRating: 4.8, totalReviews: 210, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "4", name: "Black Forest Cake", slug: "black-forest-cake",
-    description: "Classic black forest with cherries and cream", shortDesc: "Timeless classic",
-    categoryId: "cakes", basePrice: 549, images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["birthday"], weight: "500g",
-    isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 72, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "5", name: "Butterscotch Cake", slug: "butterscotch-cake",
-    description: "Smooth butterscotch cake with caramel crunch", shortDesc: "Sweet & crunchy",
-    categoryId: "cakes", basePrice: 499, images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["birthday"], weight: "500g",
-    isVeg: true, isActive: true, avgRating: 4.2, totalReviews: 56, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "6", name: "Photo Cake", slug: "photo-cake",
-    description: "Customizable photo cake with edible print", shortDesc: "Personalized",
-    categoryId: "cakes", basePrice: 899, images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "anniversary"], weight: "1kg",
-    isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 43, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "7", name: "Mixed Flower Arrangement", slug: "mixed-flower-arrangement",
-    description: "Beautiful arrangement of seasonal mixed flowers", shortDesc: "Colorful & bright",
-    categoryId: "flowers", basePrice: 899, images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["birthday", "congratulations"], weight: null,
-    isVeg: true, isActive: true, avgRating: 4.4, totalReviews: 67, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "8", name: "Cake & Flowers Combo", slug: "cake-flowers-combo",
-    description: "Chocolate cake with a bouquet of red roses", shortDesc: "Perfect pair",
-    categoryId: "combos", basePrice: 1199, images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "anniversary", "valentines-day"], weight: "500g + bouquet",
-    isVeg: true, isActive: true, avgRating: 4.9, totalReviews: 156, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "9", name: "Money Plant", slug: "money-plant",
-    description: "Golden money plant in ceramic pot", shortDesc: "Lucky charm",
-    categoryId: "plants", basePrice: 399, images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["housewarming", "congratulations"], weight: null,
-    isVeg: true, isActive: true, avgRating: 4.1, totalReviews: 34, createdAt: "", updatedAt: "",
-  },
-  {
-    id: "10", name: "Orchid Bunch", slug: "orchid-bunch",
-    description: "Premium orchid bunch in elegant packaging", shortDesc: "Premium blooms",
-    categoryId: "flowers", basePrice: 1299, images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["anniversary", "thank-you"], weight: null,
-    isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 28, createdAt: "", updatedAt: "",
-  },
-]
+import type { Product, ApiResponse, PaginatedData } from "@/types"
 
 const WHY_CHOOSE = [
   {
@@ -108,9 +36,43 @@ const WHY_CHOOSE = [
   },
 ]
 
+function ProductCardSkeleton() {
+  return (
+    <div className="rounded-xl bg-white overflow-hidden" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+      <Skeleton className="aspect-square w-full" />
+      <div className="p-3 sm:p-4 space-y-2">
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-1/2" />
+        <Skeleton className="h-5 w-1/3" />
+        <Skeleton className="h-3 w-2/5" />
+      </div>
+    </div>
+  )
+}
+
 export function TrendingProducts() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
   const [showAll, setShowAll] = useState(false)
-  const displayedProducts = showAll ? TRENDING_PRODUCTS : TRENDING_PRODUCTS.slice(0, 8)
+
+  useEffect(() => {
+    async function fetchTrending() {
+      try {
+        const res = await fetch("/api/products?sortBy=rating&pageSize=10")
+        const json: ApiResponse<PaginatedData<Product>> = await res.json()
+        if (json.success && json.data) {
+          setProducts(json.data.items)
+        }
+      } catch {
+        // Fetch failed silently
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchTrending()
+  }, [])
+
+  const displayedProducts = showAll ? products : products.slice(0, 8)
 
   return (
     <>
@@ -132,13 +94,25 @@ export function TrendingProducts() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {displayedProducts.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <ProductCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : products.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {displayedProducts.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-muted-foreground py-10">
+            No products available yet. Check back soon!
+          </p>
+        )}
 
-        {!showAll && TRENDING_PRODUCTS.length > 8 && (
+        {!loading && !showAll && products.length > 8 && (
           <div className="mt-8 text-center">
             <Button
               variant="outline"

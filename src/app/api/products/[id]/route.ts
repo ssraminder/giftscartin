@@ -8,8 +8,12 @@ export async function GET(
   try {
     const { id } = await params
 
-    const product = await prisma.product.findUnique({
-      where: { id, isActive: true },
+    // Support lookup by both id (cuid) and slug
+    const product = await prisma.product.findFirst({
+      where: {
+        OR: [{ id }, { slug: id }],
+        isActive: true,
+      },
       include: {
         category: { select: { id: true, name: true, slug: true } },
         addons: { where: { isActive: true } },
