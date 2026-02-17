@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, SlidersHorizontal, X, Star, Sparkles } from "lucide-react"
+import { ChevronRight, SlidersHorizontal, X, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -13,204 +13,173 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ProductCard } from "@/components/product/product-card"
-import type { Product, Category } from "@/types"
-
-// ── Placeholder data ──────────────────────────────────────────────
-
-const CATEGORIES: Record<string, Category & { products: Product[] }> = {
-  cakes: {
-    id: "cat-cakes",
-    name: "Cakes",
-    slug: "cakes",
-    description: "Freshly baked cakes delivered to your doorstep",
-    image: null,
-    parentId: null,
-    sortOrder: 1,
-    isActive: true,
-    createdAt: "",
-    children: [
-      { id: "sub-1", name: "Chocolate Cakes", slug: "chocolate-cakes", description: null, image: null, parentId: "cat-cakes", sortOrder: 1, isActive: true, createdAt: "" },
-      { id: "sub-2", name: "Fruit Cakes", slug: "fruit-cakes", description: null, image: null, parentId: "cat-cakes", sortOrder: 2, isActive: true, createdAt: "" },
-      { id: "sub-3", name: "Photo Cakes", slug: "photo-cakes", description: null, image: null, parentId: "cat-cakes", sortOrder: 3, isActive: true, createdAt: "" },
-      { id: "sub-4", name: "Eggless Cakes", slug: "eggless-cakes", description: null, image: null, parentId: "cat-cakes", sortOrder: 4, isActive: true, createdAt: "" },
-    ],
-    products: [
-      { id: "p1", name: "Chocolate Truffle Cake", slug: "chocolate-truffle-cake", description: "Rich chocolate truffle cake with ganache frosting", shortDesc: "Rich & decadent", categoryId: "cat-cakes", basePrice: 599, images: ["/placeholder-product.svg"], tags: ["bestseller"], occasion: ["birthday", "anniversary"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.5, totalReviews: 128, createdAt: "", updatedAt: "" },
-      { id: "p2", name: "Red Velvet Cake", slug: "red-velvet-cake", description: "Classic red velvet with cream cheese frosting", shortDesc: "Classic favorite", categoryId: "cat-cakes", basePrice: 699, images: ["/placeholder-product.svg"], tags: ["bestseller"], occasion: ["birthday", "valentines-day"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.7, totalReviews: 95, createdAt: "", updatedAt: "" },
-      { id: "p3", name: "Black Forest Cake", slug: "black-forest-cake", description: "Classic black forest with cherries and cream", shortDesc: "Timeless classic", categoryId: "cat-cakes", basePrice: 549, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 72, createdAt: "", updatedAt: "" },
-      { id: "p4", name: "Butterscotch Cake", slug: "butterscotch-cake", description: "Smooth butterscotch cake with caramel crunch", shortDesc: "Sweet & crunchy", categoryId: "cat-cakes", basePrice: 499, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.2, totalReviews: 56, createdAt: "", updatedAt: "" },
-      { id: "p5", name: "Photo Cake", slug: "photo-cake", description: "Customizable photo cake with edible print", shortDesc: "Personalized", categoryId: "cat-cakes", basePrice: 899, images: ["/placeholder-product.svg"], tags: ["bestseller"], occasion: ["birthday", "anniversary"], weight: "1kg", isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 43, createdAt: "", updatedAt: "" },
-      { id: "p6", name: "Pineapple Cake", slug: "pineapple-cake", description: "Fresh pineapple cake with whipped cream", shortDesc: "Tropical delight", categoryId: "cat-cakes", basePrice: 549, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.1, totalReviews: 38, createdAt: "", updatedAt: "" },
-      { id: "p7", name: "Vanilla Sponge Cake", slug: "vanilla-sponge-cake", description: "Light and fluffy vanilla sponge", shortDesc: "Simple & elegant", categoryId: "cat-cakes", basePrice: 449, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.0, totalReviews: 22, createdAt: "", updatedAt: "" },
-      { id: "p8", name: "Mango Mousse Cake", slug: "mango-mousse-cake", description: "Tropical mango mousse on vanilla sponge base", shortDesc: "Seasonal special", categoryId: "cat-cakes", basePrice: 799, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "congratulations"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.4, totalReviews: 15, createdAt: "", updatedAt: "" },
-    ],
-  },
-  flowers: {
-    id: "cat-flowers",
-    name: "Flowers",
-    slug: "flowers",
-    description: "Beautiful fresh flower arrangements delivered with love",
-    image: null,
-    parentId: null,
-    sortOrder: 2,
-    isActive: true,
-    createdAt: "",
-    children: [
-      { id: "sub-5", name: "Roses", slug: "roses", description: null, image: null, parentId: "cat-flowers", sortOrder: 1, isActive: true, createdAt: "" },
-      { id: "sub-6", name: "Mixed Bouquets", slug: "mixed-bouquets", description: null, image: null, parentId: "cat-flowers", sortOrder: 2, isActive: true, createdAt: "" },
-      { id: "sub-7", name: "Premium Flowers", slug: "premium-flowers", description: null, image: null, parentId: "cat-flowers", sortOrder: 3, isActive: true, createdAt: "" },
-    ],
-    products: [
-      { id: "p9", name: "Red Roses Bouquet", slug: "red-roses-bouquet", description: "12 premium red roses with elegant wrapping", shortDesc: "Romantic & elegant", categoryId: "cat-flowers", basePrice: 699, images: ["/placeholder-product.svg"], tags: ["bestseller"], occasion: ["valentines-day", "anniversary"], weight: null, isVeg: true, isActive: true, avgRating: 4.8, totalReviews: 210, createdAt: "", updatedAt: "" },
-      { id: "p10", name: "Mixed Flower Arrangement", slug: "mixed-flower-arrangement", description: "Beautiful arrangement of seasonal mixed flowers", shortDesc: "Colorful & bright", categoryId: "cat-flowers", basePrice: 899, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "congratulations"], weight: null, isVeg: true, isActive: true, avgRating: 4.4, totalReviews: 67, createdAt: "", updatedAt: "" },
-      { id: "p11", name: "Orchid Bunch", slug: "orchid-bunch", description: "Premium orchid bunch in elegant packaging", shortDesc: "Premium blooms", categoryId: "cat-flowers", basePrice: 1299, images: ["/placeholder-product.svg"], tags: [], occasion: ["anniversary", "thank-you"], weight: null, isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 28, createdAt: "", updatedAt: "" },
-      { id: "p12", name: "Sunflower Bouquet", slug: "sunflower-bouquet", description: "Bright sunflowers to light up any room", shortDesc: "Cheerful vibes", categoryId: "cat-flowers", basePrice: 599, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "housewarming"], weight: null, isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 19, createdAt: "", updatedAt: "" },
-      { id: "p13", name: "White Lily Bunch", slug: "white-lily-bunch", description: "Elegant white lilies for special occasions", shortDesc: "Pure elegance", categoryId: "cat-flowers", basePrice: 999, images: ["/placeholder-product.svg"], tags: [], occasion: ["anniversary", "sympathy"], weight: null, isVeg: true, isActive: true, avgRating: 4.5, totalReviews: 14, createdAt: "", updatedAt: "" },
-    ],
-  },
-  combos: {
-    id: "cat-combos",
-    name: "Combos",
-    slug: "combos",
-    description: "Perfect gift combos for every occasion",
-    image: null,
-    parentId: null,
-    sortOrder: 3,
-    isActive: true,
-    createdAt: "",
-    children: [],
-    products: [
-      { id: "p14", name: "Cake & Flowers Combo", slug: "cake-flowers-combo", description: "Chocolate cake with a bouquet of red roses", shortDesc: "Perfect pair", categoryId: "cat-combos", basePrice: 1199, images: ["/placeholder-product.svg"], tags: ["bestseller"], occasion: ["birthday", "anniversary", "valentines-day"], weight: "500g + bouquet", isVeg: true, isActive: true, avgRating: 4.9, totalReviews: 156, createdAt: "", updatedAt: "" },
-      { id: "p15", name: "Celebration Box", slug: "celebration-box", description: "Cake, flowers, and chocolates in a premium box", shortDesc: "Complete celebration", categoryId: "cat-combos", basePrice: 1599, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "anniversary"], weight: "1kg combo", isVeg: true, isActive: true, avgRating: 4.7, totalReviews: 42, createdAt: "", updatedAt: "" },
-      { id: "p16", name: "Romance Hamper", slug: "romance-hamper", description: "Red roses, red velvet cake, and teddy bear", shortDesc: "Love bundle", categoryId: "cat-combos", basePrice: 1999, images: ["/placeholder-product.svg"], tags: [], occasion: ["valentines-day", "anniversary"], weight: null, isVeg: true, isActive: true, avgRating: 4.8, totalReviews: 31, createdAt: "", updatedAt: "" },
-      { id: "p17", name: "Sweet Surprise", slug: "sweet-surprise", description: "Assorted chocolates with a flower bunch", shortDesc: "Sweet treat", categoryId: "cat-combos", basePrice: 899, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "thank-you"], weight: null, isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 18, createdAt: "", updatedAt: "" },
-      { id: "p18", name: "Plant & Cake Duo", slug: "plant-cake-duo", description: "Money plant with a butterscotch cake", shortDesc: "Green gift", categoryId: "cat-combos", basePrice: 999, images: ["/placeholder-product.svg"], tags: [], occasion: ["housewarming", "congratulations"], weight: null, isVeg: true, isActive: true, avgRating: 4.2, totalReviews: 11, createdAt: "", updatedAt: "" },
-    ],
-  },
-  plants: {
-    id: "cat-plants",
-    name: "Plants",
-    slug: "plants",
-    description: "Green gifts that keep on giving",
-    image: null,
-    parentId: null,
-    sortOrder: 4,
-    isActive: true,
-    createdAt: "",
-    children: [],
-    products: [
-      { id: "p19", name: "Money Plant", slug: "money-plant", description: "Golden money plant in ceramic pot", shortDesc: "Lucky charm", categoryId: "cat-plants", basePrice: 399, images: ["/placeholder-product.svg"], tags: [], occasion: ["housewarming", "congratulations"], weight: null, isVeg: true, isActive: true, avgRating: 4.1, totalReviews: 34, createdAt: "", updatedAt: "" },
-      { id: "p20", name: "Snake Plant", slug: "snake-plant", description: "Low-maintenance snake plant in decorative pot", shortDesc: "Air purifier", categoryId: "cat-plants", basePrice: 499, images: ["/placeholder-product.svg"], tags: [], occasion: ["housewarming"], weight: null, isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 21, createdAt: "", updatedAt: "" },
-      { id: "p21", name: "Peace Lily", slug: "peace-lily", description: "Beautiful peace lily with white blooms", shortDesc: "Elegant & serene", categoryId: "cat-plants", basePrice: 599, images: ["/placeholder-product.svg"], tags: [], occasion: ["housewarming", "sympathy"], weight: null, isVeg: true, isActive: true, avgRating: 4.5, totalReviews: 16, createdAt: "", updatedAt: "" },
-      { id: "p22", name: "Jade Plant", slug: "jade-plant", description: "Lucky jade plant in premium ceramic pot", shortDesc: "Prosperity symbol", categoryId: "cat-plants", basePrice: 449, images: ["/placeholder-product.svg"], tags: [], occasion: ["housewarming", "congratulations"], weight: null, isVeg: true, isActive: true, avgRating: 4.0, totalReviews: 9, createdAt: "", updatedAt: "" },
-      { id: "p23", name: "Bonsai Tree", slug: "bonsai-tree", description: "Miniature bonsai tree in decorative tray", shortDesc: "Living art", categoryId: "cat-plants", basePrice: 899, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "housewarming"], weight: null, isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 12, createdAt: "", updatedAt: "" },
-    ],
-  },
-  gifts: {
-    id: "cat-gifts",
-    name: "Gifts",
-    slug: "gifts",
-    description: "Thoughtful gifts for every occasion",
-    image: null,
-    parentId: null,
-    sortOrder: 5,
-    isActive: true,
-    createdAt: "",
-    children: [],
-    products: [
-      { id: "p24", name: "Chocolate Gift Box", slug: "chocolate-gift-box", description: "Premium assorted chocolates in gift box", shortDesc: "Choco heaven", categoryId: "cat-gifts", basePrice: 799, images: ["/placeholder-product.svg"], tags: ["bestseller"], occasion: ["birthday", "thank-you"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.4, totalReviews: 48, createdAt: "", updatedAt: "" },
-      { id: "p25", name: "Teddy Bear", slug: "teddy-bear", description: "Soft plush teddy bear - 12 inches", shortDesc: "Cuddly friend", categoryId: "cat-gifts", basePrice: 499, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "valentines-day"], weight: null, isVeg: true, isActive: true, avgRating: 4.2, totalReviews: 23, createdAt: "", updatedAt: "" },
-      { id: "p26", name: "Scented Candle Set", slug: "scented-candle-set", description: "Set of 3 premium scented candles", shortDesc: "Aromatic bliss", categoryId: "cat-gifts", basePrice: 599, images: ["/placeholder-product.svg"], tags: [], occasion: ["housewarming", "thank-you"], weight: null, isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 15, createdAt: "", updatedAt: "" },
-      { id: "p27", name: "Photo Frame", slug: "photo-frame", description: "Personalized wooden photo frame", shortDesc: "Memories preserved", categoryId: "cat-gifts", basePrice: 699, images: ["/placeholder-product.svg"], tags: [], occasion: ["birthday", "anniversary"], weight: null, isVeg: true, isActive: true, avgRating: 4.1, totalReviews: 8, createdAt: "", updatedAt: "" },
-      { id: "p28", name: "Gift Hamper Premium", slug: "gift-hamper-premium", description: "Premium dry fruits, chocolates, and scented candle", shortDesc: "Luxury hamper", categoryId: "cat-gifts", basePrice: 1499, images: ["/placeholder-product.svg"], tags: [], occasion: ["diwali", "congratulations", "thank-you"], weight: null, isVeg: true, isActive: true, avgRating: 4.7, totalReviews: 27, createdAt: "", updatedAt: "" },
-    ],
-  },
-}
-
-// Also map sub-category slugs to parent
-const SUB_CATEGORY_MAP: Record<string, string> = {
-  "chocolate-cakes": "cakes",
-  "fruit-cakes": "cakes",
-  "photo-cakes": "cakes",
-  "eggless-cakes": "cakes",
-  "roses": "flowers",
-  "mixed-bouquets": "flowers",
-  "premium-flowers": "flowers",
-}
+import type { Product, Category, ApiResponse, PaginatedData } from "@/types"
 
 const OCCASIONS = ["birthday", "anniversary", "valentines-day", "congratulations", "housewarming", "thank-you", "diwali"]
 
-const PAGE_SIZE = 8
-
-// ── Component ─────────────────────────────────────────────────────
+const PAGE_SIZE = 20
 
 type SortOption = "popularity" | "price-low" | "price-high" | "newest"
 
+function sortOptionToApi(sort: SortOption): string {
+  switch (sort) {
+    case "popularity": return "rating"
+    case "price-low": return "price_asc"
+    case "price-high": return "price_desc"
+    case "newest": return "newest"
+  }
+}
+
 export default function CategoryPage() {
   const params = useParams()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const slug = params.slug as string
 
-  // Resolve sub-categories to parent
-  const parentSlug = SUB_CATEGORY_MAP[slug] || slug
-  const categoryData = CATEGORIES[parentSlug]
+  // State for category info
+  const [categoryData, setCategoryData] = useState<(Category & { children?: Category[] }) | null>(null)
+  const [parentCategory, setParentCategory] = useState<(Category & { children?: Category[] }) | null>(null)
+  const [categoryLoading, setCategoryLoading] = useState(true)
 
-  const [sortBy, setSortBy] = useState<SortOption>("popularity")
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 5000])
-  const [vegOnly, setVegOnly] = useState(false)
-  const [minRating, setMinRating] = useState(0)
-  const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
+  // State for products
+  const [products, setProducts] = useState<Product[]>([])
+  const [total, setTotal] = useState(0)
+  const [productsLoading, setProductsLoading] = useState(true)
+
+  // Filters from URL search params
+  const [sortBy, setSortBy] = useState<SortOption>((searchParams.get("sortBy") as SortOption) || "popularity")
+  const [priceRange, setPriceRange] = useState<[number, number]>(() => {
+    const min = searchParams.get("minPrice")
+    const max = searchParams.get("maxPrice")
+    return [min ? Number(min) : 0, max ? Number(max) : 5000]
+  })
+  const [vegOnly, setVegOnly] = useState(searchParams.get("isVeg") === "true")
+  const [selectedOccasion, setSelectedOccasion] = useState<string | null>(searchParams.get("occasion"))
+  const [currentPage, setCurrentPage] = useState(Number(searchParams.get("page")) || 1)
   const [showFilters, setShowFilters] = useState(false)
 
-  const activeSubSlug = SUB_CATEGORY_MAP[slug] ? slug : null
+  // Fetch categories to find current category info
+  useEffect(() => {
+    async function fetchCategories() {
+      setCategoryLoading(true)
+      try {
+        const res = await fetch("/api/categories")
+        const json: ApiResponse<(Category & { children?: Category[] })[]> = await res.json()
+        if (json.success && json.data) {
+          const allCategories = json.data
+          // Check if slug matches a parent category
+          const found = allCategories.find((c) => c.slug === slug)
+          if (found) {
+            setCategoryData(found)
+            setParentCategory(null)
+          } else {
+            // Check subcategories
+            for (const parent of allCategories) {
+              const child = parent.children?.find((c) => c.slug === slug)
+              if (child) {
+                setCategoryData(child)
+                setParentCategory(parent)
+                break
+              }
+            }
+          }
+        }
+      } catch {
+        // Category fetch failed
+      } finally {
+        setCategoryLoading(false)
+      }
+    }
+    fetchCategories()
+  }, [slug])
 
-  // Filter & sort — must be called unconditionally (hooks rules)
-  const filtered = useMemo(() => {
-    if (!categoryData) return []
-    let products = [...categoryData.products]
+  // Fetch products from API
+  const fetchProducts = useCallback(async () => {
+    setProductsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set("categorySlug", slug)
+      params.set("page", String(currentPage))
+      params.set("pageSize", String(PAGE_SIZE))
+      params.set("sortBy", sortOptionToApi(sortBy))
 
-    // Price filter
-    products = products.filter(
-      (p) => p.basePrice >= priceRange[0] && p.basePrice <= priceRange[1]
+      if (priceRange[0] > 0) params.set("minPrice", String(priceRange[0]))
+      if (priceRange[1] < 5000) params.set("maxPrice", String(priceRange[1]))
+      if (vegOnly) params.set("isVeg", "true")
+      if (selectedOccasion) params.set("occasion", selectedOccasion)
+
+      const res = await fetch(`/api/products?${params.toString()}`)
+      const json: ApiResponse<PaginatedData<Product>> = await res.json()
+      if (json.success && json.data) {
+        setProducts(json.data.items)
+        setTotal(json.data.total)
+      }
+    } catch {
+      // Product fetch failed
+    } finally {
+      setProductsLoading(false)
+    }
+  }, [slug, currentPage, sortBy, priceRange, vegOnly, selectedOccasion])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
+
+  // Update URL search params when filters change
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (sortBy !== "popularity") params.set("sortBy", sortBy)
+    if (priceRange[0] > 0) params.set("minPrice", String(priceRange[0]))
+    if (priceRange[1] < 5000) params.set("maxPrice", String(priceRange[1]))
+    if (vegOnly) params.set("isVeg", "true")
+    if (selectedOccasion) params.set("occasion", selectedOccasion)
+    if (currentPage > 1) params.set("page", String(currentPage))
+
+    const search = params.toString()
+    const newPath = `/category/${slug}${search ? `?${search}` : ""}`
+    router.replace(newPath, { scroll: false })
+  }, [sortBy, priceRange, vegOnly, selectedOccasion, currentPage, slug, router])
+
+  // Determine if this is a subcategory
+  const isSubCategory = !!parentCategory
+  const displayCategory = categoryData
+  const parentSlug = parentCategory?.slug || slug
+  const parentName = parentCategory?.name || categoryData?.name || ""
+  const childrenCategories = parentCategory?.children || categoryData?.children || []
+
+  // Loading skeleton
+  if (categoryLoading) {
+    return (
+      <div className="min-h-screen">
+        <div className="bg-gradient-to-r from-[#E91E63]/10 via-pink-50 to-[#9C27B0]/10">
+          <div className="container mx-auto px-4 py-8 sm:py-12">
+            <Skeleton className="h-4 w-48 mb-4" />
+            <Skeleton className="h-8 w-64 mb-2" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+        </div>
+        <div className="container mx-auto px-4 py-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-xl bg-white overflow-hidden" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                <Skeleton className="aspect-square w-full" />
+                <div className="p-3 space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <Skeleton className="h-5 w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     )
+  }
 
-    // Veg filter
-    if (vegOnly) {
-      products = products.filter((p) => p.isVeg)
-    }
-
-    // Rating filter
-    if (minRating > 0) {
-      products = products.filter((p) => p.avgRating >= minRating)
-    }
-
-    // Occasion filter
-    if (selectedOccasion) {
-      products = products.filter((p) => p.occasion.includes(selectedOccasion))
-    }
-
-    // Sort
-    switch (sortBy) {
-      case "price-low":
-        products.sort((a, b) => a.basePrice - b.basePrice)
-        break
-      case "price-high":
-        products.sort((a, b) => b.basePrice - a.basePrice)
-        break
-      case "newest":
-        products.reverse()
-        break
-      case "popularity":
-      default:
-        products.sort((a, b) => b.totalReviews - a.totalReviews)
-        break
-    }
-
-    return products
-  }, [categoryData, priceRange, vegOnly, minRating, selectedOccasion, sortBy])
-
-  if (!categoryData) {
+  // Category not found
+  if (!displayCategory) {
     return (
       <div className="container mx-auto px-4 py-20 text-center">
         <h1 className="text-2xl font-bold text-[#1A1A2E]">Category Not Found</h1>
@@ -224,19 +193,16 @@ export default function CategoryPage() {
     )
   }
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   const activeFilterCount =
     (vegOnly ? 1 : 0) +
-    (minRating > 0 ? 1 : 0) +
     (selectedOccasion ? 1 : 0) +
     (priceRange[0] > 0 || priceRange[1] < 5000 ? 1 : 0)
 
   const clearFilters = () => {
     setPriceRange([0, 5000])
     setVegOnly(false)
-    setMinRating(0)
     setSelectedOccasion(null)
     setCurrentPage(1)
   }
@@ -251,7 +217,7 @@ export default function CategoryPage() {
         </label>
         <Select
           value={`${priceRange[0]}-${priceRange[1]}`}
-          onValueChange={(v) => {
+          onValueChange={(v: string) => {
             const [min, max] = v.split("-").map(Number)
             setPriceRange([min, max])
             setCurrentPage(1)
@@ -277,7 +243,7 @@ export default function CategoryPage() {
         </label>
         <Select
           value={vegOnly ? "veg" : "all"}
-          onValueChange={(v) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
+          onValueChange={(v: string) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
         >
           <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
             <SelectValue />
@@ -289,36 +255,6 @@ export default function CategoryPage() {
         </Select>
       </div>
 
-      {/* Rating */}
-      <div>
-        <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
-          Rating
-        </label>
-        <Select
-          value={minRating.toString()}
-          onValueChange={(v) => { setMinRating(Number(v)); setCurrentPage(1) }}
-        >
-          <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="0">Any Rating</SelectItem>
-            <SelectItem value="4">
-              <span className="flex items-center gap-1">
-                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                4 &amp; above
-              </span>
-            </SelectItem>
-            <SelectItem value="3">
-              <span className="flex items-center gap-1">
-                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                3 &amp; above
-              </span>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Occasion */}
       <div>
         <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
@@ -326,7 +262,7 @@ export default function CategoryPage() {
         </label>
         <Select
           value={selectedOccasion || "all"}
-          onValueChange={(v) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
+          onValueChange={(v: string) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
         >
           <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
             <SelectValue />
@@ -335,7 +271,7 @@ export default function CategoryPage() {
             <SelectItem value="all">All Occasions</SelectItem>
             {OCCASIONS.map((occ) => (
               <SelectItem key={occ} value={occ} className="capitalize">
-                {occ.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                {occ.replace(/-/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
               </SelectItem>
             ))}
           </SelectContent>
@@ -374,21 +310,19 @@ export default function CategoryPage() {
               Home
             </Link>
             <ChevronRight className="h-3.5 w-3.5 text-[#1A1A2E]/30" />
-            {activeSubSlug ? (
+            {isSubCategory ? (
               <>
                 <Link
                   href={`/category/${parentSlug}`}
                   className="text-[#1A1A2E]/50 hover:text-[#E91E63] transition-colors font-medium"
                 >
-                  {categoryData.name}
+                  {parentName}
                 </Link>
                 <ChevronRight className="h-3.5 w-3.5 text-[#1A1A2E]/30" />
-                <span className="text-[#1A1A2E] font-semibold capitalize">
-                  {activeSubSlug.replace(/-/g, " ")}
-                </span>
+                <span className="text-[#1A1A2E] font-semibold">{displayCategory.name}</span>
               </>
             ) : (
-              <span className="text-[#1A1A2E] font-semibold">{categoryData.name}</span>
+              <span className="text-[#1A1A2E] font-semibold">{displayCategory.name}</span>
             )}
           </nav>
 
@@ -398,10 +332,10 @@ export default function CategoryPage() {
               <Sparkles className="h-6 w-6 text-[#E91E63]" />
             </div>
             <div>
-              <h1 className="section-title text-[#1A1A2E]">{categoryData.name}</h1>
-              {categoryData.description && (
+              <h1 className="section-title text-[#1A1A2E]">{displayCategory.name}</h1>
+              {displayCategory.description && (
                 <p className="mt-3 text-sm sm:text-base text-[#1A1A2E]/60 max-w-xl">
-                  {categoryData.description}
+                  {displayCategory.description}
                 </p>
               )}
             </div>
@@ -411,24 +345,24 @@ export default function CategoryPage() {
 
       <div className="container mx-auto px-4 py-6 sm:py-8">
         {/* ── Sub-category pills ── */}
-        {categoryData.children && categoryData.children.length > 0 && (
+        {childrenCategories.length > 0 && (
           <div className="mb-6 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             <Link href={`/category/${parentSlug}`}>
               <span
                 className={`inline-flex items-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
-                  !activeSubSlug
+                  !isSubCategory
                     ? "bg-[#E91E63] text-white shadow-md shadow-pink-200"
                     : "bg-white text-[#1A1A2E]/70 border border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63]"
                 }`}
               >
-                All {categoryData.name}
+                All {parentName}
               </span>
             </Link>
-            {categoryData.children.map((sub) => (
+            {childrenCategories.map((sub) => (
               <Link key={sub.id} href={`/category/${sub.slug}`}>
                 <span
                   className={`inline-flex items-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
-                    activeSubSlug === sub.slug
+                    slug === sub.slug
                       ? "bg-[#E91E63] text-white shadow-md shadow-pink-200"
                       : "bg-white text-[#1A1A2E]/70 border border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63]"
                   }`}
@@ -444,8 +378,8 @@ export default function CategoryPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3 flex-wrap">
             <p className="text-sm font-medium text-[#1A1A2E]/60">
-              <span className="text-[#1A1A2E] font-semibold">{filtered.length}</span>{" "}
-              {filtered.length === 1 ? "product" : "products"} found
+              <span className="text-[#1A1A2E] font-semibold">{total}</span>{" "}
+              {total === 1 ? "product" : "products"} found
             </p>
 
             {/* Active filter badges */}
@@ -455,15 +389,6 @@ export default function CategoryPage() {
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#E91E63]/10 text-[#E91E63] px-3 py-1 text-xs font-medium">
                     Veg Only
                     <button onClick={() => setVegOnly(false)} className="hover:bg-[#E91E63]/20 rounded-full p-0.5 transition-colors">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                )}
-                {minRating > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E91E63]/10 text-[#E91E63] px-3 py-1 text-xs font-medium">
-                    <Star className="h-3 w-3 fill-[#E91E63]" />
-                    {minRating}+
-                    <button onClick={() => setMinRating(0)} className="hover:bg-[#E91E63]/20 rounded-full p-0.5 transition-colors">
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -506,7 +431,7 @@ export default function CategoryPage() {
             </Button>
 
             {/* Sort dropdown */}
-            <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortOption); setCurrentPage(1) }}>
+            <Select value={sortBy} onValueChange={(v: string) => { setSortBy(v as SortOption); setCurrentPage(1) }}>
               <SelectTrigger className="w-[170px] h-9 text-sm rounded-full border-gray-200 bg-white hover:border-[#E91E63]/30 transition-colors">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
@@ -540,7 +465,7 @@ export default function CategoryPage() {
                 </label>
                 <Select
                   value={`${priceRange[0]}-${priceRange[1]}`}
-                  onValueChange={(v) => {
+                  onValueChange={(v: string) => {
                     const [min, max] = v.split("-").map(Number)
                     setPriceRange([min, max])
                     setCurrentPage(1)
@@ -566,7 +491,7 @@ export default function CategoryPage() {
                 </label>
                 <Select
                   value={vegOnly ? "veg" : "all"}
-                  onValueChange={(v) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
+                  onValueChange={(v: string) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
                 >
                   <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
                     <SelectValue />
@@ -578,36 +503,6 @@ export default function CategoryPage() {
                 </Select>
               </div>
 
-              {/* Rating */}
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
-                  Rating
-                </label>
-                <Select
-                  value={minRating.toString()}
-                  onValueChange={(v) => { setMinRating(Number(v)); setCurrentPage(1) }}
-                >
-                  <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">Any Rating</SelectItem>
-                    <SelectItem value="4">
-                      <span className="flex items-center gap-1">
-                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                        4 &amp; above
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="3">
-                      <span className="flex items-center gap-1">
-                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                        3 &amp; above
-                      </span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Occasion */}
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
@@ -615,7 +510,7 @@ export default function CategoryPage() {
                 </label>
                 <Select
                   value={selectedOccasion || "all"}
-                  onValueChange={(v) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
+                  onValueChange={(v: string) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
                 >
                   <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
                     <SelectValue />
@@ -624,7 +519,7 @@ export default function CategoryPage() {
                     <SelectItem value="all">All Occasions</SelectItem>
                     {OCCASIONS.map((occ) => (
                       <SelectItem key={occ} value={occ} className="capitalize">
-                        {occ.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                        {occ.replace(/-/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -671,10 +566,23 @@ export default function CategoryPage() {
 
           {/* Products area */}
           <div className="flex-1 min-w-0">
-            {/* Product grid */}
-            {paginated.length > 0 ? (
+            {/* Loading state */}
+            {productsLoading ? (
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
-                {paginated.map((product) => (
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="rounded-xl bg-white overflow-hidden" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+                    <Skeleton className="aspect-square w-full" />
+                    <div className="p-3 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                      <Skeleton className="h-5 w-1/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : products.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
+                {products.map((product) => (
                   <div key={product.id} className="hover-lift">
                     <ProductCard product={product} />
                   </div>

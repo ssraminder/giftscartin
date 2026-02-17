@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronRight, MapPin, Minus, Plus, ShoppingCart, Star, Truck, Shield, Clock, Package, Info } from "lucide-react"
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ProductGallery } from "@/components/product/product-gallery"
 import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
 import { AddonSelector } from "@/components/product/addon-selector"
@@ -16,117 +17,7 @@ import { ReviewList } from "@/components/product/review-list"
 import { ProductCard } from "@/components/product/product-card"
 import { formatPrice } from "@/lib/utils"
 import { useCart } from "@/hooks/use-cart"
-import type { Product, ProductAddon, Review, AddonSelection } from "@/types"
-
-// ── Placeholder data ──────────────────────────────────────────────
-
-const SAMPLE_ADDONS: ProductAddon[] = [
-  { id: "a1", productId: "p1", name: "Chocolate Box", price: 299, image: "/placeholder-product.svg", isActive: true },
-  { id: "a2", productId: "p1", name: "Greeting Card", price: 49, image: "/placeholder-product.svg", isActive: true },
-  { id: "a3", productId: "p1", name: "Teddy Bear", price: 399, image: "/placeholder-product.svg", isActive: true },
-  { id: "a4", productId: "p1", name: "Candle Set", price: 149, image: "/placeholder-product.svg", isActive: true },
-  { id: "a5", productId: "p1", name: "Balloon Bunch", price: 199, image: "/placeholder-product.svg", isActive: true },
-  { id: "a6", productId: "p1", name: "Rose Bouquet", price: 499, image: "/placeholder-product.svg", isActive: true },
-]
-
-const SAMPLE_REVIEWS: Review[] = [
-  { id: "r1", userId: "u1", productId: "p1", orderId: "o1", rating: 5, comment: "Absolutely delicious! The cake was fresh and the delivery was on time. Loved it!", images: [], isVerified: true, createdAt: "2026-01-15T10:00:00Z", user: { id: "u1", name: "Priya S." } },
-  { id: "r2", userId: "u2", productId: "p1", orderId: "o2", rating: 4, comment: "Good cake, nicely decorated. Slightly smaller than expected but taste was great.", images: [], isVerified: true, createdAt: "2026-01-10T14:30:00Z", user: { id: "u2", name: "Rahul M." } },
-  { id: "r3", userId: "u3", productId: "p1", orderId: "o3", rating: 5, comment: "Ordered for my wife's birthday. She loved it! Will order again.", images: [], isVerified: true, createdAt: "2025-12-28T09:15:00Z", user: { id: "u3", name: "Amit K." } },
-  { id: "r4", userId: "u4", productId: "p1", orderId: null, rating: 3, comment: "Decent cake. Packaging could be better.", images: [], isVerified: false, createdAt: "2025-12-20T16:45:00Z", user: { id: "u4", name: "Sneha R." } },
-  { id: "r5", userId: "u5", productId: "p1", orderId: "o5", rating: 5, comment: "Best cake in Chandigarh! Perfect for celebrations.", images: [], isVerified: true, createdAt: "2025-12-15T11:00:00Z", user: { id: "u5", name: "Deepak T." } },
-]
-
-const ALL_PRODUCTS: Record<string, Product & { categorySlug: string; categoryName: string }> = {
-  "chocolate-truffle-cake": {
-    id: "p1", name: "Chocolate Truffle Cake", slug: "chocolate-truffle-cake",
-    description: "Indulge in the rich, velvety goodness of our Chocolate Truffle Cake. Made with premium Belgian chocolate and layered with smooth chocolate ganache, this cake is a true celebration of chocolate. Perfect for birthdays, anniversaries, or any occasion that calls for something special. Each cake is freshly baked by our expert bakers and delivered with care.",
-    shortDesc: "Rich & decadent", categoryId: "cat-cakes", basePrice: 599,
-    images: ["/placeholder-product.svg", "/placeholder-product.svg", "/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "anniversary"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.5, totalReviews: 128, createdAt: "", updatedAt: "",
-    categorySlug: "cakes", categoryName: "Cakes",
-  },
-  "red-velvet-cake": {
-    id: "p2", name: "Red Velvet Cake", slug: "red-velvet-cake",
-    description: "Our signature Red Velvet Cake features moist, vibrant red layers with a luscious cream cheese frosting. A perfect blend of subtle cocoa and tangy buttermilk, topped with white chocolate shavings. This classic favorite is ideal for Valentine's Day, birthdays, and any celebration.",
-    shortDesc: "Classic favorite", categoryId: "cat-cakes", basePrice: 699,
-    images: ["/placeholder-product.svg", "/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "valentines-day"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.7, totalReviews: 95, createdAt: "", updatedAt: "",
-    categorySlug: "cakes", categoryName: "Cakes",
-  },
-  "black-forest-cake": {
-    id: "p3", name: "Black Forest Cake", slug: "black-forest-cake",
-    description: "A timeless classic that never goes out of style. Layers of chocolate sponge, whipped cream, and cherries come together in this indulgent Black Forest Cake. Topped with chocolate shavings and maraschino cherries for the perfect finish.",
-    shortDesc: "Timeless classic", categoryId: "cat-cakes", basePrice: 549,
-    images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["birthday"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.3, totalReviews: 72, createdAt: "", updatedAt: "",
-    categorySlug: "cakes", categoryName: "Cakes",
-  },
-  "butterscotch-cake": {
-    id: "p4", name: "Butterscotch Cake", slug: "butterscotch-cake",
-    description: "Smooth, creamy butterscotch cake topped with caramel crunch and praline decorations. A sweet delight that melts in your mouth. Perfect for those who love a rich caramel flavor.",
-    shortDesc: "Sweet & crunchy", categoryId: "cat-cakes", basePrice: 499,
-    images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["birthday"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.2, totalReviews: 56, createdAt: "", updatedAt: "",
-    categorySlug: "cakes", categoryName: "Cakes",
-  },
-  "photo-cake": {
-    id: "p5", name: "Photo Cake", slug: "photo-cake",
-    description: "Make your celebration extra personal with our customizable Photo Cake. Upload your favorite photo and we'll print it on a delicious vanilla or chocolate cake using food-grade edible ink. Available in multiple sizes.",
-    shortDesc: "Personalized", categoryId: "cat-cakes", basePrice: 899,
-    images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "anniversary"], weight: "1kg", isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 43, createdAt: "", updatedAt: "",
-    categorySlug: "cakes", categoryName: "Cakes",
-  },
-  "red-roses-bouquet": {
-    id: "p9", name: "Red Roses Bouquet", slug: "red-roses-bouquet",
-    description: "Express your love with our stunning bouquet of 12 premium red roses, elegantly wrapped in craft paper and finished with a satin ribbon. Each rose is hand-picked for freshness and size to create the perfect romantic gesture.",
-    shortDesc: "Romantic & elegant", categoryId: "cat-flowers", basePrice: 699,
-    images: ["/placeholder-product.svg", "/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["valentines-day", "anniversary"], weight: null, isVeg: true, isActive: true, avgRating: 4.8, totalReviews: 210, createdAt: "", updatedAt: "",
-    categorySlug: "flowers", categoryName: "Flowers",
-  },
-  "mixed-flower-arrangement": {
-    id: "p10", name: "Mixed Flower Arrangement", slug: "mixed-flower-arrangement",
-    description: "A vibrant arrangement of seasonal mixed flowers including roses, carnations, lilies, and greens. Arranged in an elegant basket, this colorful bouquet is perfect for brightening someone's day.",
-    shortDesc: "Colorful & bright", categoryId: "cat-flowers", basePrice: 899,
-    images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["birthday", "congratulations"], weight: null, isVeg: true, isActive: true, avgRating: 4.4, totalReviews: 67, createdAt: "", updatedAt: "",
-    categorySlug: "flowers", categoryName: "Flowers",
-  },
-  "orchid-bunch": {
-    id: "p11", name: "Orchid Bunch", slug: "orchid-bunch",
-    description: "Premium orchid bunch featuring beautiful purple orchids in elegant packaging. A luxurious choice for special occasions and discerning recipients who appreciate the finer things in life.",
-    shortDesc: "Premium blooms", categoryId: "cat-flowers", basePrice: 1299,
-    images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["anniversary", "thank-you"], weight: null, isVeg: true, isActive: true, avgRating: 4.6, totalReviews: 28, createdAt: "", updatedAt: "",
-    categorySlug: "flowers", categoryName: "Flowers",
-  },
-  "cake-flowers-combo": {
-    id: "p14", name: "Cake & Flowers Combo", slug: "cake-flowers-combo",
-    description: "The perfect combination — a delicious chocolate truffle cake paired with a beautiful bouquet of red roses. Send love and sweetness together. Ideal for birthdays, anniversaries, and Valentine's Day.",
-    shortDesc: "Perfect pair", categoryId: "cat-combos", basePrice: 1199,
-    images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "anniversary", "valentines-day"], weight: "500g + bouquet", isVeg: true, isActive: true, avgRating: 4.9, totalReviews: 156, createdAt: "", updatedAt: "",
-    categorySlug: "combos", categoryName: "Combos",
-  },
-  "money-plant": {
-    id: "p19", name: "Money Plant", slug: "money-plant",
-    description: "The golden Money Plant is considered a symbol of good luck and prosperity. This low-maintenance plant comes in a beautiful ceramic pot, making it an ideal gift for housewarmings, new beginnings, or simply to add a touch of green to any space.",
-    shortDesc: "Lucky charm", categoryId: "cat-plants", basePrice: 399,
-    images: ["/placeholder-product.svg"],
-    tags: [], occasion: ["housewarming", "congratulations"], weight: null, isVeg: true, isActive: true, avgRating: 4.1, totalReviews: 34, createdAt: "", updatedAt: "",
-    categorySlug: "plants", categoryName: "Plants",
-  },
-  "chocolate-gift-box": {
-    id: "p24", name: "Chocolate Gift Box", slug: "chocolate-gift-box",
-    description: "A premium collection of assorted chocolates beautifully presented in an elegant gift box. Includes dark, milk, and white chocolate varieties with flavors like hazelnut, caramel, and orange. Perfect for any chocolate lover.",
-    shortDesc: "Choco heaven", categoryId: "cat-gifts", basePrice: 799,
-    images: ["/placeholder-product.svg"],
-    tags: ["bestseller"], occasion: ["birthday", "thank-you"], weight: "500g", isVeg: true, isActive: true, avgRating: 4.4, totalReviews: 48, createdAt: "", updatedAt: "",
-    categorySlug: "gifts", categoryName: "Gifts",
-  },
-}
+import type { Product, ProductAddon, Review, AddonSelection, ApiResponse, PaginatedData } from "@/types"
 
 // ── Helper: render star rating ────────────────────────────────────
 
@@ -150,16 +41,59 @@ function StarRating({ rating, size = "sm" }: { rating: number; size?: "sm" | "md
   )
 }
 
+// ── Loading Skeleton ──────────────────────────────────────────────
+
+function ProductDetailSkeleton() {
+  return (
+    <div className="bg-[#FAFAFA] min-h-screen">
+      <div className="bg-white border-b">
+        <div className="container mx-auto px-4 py-3">
+          <Skeleton className="h-4 w-64" />
+        </div>
+      </div>
+      <div className="container mx-auto px-4 py-6 lg:py-10">
+        <div className="grid gap-8 lg:grid-cols-[1fr_0.67fr] lg:gap-12">
+          <div className="card-premium p-4 sm:p-6">
+            <Skeleton className="aspect-square w-full rounded-lg" />
+          </div>
+          <div className="space-y-6">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-10 w-32" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-40 w-full rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-xl" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────
+
+interface ProductWithDetails extends Omit<Product, 'category' | 'addons'> {
+  category?: { id: string; name: string; slug: string }
+  addons?: ProductAddon[]
+  reviews?: Review[]
+}
 
 export default function ProductDetailPage() {
   const params = useParams()
   const router = useRouter()
   const slug = params.slug as string
 
-  const productData = ALL_PRODUCTS[slug]
   const addItem = useCart((s) => s.addItem)
 
+  // State for fetched data
+  const [product, setProduct] = useState<ProductWithDetails | null>(null)
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+
+  // UI state
   const [quantity, setQuantity] = useState(1)
   const [selectedAddons, setSelectedAddons] = useState<AddonSelection[]>([])
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null)
@@ -168,7 +102,41 @@ export default function ProductDetailPage() {
   const [pincodeChecked, setPincodeChecked] = useState(false)
   const [activeTab, setActiveTab] = useState<"description" | "reviews" | "delivery">("description")
 
-  if (!productData) {
+  // Fetch product by slug
+  useEffect(() => {
+    async function fetchProduct() {
+      setLoading(true)
+      setNotFound(false)
+      try {
+        const res = await fetch(`/api/products/${encodeURIComponent(slug)}`)
+        const json: ApiResponse<ProductWithDetails> = await res.json()
+        if (json.success && json.data) {
+          setProduct(json.data)
+          // Fetch related products from same category
+          if (json.data.category?.slug) {
+            const relRes = await fetch(`/api/products?categorySlug=${json.data.category.slug}&pageSize=5&sortBy=rating`)
+            const relJson: ApiResponse<PaginatedData<Product>> = await relRes.json()
+            if (relJson.success && relJson.data) {
+              setRelatedProducts(relJson.data.items.filter((p) => p.id !== json.data!.id).slice(0, 4))
+            }
+          }
+        } else {
+          setNotFound(true)
+        }
+      } catch {
+        setNotFound(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchProduct()
+  }, [slug])
+
+  if (loading) {
+    return <ProductDetailSkeleton />
+  }
+
+  if (notFound || !product) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 py-20">
         <div className="text-center">
@@ -190,17 +158,20 @@ export default function ProductDetailPage() {
     )
   }
 
-  const { categorySlug, categoryName, ...product } = productData
+  const categorySlug = product.category?.slug || ""
+  const categoryName = product.category?.name || ""
+  const addons = product.addons || []
+  const reviews = product.reviews || []
 
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
-  const totalPrice = (product.basePrice + addonTotal) * quantity
+  const totalPrice = (Number(product.basePrice) + addonTotal) * quantity
 
   const handleAddToCart = () => {
-    addItem(product, quantity, selectedAddons)
+    addItem(product as Product, quantity, selectedAddons)
   }
 
   const handleBuyNow = () => {
-    addItem(product, quantity, selectedAddons)
+    addItem(product as Product, quantity, selectedAddons)
     router.push("/cart")
   }
 
@@ -209,11 +180,6 @@ export default function ProductDetailPage() {
       setPincodeChecked(true)
     }
   }
-
-  // Get related products (same category, excluding current)
-  const relatedProducts = Object.values(ALL_PRODUCTS)
-    .filter((p) => p.categorySlug === categorySlug && p.slug !== slug)
-    .slice(0, 4)
 
   return (
     <div className="bg-[#FAFAFA] min-h-screen">
@@ -276,9 +242,9 @@ export default function ProductDetailPage() {
             {/* Star rating with amber stars */}
             {product.totalReviews > 0 && (
               <div className="flex items-center gap-3">
-                <StarRating rating={product.avgRating} size="md" />
+                <StarRating rating={Number(product.avgRating)} size="md" />
                 <span className="text-sm font-semibold text-[#1A1A2E]">
-                  {product.avgRating.toFixed(1)}
+                  {Number(product.avgRating).toFixed(1)}
                 </span>
                 <span className="text-sm text-muted-foreground">
                   ({product.totalReviews} {product.totalReviews === 1 ? "review" : "reviews"})
@@ -290,7 +256,7 @@ export default function ProductDetailPage() {
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-bold text-[#E91E63]">
-                  {formatPrice(product.basePrice)}
+                  {formatPrice(Number(product.basePrice))}
                 </span>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">Inclusive of all taxes</p>
@@ -334,7 +300,7 @@ export default function ProductDetailPage() {
                         placeholder="Enter delivery pincode"
                         maxLength={6}
                         value={pincode}
-                        onChange={(e) => {
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           setPincode(e.target.value.replace(/\D/g, ""))
                           setPincodeChecked(false)
                         }}
@@ -371,13 +337,16 @@ export default function ProductDetailPage() {
             <Separator />
 
             {/* ── Add-ons ──────────────────────────────────────── */}
-            <AddonSelector
-              addons={SAMPLE_ADDONS}
-              selected={selectedAddons}
-              onChange={setSelectedAddons}
-            />
-
-            {selectedAddons.length > 0 && <Separator />}
+            {addons.length > 0 && (
+              <>
+                <AddonSelector
+                  addons={addons}
+                  selected={selectedAddons}
+                  onChange={setSelectedAddons}
+                />
+                {selectedAddons.length > 0 && <Separator />}
+              </>
+            )}
 
             {/* ── Quantity selector ────────────────────────────── */}
             <div className="flex items-center gap-4">
@@ -408,7 +377,7 @@ export default function ProductDetailPage() {
               <div className="rounded-xl bg-[#FFF9F5] border border-[#E91E63]/10 p-4 space-y-2 text-sm">
                 <div className="flex justify-between text-[#1A1A2E]/70">
                   <span>{product.name} x {quantity}</span>
-                  <span className="font-medium">{formatPrice(product.basePrice * quantity)}</span>
+                  <span className="font-medium">{formatPrice(Number(product.basePrice) * quantity)}</span>
                 </div>
                 {selectedAddons.map((addon) => (
                   <div key={addon.addonId} className="flex justify-between text-[#1A1A2E]/70">
@@ -546,8 +515,8 @@ export default function ProductDetailPage() {
             {activeTab === "reviews" && (
               <div className="max-w-3xl">
                 <ReviewList
-                  reviews={SAMPLE_REVIEWS}
-                  avgRating={product.avgRating}
+                  reviews={reviews}
+                  avgRating={Number(product.avgRating)}
                   totalReviews={product.totalReviews}
                 />
               </div>
@@ -606,13 +575,9 @@ export default function ProductDetailPage() {
           <div className="container mx-auto px-4">
             <h2 className="section-title text-[#1A1A2E] mb-8">You May Also Like</h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6 mt-10">
-              {relatedProducts.map((rp) => {
-                const { categorySlug, categoryName, ...relProduct } = rp
-                void categorySlug; void categoryName
-                return (
-                  <ProductCard key={relProduct.id} product={relProduct} />
-                )
-              })}
+              {relatedProducts.map((rp) => (
+                <ProductCard key={rp.id} product={rp} />
+              ))}
             </div>
           </div>
         </div>
