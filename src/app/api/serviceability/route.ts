@@ -91,12 +91,12 @@ export async function POST(request: NextRequest) {
         isAvailable: true,
       },
       include: {
-        slot: { where: { isActive: true } },
+        slot: true,
       },
     })
 
     const availableSlots = deliveryConfigs
-      .filter((dc) => dc.slot)
+      .filter((dc) => dc.slot.isActive)
       .map((dc) => ({
         id: dc.slot.id,
         name: dc.slot.name,
