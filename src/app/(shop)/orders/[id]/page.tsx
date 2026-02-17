@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import {
@@ -12,6 +12,7 @@ import {
   MapPin,
   MessageSquare,
   Package,
+  PartyPopper,
   Truck,
 } from "lucide-react"
 
@@ -81,6 +82,8 @@ function OrderDetailSkeleton() {
 
 export default function OrderDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
+  const isNewOrder = searchParams.get("new") === "true"
   const orderId = params.id as string
   const { data: session, status: authStatus } = useSession()
   const [order, setOrder] = useState<Order | null>(null)
@@ -157,6 +160,25 @@ export default function OrderDetailPage() {
         <ArrowLeft className="h-4 w-4" />
         My Orders
       </Link>
+
+      {/* New order success banner */}
+      {isNewOrder && (
+        <Card className="border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
+              <PartyPopper className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-green-800">
+                Your order has been placed! Order #{order.orderNumber}
+              </p>
+              <p className="text-xs text-green-600 mt-0.5">
+                We&apos;ll send you updates as your order progresses.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Order header */}
       <div className="flex items-start justify-between gap-3">

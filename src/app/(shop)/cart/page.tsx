@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles } from "lucide-react"
+import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -18,15 +18,30 @@ export default function CartPage() {
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
   const clearCart = useCart((s) => s.clearCart)
+  const setCoupon = useCart((s) => s.setCoupon)
+  const storedCouponCode = useCart((s) => s.couponCode)
+  const storedCouponDiscount = useCart((s) => s.couponDiscount)
 
-  // Coupon state (placeholder logic — no real backend call yet)
-  const [couponCode, setCouponCode] = useState<string | null>(null)
-  const [discount, setDiscount] = useState(0)
-  const [couponExpanded, setCouponExpanded] = useState(false)
+  const [couponCode, setCouponCode] = useState<string | null>(storedCouponCode)
+  const [discount, setDiscount] = useState(storedCouponDiscount)
+  const [couponExpanded, setCouponExpanded] = useState(!!storedCouponCode)
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState<string | null>(null)
 
   // Hydration guard for Zustand persisted store
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Sync from Zustand store on mount
+  useEffect(() => {
+    if (mounted) {
+      setCouponCode(storedCouponCode)
+      setDiscount(storedCouponDiscount)
+      if (storedCouponCode) setCouponExpanded(true)
+    }
+  }, [mounted, storedCouponCode, storedCouponDiscount])
 
   if (!mounted) {
     return (
@@ -39,16 +54,42 @@ export default function CartPage() {
   const subtotal = getSubtotal()
   const deliveryCharge = subtotal >= FREE_DELIVERY_ABOVE ? 0 : BASE_DELIVERY_CHARGE
 
-  const handleApplyCoupon = (code: string) => {
-    // Placeholder: apply a flat 10% discount for demo
-    const calculatedDiscount = Math.round(subtotal * 0.1)
-    setCouponCode(code)
-    setDiscount(calculatedDiscount)
+  const handleApplyCoupon = async (code: string) => {
+    setCouponLoading(true)
+    setCouponError(null)
+
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, orderTotal: subtotal }),
+      })
+
+      const json = await res.json()
+      if (json.success && json.data) {
+        if (json.data.valid) {
+          const discountAmount = json.data.discount as number
+          setCouponCode(code)
+          setDiscount(discountAmount)
+          setCoupon(code, discountAmount)
+        } else {
+          setCouponError(json.data.message || "Invalid coupon")
+        }
+      } else {
+        setCouponError(json.error || "Failed to validate coupon")
+      }
+    } catch {
+      setCouponError("Network error. Please try again.")
+    } finally {
+      setCouponLoading(false)
+    }
   }
 
   const handleRemoveCoupon = () => {
     setCouponCode(null)
     setDiscount(0)
+    setCouponError(null)
+    setCoupon(null, 0)
   }
 
   // Empty cart state
@@ -169,6 +210,15 @@ export default function CartPage() {
                     onApply={handleApplyCoupon}
                     onRemove={handleRemoveCoupon}
                   />
+                  {couponLoading && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Validating coupon...
+                    </div>
+                  )}
+                  {couponError && (
+                    <p className="mt-2 text-xs text-red-600">{couponError}</p>
+                  )}
                 </div>
               )}
             </div>
