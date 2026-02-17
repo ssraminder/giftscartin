@@ -92,7 +92,7 @@ function RegisterForm() {
           </div>
           <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <CardDescription>
-            Join GiftIndia to send gifts to your loved ones
+            Join Gifts Cart India to send gifts to your loved ones
           </CardDescription>
         </CardHeader>
 

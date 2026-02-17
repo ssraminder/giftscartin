@@ -15,7 +15,7 @@ export interface CityContextValue {
   isLoaded: boolean
 }
 
-const STORAGE_KEY = "giftindia-city"
+const STORAGE_KEY = "giftscart-city"
 
 const DEFAULT_CITY: CityState = {
   city: "",

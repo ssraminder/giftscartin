@@ -3,10 +3,15 @@ Here's the complete `CLAUDE.md`. Copy **everything** between the two `===COPY ST
 ===COPY START===
 
 ```
-# GiftIndia - Project Specification
+# Gifts Cart India - Project Specification
 
 ## Overview
-GiftIndia is an online gifting platform (similar to Winni.in/FNP) that connects customers with local vendors for fresh cakes, flowers, and gifts delivery across India. Starting with Chandigarh as pilot city.
+Gifts Cart India is an online gifting platform (similar to Winni.in/FNP) that connects customers with local vendors for fresh cakes, flowers, and gifts delivery across India. Starting with Chandigarh as pilot city.
+
+**Brand:** Gifts Cart India
+**Business Entity:** Cital Enterprises
+**Domain:** giftscart.in
+**FSSAI License No:** 12726011000025 (dummy)
 
 ## Tech Stack
 - **Framework:** Next.js 14 (App Router) with TypeScript
@@ -14,8 +19,8 @@ GiftIndia is an online gifting platform (similar to Winni.in/FNP) that connects 
 - **Database:** Supabase PostgreSQL (accessed via Prisma ORM)
 - **ORM:** Prisma (for type-safe queries, migrations)
 - **Auth:** NextAuth.js v4 with custom credentials provider (phone + OTP)
-- **SMS/OTP:** MSG91 API
-- **Email:** SendGrid
+- **OTP:** Brevo (email OTP via Brevo Transactional Email API)
+- **Email:** Brevo (transactional emails)
 - **Payments:** Razorpay
 - **Storage:** Supabase Storage (product images, vendor logos)
 - **Real-time:** Supabase Realtime (order notifications to vendors)
@@ -26,7 +31,7 @@ GiftIndia is an online gifting platform (similar to Winni.in/FNP) that connects 
 - **Full-stack Next.js** — API routes handle backend logic, no separate server
 - **Prisma connects directly to Supabase PostgreSQL** — we do NOT use Supabase Auth or Supabase client for data queries
 - **Supabase client is ONLY used for:** real-time subscriptions, file storage
-- **Auth is custom-built** using NextAuth.js credentials provider + MSG91 OTP — NOT Supabase Auth
+- **Auth is custom-built** using NextAuth.js credentials provider + email OTP via Brevo — NOT Supabase Auth
 - **All env vars accessed via `process.env`** — never hardcode secrets
 
 ## Environment Variables Required
@@ -39,8 +44,9 @@ NEXTAUTH_SECRET=
 NEXTAUTH_URL=http://localhost:3000
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
-MSG91_AUTH_KEY=
-MSG91_TEMPLATE_ID=
+BREVO_API_KEY=
+BREVO_SENDER_EMAIL=noreply@giftscart.in
+BREVO_SENDER_NAME=Gifts Cart India
 ```
 
 ## Netlify Configuration
@@ -59,7 +65,7 @@ Uses @netlify/plugin-nextjs for Next.js support. Create netlify.toml at project 
 ## Project Structure
 
 ```
-giftindia/
+# Project: Gifts Cart India
 ├── CLAUDE.md
 ├── .env.local                      # Local env vars (never commit)
 ├── .env.example                    # Template for env vars
@@ -114,7 +120,7 @@ giftindia/
 │   │       ├── auth/
 │   │       │   ├── [...nextauth]/route.ts   # NextAuth handler
 │   │       │   ├── otp/
-│   │       │   │   ├── send/route.ts        # POST: send OTP via MSG91
+│   │       │   │   ├── send/route.ts        # POST: send OTP via Brevo email
 │   │       │   │   └── verify/route.ts      # POST: verify OTP
 │   │       │   └── register/route.ts        # POST: register new user
 │   │       │
@@ -188,8 +194,7 @@ giftindia/
 │   │   ├── auth.ts                 # NextAuth configuration
 │   │   ├── auth-options.ts         # NextAuth options exported separately for API use
 │   │   ├── razorpay.ts             # Razorpay instance + helper functions
-│   │   ├── msg91.ts                # Send OTP, verify OTP functions
-│   │   ├── email.ts                # SendGrid send email helper
+│   │   ├── brevo.ts                # Send OTP email, verify OTP, transactional email functions
 │   │   ├── utils.ts                # cn() for tailwind, formatPrice(), formatDate()
 │   │   └── validations.ts          # Zod schemas for all API input validation
 │   │
@@ -748,7 +753,7 @@ model Partner {
   logoUrl           String?
   primaryColor      String   @default("#E91E63")
   secondaryColor    String   @default("#9C27B0")
-  showPoweredBy     Boolean  @default(true)
+  showPoweredBy     Boolean  @default(true)  // Shows "Powered by Gifts Cart India"
   commissionPercent Decimal  @db.Decimal(5, 2)
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
@@ -902,7 +907,7 @@ export function formatPrice(amount: number): string {
 
 export function generateOrderNumber(cityCode: string): string {
   const random = Math.floor(10000 + Math.random() * 90000)
-  return `GI-${cityCode}-${random}`
+  return `GC-${cityCode}-${random}` // e.g., GC-CHD-54321
 }
 ```
 
@@ -911,8 +916,8 @@ export function generateOrderNumber(cityCode: string): string {
 ## Auth System (NextAuth + OTP)
 
 ### How it works:
-1. User enters phone number → frontend calls POST /api/auth/otp/send
-2. Backend generates 6-digit OTP → stores in otp_verifications table → sends via MSG91
+1. User enters phone number or email → frontend calls POST /api/auth/otp/send
+2. Backend generates 6-digit OTP → stores in otp_verifications table → sends via Brevo email
 3. User enters OTP → frontend calls POST /api/auth/otp/verify
 4. Backend verifies OTP → creates/finds user → returns session token via NextAuth
 5. NextAuth credentials provider handles session management
@@ -1027,6 +1032,14 @@ export const authOptions: NextAuthOptions = {
 - Clean, modern, celebration-themed aesthetic
 - Lots of whitespace, product images should be prominent
 
+### Branding
+- Brand Name: Gifts Cart India
+- Business Entity: Cital Enterprises
+- Tagline: "Send Love, Send Gifts — Anywhere in India"
+- FSSAI Lic. No: 12726011000025
+- Footer always shows: "(c) 2026 Cital Enterprises. All rights reserved."
+- Partner pages show: "[Partner Name] managed by Cital Enterprises"
+
 ---
 
 ## Seed Data
@@ -1081,6 +1094,11 @@ Use placeholder image URLs for now (e.g., /placeholder-product.svg)
 - Create vendor_working_hours (8AM-10PM, Monday off)
 - Create vendor_capacity (50 orders/day, 10 per slot)
 
+### Sample Partner
+- Name: Sweet Celebrations
+- refCode: sweetcelebrations
+- Displayed as: "Sweet Celebrations managed by Cital Enterprises"
+
 ---
 
 ## API Response Format
@@ -1106,7 +1124,7 @@ Execute in this order:
 
 1. Install dependencies from package.json
 2. Set up Prisma — create schema.prisma, run npx prisma db push
-3. Create lib files — prisma.ts, supabase.ts, utils.ts, auth-options.ts, msg91.ts, razorpay.ts, validations.ts
+3. Create lib files — prisma.ts, supabase.ts, utils.ts, auth-options.ts, brevo.ts, razorpay.ts, validations.ts
 4. Set up NextAuth — api/auth/[...nextauth]/route.ts + OTP send/verify routes
 5. Create UI components — button, input, card, badge, skeleton, dialog, sheet, select, label, separator, avatar, dropdown-menu
 6. Build layout — header, footer, mobile-nav, city-selector
@@ -1138,6 +1156,9 @@ Execute in this order:
 10. Always handle loading and error states in UI
 11. Product images use next/image with proper width/height for performance
 12. All forms use controlled inputs with Zod validation before submission
+13. Brand name is "Gifts Cart India", business entity is "Cital Enterprises". Never use "GiftIndia" in any user-facing text.
+14. Partner/referral pages show "[Partner Name] managed by Cital Enterprises" — never hide the Cital Enterprises attribution.
+15. FSSAI license number 12726011000025 must be displayed on the website footer (food delivery compliance).
 ```
 
 ===COPY END===

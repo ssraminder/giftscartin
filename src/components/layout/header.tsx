@@ -113,8 +113,8 @@ export function Header() {
               <Gift className="h-4 w-4 text-white" />
             </div>
             <div className="flex items-baseline">
-              <span className="text-xl font-bold text-[#E91E63]">Gift</span>
-              <span className="text-xl font-bold text-[#1A1A2E]">India</span>
+              <span className="text-xl font-bold text-[#E91E63]">Gifts</span>
+              <span className="text-xl font-bold text-[#1A1A2E]">Cart</span>
             </div>
           </Link>
 

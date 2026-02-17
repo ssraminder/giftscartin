@@ -163,11 +163,11 @@ export function TrendingProducts() {
         </div>
       </section>
 
-      {/* Why Choose GiftIndia */}
+      {/* Why Choose Gifts Cart India */}
       <section className="bg-gradient-to-b from-[#FFF5F0] to-white py-12 md:py-16">
         <div className="container mx-auto px-4">
           <div className="text-center mb-10">
-            <h2 className="section-title">Why Choose GiftIndia?</h2>
+            <h2 className="section-title">Why Choose Gifts Cart India?</h2>
             <p className="mt-4 text-muted-foreground">
               We go above and beyond to make your celebrations perfect
             </p>

@@ -12,9 +12,9 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "GiftIndia - Send Cakes, Flowers & Gifts Online",
+  title: "Gifts Cart India — Send Cakes, Flowers & Gifts Online",
   description:
-    "Order fresh cakes, flowers, and gifts for delivery across India. Same-day and midnight delivery available.",
+    "Order fresh cakes, flowers, and gifts for delivery across India. Same-day and midnight delivery available. Gifts Cart India by Cital Enterprises.",
 }
 
 export default function RootLayout({

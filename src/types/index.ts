@@ -1,4 +1,4 @@
-// Shared TypeScript interfaces for GiftIndia
+// Shared TypeScript interfaces for Gifts Cart India
 // These are frontend-friendly types (Decimal → number) derived from the Prisma schema
 
 export type UserRole = "CUSTOMER" | "VENDOR" | "ADMIN" | "SUPER_ADMIN"

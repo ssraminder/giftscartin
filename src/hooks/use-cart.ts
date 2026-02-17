@@ -108,7 +108,7 @@ export const useCart = create<CartStore>()(
       },
     }),
     {
-      name: "giftindia-cart",
+      name: "giftscart-cart",
       skipHydration: true,
     }
   )

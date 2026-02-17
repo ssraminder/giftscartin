@@ -334,7 +334,7 @@ export default function OrderDetailPage() {
       {/* Contact support */}
       <div className="pt-2">
         <Button variant="outline" className="w-full" asChild>
-          <Link href="mailto:support@giftindia.in">Contact Support</Link>
+          <Link href="mailto:support@giftscart.in">Contact Support</Link>
         </Button>
       </div>
     </div>
