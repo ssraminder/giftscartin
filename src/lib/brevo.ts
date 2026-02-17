@@ -1,6 +1,6 @@
 const BREVO_API_KEY = process.env.BREVO_API_KEY
-const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'noreply@giftindia.com'
-const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'GiftIndia'
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'noreply@giftscart.in'
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'Gifts Cart India'
 
 function getOtpEmailHtml(otp: string): string {
   return `
@@ -18,8 +18,8 @@ function getOtpEmailHtml(otp: string): string {
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#E91E63,#9C27B0);padding:32px 24px;text-align:center;">
-              <h1 style="color:#FFFFFF;margin:0;font-size:28px;font-weight:700;letter-spacing:-0.5px;">GiftIndia</h1>
-              <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Your gifting destination</p>
+              <h1 style="color:#FFFFFF;margin:0;font-size:28px;font-weight:700;letter-spacing:-0.5px;">Gifts Cart India</h1>
+              <p style="color:rgba(255,255,255,0.85);margin:8px 0 0;font-size:14px;">Send Love, Send Gifts — Anywhere in India</p>
             </td>
           </tr>
           <!-- Body -->
@@ -37,7 +37,7 @@ function getOtpEmailHtml(otp: string): string {
           <!-- Footer -->
           <tr>
             <td style="background-color:#F5F5F5;padding:16px 24px;text-align:center;border-top:1px solid #EEEEEE;">
-              <p style="color:#9E9E9E;font-size:11px;margin:0;">&copy; ${new Date().getFullYear()} GiftIndia. All rights reserved.</p>
+              <p style="color:#9E9E9E;font-size:11px;margin:0;">A project by Cital Enterprises | &copy; ${new Date().getFullYear()} Cital Enterprises. All rights reserved.</p>
             </td>
           </tr>
         </table>
@@ -77,7 +77,7 @@ export async function sendOtpEmail(
           email: BREVO_SENDER_EMAIL,
         },
         to: [{ email }],
-        subject: 'Your GiftIndia Login OTP',
+        subject: 'Your Gifts Cart India Login OTP',
         htmlContent: getOtpEmailHtml(otp),
       }),
     })

@@ -1,5 +1,5 @@
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@giftindia.in'
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'noreply@giftscart.in'
 
 interface EmailOptions {
   to: string

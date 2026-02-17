@@ -53,13 +53,13 @@ export function Footer() {
                 <Gift className="h-4 w-4 text-white" />
               </div>
               <div>
-                <span className="text-xl font-bold text-pink-400">Gift</span>
-                <span className="text-xl font-bold text-white">India</span>
+                <span className="text-xl font-bold text-pink-400">Gifts</span>
+                <span className="text-xl font-bold text-white">Cart India</span>
               </div>
             </Link>
-            <p className="mt-4 text-sm leading-relaxed text-gray-400">
-              Fresh cakes, flowers & gifts delivered across India. Making
-              every celebration special with love and care.
+            <p className="mt-3 text-xs text-gray-500">A project by Cital Enterprises</p>
+            <p className="mt-3 text-sm leading-relaxed text-gray-400">
+              Send Love, Send Gifts — Anywhere in India
             </p>
             <div className="mt-5 space-y-3">
               <div className="flex items-center gap-2.5 text-sm text-gray-400">
@@ -72,7 +72,7 @@ export function Footer() {
               </div>
               <div className="flex items-center gap-2.5 text-sm text-gray-400">
                 <Mail className="h-4 w-4 shrink-0 text-pink-400" />
-                <span>support@giftindia.in</span>
+                <span>support@giftscart.in</span>
               </div>
             </div>
           </div>
@@ -182,12 +182,17 @@ export function Footer() {
         </div>
       </div>
 
-      {/* Bottom Bar */}
+      {/* FSSAI + Bottom Bar */}
       <div className="border-t border-white/5">
         <div className="container mx-auto flex flex-col items-center gap-2 px-4 py-4 sm:flex-row sm:justify-between">
-          <p className="text-xs text-gray-500">
-            &copy; {new Date().getFullYear()} GiftIndia. All rights reserved.
-          </p>
+          <div className="flex flex-col items-center gap-1 sm:items-start">
+            <p className="text-xs text-gray-500">
+              &copy; 2026 Cital Enterprises. All rights reserved.
+            </p>
+            <p className="text-[10px] text-gray-600">
+              FSSAI Lic. No: 12726011000025
+            </p>
+          </div>
           <div className="flex items-center gap-4 text-xs text-gray-500">
             <Link href="/terms" className="hover:text-pink-400 transition-colors">Terms</Link>
             <Link href="/privacy" className="hover:text-pink-400 transition-colors">Privacy</Link>

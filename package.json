@@ -1,5 +1,6 @@
 {
-  "name": "giftscartin",
+  "name": "giftscart",
+  "description": "Gifts Cart India — Online gifting platform by Cital Enterprises",
   "version": "0.1.0",
   "private": true,
   "scripts": {

@@ -224,8 +224,8 @@ function LoginForm() {
               <Gift className="h-6 w-6 text-white" />
             </div>
             <span className="text-2xl font-bold">
-              <span className="text-pink-400">Gift</span>
-              <span className="text-white">India</span>
+              <span className="text-pink-400">Gifts</span>
+              <span className="text-white">Cart India</span>
             </span>
           </div>
 
@@ -275,8 +275,8 @@ function LoginForm() {
                 <Gift className="h-5 w-5 text-white" />
               </div>
               <span className="text-2xl font-bold">
-                <span style={{ color: '#E91E63' }}>Gift</span>
-                <span style={{ color: '#1A1A2E' }}>India</span>
+                <span style={{ color: '#E91E63' }}>Gifts</span>
+                <span style={{ color: '#1A1A2E' }}>Cart India</span>
               </span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold" style={{ color: '#1A1A2E' }}>

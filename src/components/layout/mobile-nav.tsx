@@ -55,10 +55,10 @@ export function MobileNav() {
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/20">
               <Gift className="h-4 w-4 text-white" />
             </div>
-            GiftIndia
+            Gifts Cart India
           </SheetTitle>
           <SheetDescription className="text-left text-xs text-white/80">
-            Fresh gifts delivered across India
+            Send Love, Send Gifts — Anywhere in India
           </SheetDescription>
         </SheetHeader>
 

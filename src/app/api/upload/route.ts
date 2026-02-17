@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // Create a signed upload URL using Supabase Storage
     const { data, error } = await getSupabase().storage
-      .from('giftindia')
+      .from('giftscart')
       .createSignedUploadUrl(filePath)
 
     if (error) {
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     // Build the public URL for after upload
     const { data: publicUrlData } = getSupabase().storage
-      .from('giftindia')
+      .from('giftscart')
       .getPublicUrl(filePath)
 
     return NextResponse.json({

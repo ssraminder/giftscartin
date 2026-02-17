@@ -1,13 +1,15 @@
-# GiftIndia
+# Gifts Cart India
 
-Online gifting platform connecting customers with local vendors for fresh cakes, flowers, and gifts delivery across India. Starting with Chandigarh as the pilot city.
+> **Brand:** Gifts Cart India | **Entity:** Cital Enterprises | **Domain:** giftscart.in | **FSSAI:** 12726011000025
+
+Online gifting platform by Cital Enterprises, connecting customers with local vendors for fresh cakes, flowers, and gifts delivery across India. Starting with Chandigarh as the pilot city.
 
 ## Tech Stack
 
 - **Framework:** Next.js 14 (App Router) with TypeScript
 - **Styling:** Tailwind CSS + shadcn/ui components
 - **Database:** Supabase PostgreSQL via Prisma ORM
-- **Auth:** NextAuth.js v4 with phone + OTP (custom credentials provider)
+- **Auth:** NextAuth.js v4 with email + OTP via Brevo (custom credentials provider)
 - **Payments:** Razorpay
 - **Email:** Brevo (Sendinblue)
 - **Storage:** Supabase Storage (product images, vendor logos)
