@@ -61,12 +61,14 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [scrolled, setScrolled] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
 
   const user = session?.user as { id?: string; name?: string | null; phone?: string; role?: string } | undefined
 
   useEffect(() => {
+    setMounted(true)
     const handleScroll = () => {
       setScrolled(window.scrollY > 40)
     }
@@ -209,7 +211,7 @@ export function Header() {
             <Button variant="ghost" size="icon" asChild className="relative h-10 w-10 rounded-full hover:bg-pink-50">
               <Link href="/cart" aria-label="Cart">
                 <ShoppingCart className="h-5 w-5" />
-                {cartCount > 0 && (
+                {mounted && cartCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full gradient-primary text-[10px] font-bold text-white shadow-sm">
                     {cartCount > 9 ? "9+" : cartCount}
                   </span>
