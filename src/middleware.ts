@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 
-const authOnlyPaths = ['/checkout', '/orders']
 const vendorPaths = ['/vendor']
 const adminPaths = ['/admin']
 
@@ -10,8 +9,6 @@ export async function middleware(request: NextRequest) {
   const token = await getToken({ req: request })
   const { pathname } = request.nextUrl
 
-  const isAuthOnly =
-    authOnlyPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
   const isVendorPath =
     vendorPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
   const isAdminPath =
