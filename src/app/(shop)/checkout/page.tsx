@@ -2,14 +2,19 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import Image from "next/image"
 import Link from "next/link"
 import {
   ArrowLeft,
+  CheckCircle2,
   CreditCard,
   Gift,
+  LogIn,
+  Mail,
   MapPin,
   MessageSquare,
+  User,
   Wallet,
 } from "lucide-react"
 
@@ -35,6 +40,12 @@ interface AddressForm {
   pincode: string
 }
 
+interface GuestInfo {
+  name: string
+  email: string
+  phone: string
+}
+
 const EMPTY_ADDRESS: AddressForm = {
   name: "",
   phone: "",
@@ -45,26 +56,108 @@ const EMPTY_ADDRESS: AddressForm = {
   pincode: "",
 }
 
+const EMPTY_GUEST: GuestInfo = {
+  name: "",
+  email: "",
+  phone: "",
+}
+
+interface OrderConfirmation {
+  orderNumber: string
+  total: number
+  guestEmail?: string
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
+  const { data: session, status: sessionStatus } = useSession()
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
   const clearCart = useCart((s) => s.clearCart)
 
   const [mounted, setMounted] = useState(false)
+  const [checkoutMode, setCheckoutMode] = useState<"choose" | "guest" | "authenticated">("choose")
+  const [guestInfo, setGuestInfo] = useState<GuestInfo>(EMPTY_GUEST)
+  const [guestErrors, setGuestErrors] = useState<Partial<Record<keyof GuestInfo, string>>>({})
   const [addressForm, setAddressForm] = useState<AddressForm>(EMPTY_ADDRESS)
   const [giftMessage, setGiftMessage] = useState("")
   const [specialInstructions, setSpecialInstructions] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<string>("razorpay")
   const [placing, setPlacing] = useState(false)
+  const [orderError, setOrderError] = useState("")
   const [errors, setErrors] = useState<Partial<Record<keyof AddressForm, string>>>({})
+  const [orderConfirmation, setOrderConfirmation] = useState<OrderConfirmation | null>(null)
+
+  const isLoggedIn = sessionStatus === "authenticated" && !!session?.user
 
   useEffect(() => setMounted(true), [])
 
-  if (!mounted) {
+  // Auto-set checkout mode based on auth status
+  useEffect(() => {
+    if (sessionStatus === "loading") return
+    if (isLoggedIn) {
+      setCheckoutMode("authenticated")
+    }
+  }, [sessionStatus, isLoggedIn])
+
+  if (!mounted || sessionStatus === "loading") {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="h-96 animate-pulse rounded-xl bg-muted" />
+      </div>
+    )
+  }
+
+  // Show order confirmation
+  if (orderConfirmation) {
+    return (
+      <div className="container mx-auto flex flex-col items-center justify-center px-4 py-16 text-center">
+        <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+          <CheckCircle2 className="h-8 w-8 text-green-600" />
+        </div>
+        <h1 className="text-2xl font-bold">Order Placed Successfully!</h1>
+        <p className="mt-2 text-lg text-muted-foreground">
+          Order Number: <span className="font-semibold text-foreground">{orderConfirmation.orderNumber}</span>
+        </p>
+        <p className="mt-1 text-muted-foreground">
+          Total: <span className="font-semibold text-foreground">{formatPrice(orderConfirmation.total)}</span>
+        </p>
+
+        {isLoggedIn ? (
+          <>
+            <p className="mt-4 text-sm text-muted-foreground">
+              You can track your order from your account.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <Button asChild>
+                <Link href={`/orders`}>View My Orders</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/">Continue Shopping</Link>
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-4 flex items-center gap-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
+              <Mail className="h-4 w-4 shrink-0" />
+              <span>
+                We&apos;ve sent order details to <span className="font-medium">{orderConfirmation.guestEmail}</span>
+              </span>
+            </div>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Create an account to track your orders and get faster checkout next time.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <Button asChild>
+                <Link href="/register">Create Account</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/">Continue Shopping</Link>
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     )
   }
@@ -98,6 +191,29 @@ export default function CheckoutPage() {
     }
   }
 
+  const updateGuestField = (field: keyof GuestInfo, value: string) => {
+    setGuestInfo((prev) => ({ ...prev, [field]: value }))
+    if (guestErrors[field]) {
+      setGuestErrors((prev) => {
+        const next = { ...prev }
+        delete next[field]
+        return next
+      })
+    }
+  }
+
+  const validateGuest = (): boolean => {
+    const newErrors: Partial<Record<keyof GuestInfo, string>> = {}
+    if (!guestInfo.name.trim() || guestInfo.name.trim().length < 2)
+      newErrors.name = "Name must be at least 2 characters"
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestInfo.email))
+      newErrors.email = "Valid email address required"
+    if (!/^[6-9]\d{9}$/.test(guestInfo.phone))
+      newErrors.phone = "Valid 10-digit phone required"
+    setGuestErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
+
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof AddressForm, string>> = {}
 
@@ -115,33 +231,218 @@ export default function CheckoutPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (!validate()) return
+    if (checkoutMode === "guest" && !validateGuest()) return
 
     setPlacing(true)
-    // Placeholder: simulate order creation
-    setTimeout(() => {
+    setOrderError("")
+
+    try {
+      const isGuest = checkoutMode === "guest"
+
+      const orderPayload: Record<string, unknown> = {
+        deliveryDate: new Date().toISOString().split("T")[0],
+        deliverySlot: "standard",
+        giftMessage: giftMessage || undefined,
+        specialInstructions: specialInstructions || undefined,
+        paymentMethod,
+      }
+
+      if (isGuest) {
+        orderPayload.guestName = guestInfo.name
+        orderPayload.guestEmail = guestInfo.email
+        orderPayload.guestPhone = guestInfo.phone
+        orderPayload.deliveryAddress = {
+          name: addressForm.name,
+          phone: addressForm.phone,
+          address: addressForm.address,
+          landmark: addressForm.landmark || undefined,
+          city: addressForm.city,
+          state: addressForm.state,
+          pincode: addressForm.pincode,
+        }
+        orderPayload.cartItems = items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          addons: item.addons.length > 0 ? item.addons : undefined,
+        }))
+      }
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderPayload),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        setOrderError(data.error || "Failed to place order. Please try again.")
+        setPlacing(false)
+        return
+      }
+
       clearCart()
+      setOrderConfirmation({
+        orderNumber: data.data.orderNumber,
+        total: Number(data.data.total),
+        guestEmail: isGuest ? guestInfo.email : undefined,
+      })
+    } catch {
+      setOrderError("Something went wrong. Please try again.")
       setPlacing(false)
-      router.push("/orders")
-    }, 1500)
+    }
+  }
+
+  // Guest/Login choice screen (only for unauthenticated users)
+  if (!isLoggedIn && checkoutMode === "choose") {
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <div className="mb-6 flex items-center gap-3">
+          <Button variant="ghost" size="icon" asChild className="h-8 w-8">
+            <Link href="/cart">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h1 className="text-lg font-semibold sm:text-xl">Checkout</h1>
+        </div>
+
+        <div className="mx-auto max-w-md space-y-4">
+          <p className="text-center text-muted-foreground">
+            How would you like to checkout?
+          </p>
+
+          <Card>
+            <CardContent className="p-4 sm:p-6">
+              <button
+                className="flex w-full items-center gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                onClick={() => router.push("/login?redirect=/checkout")}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <LogIn className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-semibold">Login to your account</p>
+                  <p className="text-sm text-muted-foreground">
+                    Track orders, save addresses, and faster checkout
+                  </p>
+                </div>
+              </button>
+
+              <div className="my-4 flex items-center gap-3">
+                <Separator className="flex-1" />
+                <span className="text-xs text-muted-foreground">OR</span>
+                <Separator className="flex-1" />
+              </div>
+
+              <button
+                className="flex w-full items-center gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                onClick={() => setCheckoutMode("guest")}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <User className="h-5 w-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="font-semibold">Continue as Guest</p>
+                  <p className="text-sm text-muted-foreground">
+                    No account needed — just provide your details
+                  </p>
+                </div>
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
       <div className="mb-6 flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild className="h-8 w-8">
-          <Link href="/cart">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => {
+            if (!isLoggedIn && checkoutMode === "guest") {
+              setCheckoutMode("choose")
+            } else {
+              router.push("/cart")
+            }
+          }}
+        >
+          <ArrowLeft className="h-4 w-4" />
         </Button>
         <h1 className="text-lg font-semibold sm:text-xl">Checkout</h1>
+        {checkoutMode === "guest" && (
+          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+            Guest
+          </span>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left Column — Forms */}
         <div className="space-y-6 lg:col-span-2">
+          {/* Guest Info (only for guest checkout) */}
+          {checkoutMode === "guest" && (
+            <Card>
+              <CardContent className="p-4 sm:p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <User className="h-5 w-5 text-primary" />
+                  <h2 className="font-semibold">Your Information</h2>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="guest-name">Full Name *</Label>
+                    <Input
+                      id="guest-name"
+                      placeholder="Your full name"
+                      value={guestInfo.name}
+                      onChange={(e) => updateGuestField("name", e.target.value)}
+                    />
+                    {guestErrors.name && (
+                      <p className="text-xs text-destructive">{guestErrors.name}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="guest-email">Email Address *</Label>
+                    <Input
+                      id="guest-email"
+                      type="email"
+                      placeholder="your@email.com"
+                      value={guestInfo.email}
+                      onChange={(e) => updateGuestField("email", e.target.value)}
+                    />
+                    {guestErrors.email && (
+                      <p className="text-xs text-destructive">{guestErrors.email}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="guest-phone">Phone Number *</Label>
+                    <Input
+                      id="guest-phone"
+                      placeholder="10-digit mobile number"
+                      maxLength={10}
+                      value={guestInfo.phone}
+                      onChange={(e) =>
+                        updateGuestField("phone", e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    {guestErrors.phone && (
+                      <p className="text-xs text-destructive">{guestErrors.phone}</p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Delivery Address */}
           <Card>
             <CardContent className="p-4 sm:p-6">
@@ -335,6 +636,13 @@ export default function CheckoutPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Order error */}
+          {orderError && (
+            <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+              {orderError}
+            </div>
+          )}
         </div>
 
         {/* Right Column — Order Summary */}

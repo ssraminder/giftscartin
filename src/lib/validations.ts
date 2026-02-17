@@ -85,15 +85,47 @@ export const serviceabilitySchema = z.object({
   productId: z.string().optional(),
 })
 
+// ==================== Guest Checkout ====================
+
+export const guestInfoSchema = z.object({
+  guestName: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  guestEmail: z.email('Invalid email address'),
+  guestPhone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number (10 digits)'),
+})
+
 // ==================== Orders ====================
 
 export const createOrderSchema = z.object({
-  addressId: z.string().min(1),
+  addressId: z.string().min(1).optional(),
   deliveryDate: z.string().min(1, 'Delivery date is required'),
   deliverySlot: z.string().min(1, 'Delivery slot is required'),
   giftMessage: z.string().max(500).optional(),
   specialInstructions: z.string().max(500).optional(),
   couponCode: z.string().max(50).optional(),
+  // Guest checkout fields (required when not logged in)
+  guestName: z.string().min(2).max(100).optional(),
+  guestEmail: z.email().optional(),
+  guestPhone: z.string().regex(/^[6-9]\d{9}$/).optional(),
+  // Inline address for guest checkout
+  deliveryAddress: z.object({
+    name: z.string().min(2).max(100),
+    phone: z.string().regex(/^[6-9]\d{9}$/),
+    address: z.string().min(5).max(500),
+    landmark: z.string().max(200).optional(),
+    city: z.string().min(2).max(100),
+    state: z.string().min(2).max(100),
+    pincode: z.string().regex(/^\d{6}$/),
+  }).optional(),
+  // Cart items for guest checkout (guests don't have server-side cart)
+  cartItems: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.number().int().min(1).max(10),
+    addons: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      price: z.number(),
+    })).optional(),
+  })).optional(),
 })
 
 // ==================== Payments ====================
@@ -168,6 +200,7 @@ export type ProductListInput = z.infer<typeof productListSchema>
 export type AddToCartInput = z.infer<typeof addToCartSchema>
 export type UpdateCartItemInput = z.infer<typeof updateCartItemSchema>
 export type ServiceabilityInput = z.infer<typeof serviceabilitySchema>
+export type GuestInfoInput = z.infer<typeof guestInfoSchema>
 export type CreateOrderInput = z.infer<typeof createOrderSchema>
 export type CreatePaymentOrderInput = z.infer<typeof createPaymentOrderSchema>
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>

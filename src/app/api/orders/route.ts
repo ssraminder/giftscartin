@@ -72,13 +72,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser()
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
     const body = await request.json()
     const parsed = createOrderSchema.safeParse(body)
 
@@ -89,37 +82,143 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { addressId, deliveryDate, deliverySlot, giftMessage, specialInstructions, couponCode } =
-      parsed.data
+    const {
+      addressId,
+      deliveryDate,
+      deliverySlot,
+      giftMessage,
+      specialInstructions,
+      couponCode,
+      guestName,
+      guestEmail,
+      guestPhone,
+      deliveryAddress,
+      cartItems: guestCartItems,
+    } = parsed.data
 
-    // Verify address belongs to user
-    const address = await prisma.address.findFirst({
-      where: { id: addressId, userId: user.id },
-    })
+    const isGuest = !user
 
-    if (!address) {
+    // Guest orders require guest info
+    if (isGuest && (!guestName || !guestEmail || !guestPhone)) {
       return NextResponse.json(
-        { success: false, error: 'Address not found' },
-        { status: 404 }
-      )
-    }
-
-    // Fetch cart items
-    const cartItems = await prisma.cartItem.findMany({
-      where: { userId: user.id },
-      include: { product: true },
-    })
-
-    if (cartItems.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Cart is empty' },
+        { success: false, error: 'Guest name, email, and phone are required for guest checkout' },
         { status: 400 }
       )
     }
 
+    // Guest orders require either inline address or addressId
+    if (isGuest && !deliveryAddress) {
+      return NextResponse.json(
+        { success: false, error: 'Delivery address is required for guest checkout' },
+        { status: 400 }
+      )
+    }
+
+    // Guest orders require cart items in the request body
+    if (isGuest && (!guestCartItems || guestCartItems.length === 0)) {
+      return NextResponse.json(
+        { success: false, error: 'Cart items are required for guest checkout' },
+        { status: 400 }
+      )
+    }
+
+    // Logged-in orders require addressId
+    if (!isGuest && !addressId) {
+      return NextResponse.json(
+        { success: false, error: 'Address ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // Resolve or create the address
+    let address
+    if (!isGuest) {
+      address = await prisma.address.findFirst({
+        where: { id: addressId!, userId: user.id },
+      })
+      if (!address) {
+        return NextResponse.json(
+          { success: false, error: 'Address not found' },
+          { status: 404 }
+        )
+      }
+    } else {
+      // Create address for guest (no userId)
+      address = await prisma.address.create({
+        data: {
+          name: deliveryAddress!.name,
+          phone: deliveryAddress!.phone,
+          address: deliveryAddress!.address,
+          landmark: deliveryAddress!.landmark,
+          city: deliveryAddress!.city,
+          state: deliveryAddress!.state,
+          pincode: deliveryAddress!.pincode,
+        },
+      })
+    }
+
+    // Fetch cart items - from DB for logged-in users, from request body for guests
+    interface OrderCartItem {
+      quantity: number
+      addons: unknown
+      productId: string
+      productName: string
+      basePrice: number
+    }
+
+    let cartItemsForOrder: OrderCartItem[]
+
+    if (!isGuest) {
+      const dbCartItems = await prisma.cartItem.findMany({
+        where: { userId: user.id },
+        include: { product: true },
+      })
+      if (dbCartItems.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'Cart is empty' },
+          { status: 400 }
+        )
+      }
+      cartItemsForOrder = dbCartItems.map((item) => ({
+        quantity: item.quantity,
+        addons: item.addons,
+        productId: item.product.id,
+        productName: item.product.name,
+        basePrice: Number(item.product.basePrice),
+      }))
+    } else {
+      // For guests, fetch product details for each cart item
+      const productIds = guestCartItems!.map((item) => item.productId)
+      const products = await prisma.product.findMany({
+        where: { id: { in: productIds }, isActive: true },
+      })
+
+      const productMap = new Map(products.map((p) => [p.id, p]))
+
+      cartItemsForOrder = guestCartItems!
+        .filter((item) => productMap.has(item.productId))
+        .map((item) => {
+          const product = productMap.get(item.productId)!
+          return {
+            quantity: item.quantity,
+            addons: item.addons ?? null,
+            productId: product.id,
+            productName: product.name,
+            basePrice: Number(product.basePrice),
+          }
+        })
+
+      if (cartItemsForOrder.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'No valid products found in cart' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Calculate subtotal
-    const subtotal = cartItems.reduce((sum, item) => {
-      const itemPrice = Number(item.product.basePrice) * item.quantity
+    const subtotal = cartItemsForOrder.reduce((sum, item) => {
+      const itemPrice = item.basePrice * item.quantity
       const addonTotal = Array.isArray(item.addons)
         ? (item.addons as Array<{ price: number }>).reduce((a, addon) => a + addon.price, 0) *
           item.quantity
@@ -201,9 +300,9 @@ export async function POST(request: NextRequest) {
       const newOrder = await tx.order.create({
         data: {
           orderNumber: generateOrderNumber(cityCode),
-          userId: user.id,
+          userId: user?.id ?? null,
           vendorId: vendorPincode?.vendor.id ?? null,
-          addressId,
+          addressId: address.id,
           deliveryDate: new Date(deliveryDate),
           deliverySlot,
           deliveryCharge,
@@ -214,19 +313,22 @@ export async function POST(request: NextRequest) {
           giftMessage,
           specialInstructions,
           couponCode,
+          guestName: isGuest ? guestName : null,
+          guestEmail: isGuest ? guestEmail : null,
+          guestPhone: isGuest ? guestPhone : null,
           items: {
-            create: cartItems.map((item) => ({
-              productId: item.product.id,
-              name: item.product.name,
+            create: cartItemsForOrder.map((item) => ({
+              productId: item.productId,
+              name: item.productName,
               quantity: item.quantity,
-              price: item.product.basePrice,
+              price: item.basePrice,
               addons: item.addons ?? undefined,
             })),
           },
           statusHistory: {
             create: {
               status: 'PENDING',
-              note: 'Order placed',
+              note: isGuest ? 'Guest order placed' : 'Order placed',
             },
           },
         },
@@ -237,8 +339,10 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Clear the user's cart
-      await tx.cartItem.deleteMany({ where: { userId: user.id } })
+      // Clear the user's cart (only for logged-in users)
+      if (!isGuest) {
+        await tx.cartItem.deleteMany({ where: { userId: user.id } })
+      }
 
       return newOrder
     })

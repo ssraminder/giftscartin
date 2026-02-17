@@ -52,7 +52,7 @@ model OtpVerification {
 
 model Address {
   id        String  @id @default(cuid())
-  userId    String
+  userId    String?
   name      String
   phone     String
   address   String
@@ -66,7 +66,7 @@ model Address {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders    Order[]
 
   @@map("addresses")
@@ -383,7 +383,7 @@ model VendorProduct {
 model Order {
   id              String       @id @default(cuid())
   orderNumber     String       @unique
-  userId          String
+  userId          String?
   vendorId        String?
   partnerId       String?
   addressId       String
@@ -405,6 +405,10 @@ model Order {
   specialInstructions String?
   couponCode      String?
 
+  guestName       String?
+  guestEmail      String?
+  guestPhone      String?
+
   businessModel   BusinessModel @default(MODEL_A)
   vendorCost      Decimal?     @db.Decimal(10, 2)
   commissionAmount Decimal?    @db.Decimal(10, 2)
@@ -412,7 +416,7 @@ model Order {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  user            User         @relation(fields: [userId], references: [id])
+  user            User?        @relation(fields: [userId], references: [id])
   vendor          Vendor?      @relation(fields: [vendorId], references: [id])
   partner         Partner?     @relation(fields: [partnerId], references: [id])
   address         Address      @relation(fields: [addressId], references: [id])
