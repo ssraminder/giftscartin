@@ -3,10 +3,9 @@
 import { useState, useMemo } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ChevronRight, SlidersHorizontal, X } from "lucide-react"
+import { ChevronRight, SlidersHorizontal, X, Star, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -214,11 +213,11 @@ export default function CategoryPage() {
   if (!categoryData) {
     return (
       <div className="container mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-bold">Category Not Found</h1>
-        <p className="mt-2 text-muted-foreground">
+        <h1 className="text-2xl font-bold text-[#1A1A2E]">Category Not Found</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           We couldn&apos;t find the category you&apos;re looking for.
         </p>
-        <Link href="/" className="mt-4 inline-block text-primary hover:underline">
+        <Link href="/" className="mt-4 inline-block text-[#E91E63] hover:underline font-medium">
           Go back to home
         </Link>
       </div>
@@ -242,268 +241,502 @@ export default function CategoryPage() {
     setCurrentPage(1)
   }
 
+  /* ── Shared filter panel content ── */
+  const filterPanelContent = (
+    <div className="space-y-5">
+      {/* Price range */}
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+          Price Range
+        </label>
+        <Select
+          value={`${priceRange[0]}-${priceRange[1]}`}
+          onValueChange={(v) => {
+            const [min, max] = v.split("-").map(Number)
+            setPriceRange([min, max])
+            setCurrentPage(1)
+          }}
+        >
+          <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0-5000">All Prices</SelectItem>
+            <SelectItem value="0-500">Under &#8377;500</SelectItem>
+            <SelectItem value="500-1000">&#8377;500 &ndash; &#8377;1,000</SelectItem>
+            <SelectItem value="1000-2000">&#8377;1,000 &ndash; &#8377;2,000</SelectItem>
+            <SelectItem value="2000-5000">Above &#8377;2,000</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Type: Veg / All */}
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+          Type
+        </label>
+        <Select
+          value={vegOnly ? "veg" : "all"}
+          onValueChange={(v) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
+        >
+          <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="veg">Veg Only</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Rating */}
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+          Rating
+        </label>
+        <Select
+          value={minRating.toString()}
+          onValueChange={(v) => { setMinRating(Number(v)); setCurrentPage(1) }}
+        >
+          <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">Any Rating</SelectItem>
+            <SelectItem value="4">
+              <span className="flex items-center gap-1">
+                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                4 &amp; above
+              </span>
+            </SelectItem>
+            <SelectItem value="3">
+              <span className="flex items-center gap-1">
+                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                3 &amp; above
+              </span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Occasion */}
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+          Occasion
+        </label>
+        <Select
+          value={selectedOccasion || "all"}
+          onValueChange={(v) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
+        >
+          <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50 hover:bg-gray-50 transition-colors">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Occasions</SelectItem>
+            {OCCASIONS.map((occ) => (
+              <SelectItem key={occ} value={occ} className="capitalize">
+                {occ.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Apply button */}
+      <button
+        onClick={() => setShowFilters(false)}
+        className="btn-gradient w-full py-2.5 px-4 text-sm rounded-lg"
+      >
+        Apply Filters
+      </button>
+
+      {/* Clear all */}
+      {activeFilterCount > 0 && (
+        <button
+          onClick={clearFilters}
+          className="w-full text-center text-xs font-medium text-[#E91E63] hover:text-[#C2185B] transition-colors"
+        >
+          Clear all filters
+        </button>
+      )}
+    </div>
+  )
+
   return (
-    <div className="container mx-auto px-4 py-4 sm:py-6">
-      {/* Breadcrumbs */}
-      <nav className="flex items-center gap-1 text-xs text-muted-foreground mb-4">
-        <Link href="/" className="hover:text-primary transition-colors">Home</Link>
-        <ChevronRight className="h-3 w-3" />
-        {activeSubSlug ? (
-          <>
-            <Link href={`/category/${parentSlug}`} className="hover:text-primary transition-colors">
-              {categoryData.name}
+    <div className="min-h-screen">
+      {/* ── Category Banner ── */}
+      <div className="relative overflow-hidden bg-gradient-to-r from-[#E91E63]/10 via-pink-50 to-[#9C27B0]/10">
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23E91E63' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }} />
+        <div className="container mx-auto px-4 py-8 sm:py-12 relative">
+          {/* Breadcrumbs */}
+          <nav className="flex items-center gap-1.5 text-sm mb-4">
+            <Link href="/" className="text-[#1A1A2E]/50 hover:text-[#E91E63] transition-colors font-medium">
+              Home
             </Link>
-            <ChevronRight className="h-3 w-3" />
-            <span className="text-foreground font-medium capitalize">
-              {activeSubSlug.replace(/-/g, " ")}
-            </span>
-          </>
-        ) : (
-          <span className="text-foreground font-medium">{categoryData.name}</span>
-        )}
-      </nav>
-
-      {/* Page header */}
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold sm:text-3xl">{categoryData.name}</h1>
-        {categoryData.description && (
-          <p className="mt-1 text-sm text-muted-foreground">{categoryData.description}</p>
-        )}
-      </div>
-
-      {/* Sub-category chips */}
-      {categoryData.children && categoryData.children.length > 0 && (
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1">
-          <Link href={`/category/${parentSlug}`}>
-            <Badge
-              variant={!activeSubSlug ? "default" : "outline"}
-              className="cursor-pointer whitespace-nowrap"
-            >
-              All {categoryData.name}
-            </Badge>
-          </Link>
-          {categoryData.children.map((sub) => (
-            <Link key={sub.id} href={`/category/${sub.slug}`}>
-              <Badge
-                variant={activeSubSlug === sub.slug ? "default" : "outline"}
-                className="cursor-pointer whitespace-nowrap"
-              >
-                {sub.name}
-              </Badge>
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {/* Toolbar: sort + filter toggle */}
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <p className="text-sm text-muted-foreground">
-          {filtered.length} {filtered.length === 1 ? "product" : "products"}
-        </p>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Filters
-            {activeFilterCount > 0 && (
-              <Badge variant="default" className="ml-1 h-4 w-4 p-0 text-[10px] flex items-center justify-center">
-                {activeFilterCount}
-              </Badge>
+            <ChevronRight className="h-3.5 w-3.5 text-[#1A1A2E]/30" />
+            {activeSubSlug ? (
+              <>
+                <Link
+                  href={`/category/${parentSlug}`}
+                  className="text-[#1A1A2E]/50 hover:text-[#E91E63] transition-colors font-medium"
+                >
+                  {categoryData.name}
+                </Link>
+                <ChevronRight className="h-3.5 w-3.5 text-[#1A1A2E]/30" />
+                <span className="text-[#1A1A2E] font-semibold capitalize">
+                  {activeSubSlug.replace(/-/g, " ")}
+                </span>
+              </>
+            ) : (
+              <span className="text-[#1A1A2E] font-semibold">{categoryData.name}</span>
             )}
-          </Button>
-          <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortOption); setCurrentPage(1) }}>
-            <SelectTrigger className="w-[150px] h-9 text-xs">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="popularity">Popularity</SelectItem>
-              <SelectItem value="price-low">Price: Low to High</SelectItem>
-              <SelectItem value="price-high">Price: High to Low</SelectItem>
-              <SelectItem value="newest">Newest First</SelectItem>
-            </SelectContent>
-          </Select>
+          </nav>
+
+          {/* Title & description */}
+          <div className="flex items-start gap-3">
+            <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-xl bg-white/80 shadow-sm">
+              <Sparkles className="h-6 w-6 text-[#E91E63]" />
+            </div>
+            <div>
+              <h1 className="section-title text-[#1A1A2E]">{categoryData.name}</h1>
+              {categoryData.description && (
+                <p className="mt-3 text-sm sm:text-base text-[#1A1A2E]/60 max-w-xl">
+                  {categoryData.description}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Filters panel */}
-      {showFilters && (
-        <div className="mb-6 rounded-xl border p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Filters</h3>
+      <div className="container mx-auto px-4 py-6 sm:py-8">
+        {/* ── Sub-category pills ── */}
+        {categoryData.children && categoryData.children.length > 0 && (
+          <div className="mb-6 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <Link href={`/category/${parentSlug}`}>
+              <span
+                className={`inline-flex items-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
+                  !activeSubSlug
+                    ? "bg-[#E91E63] text-white shadow-md shadow-pink-200"
+                    : "bg-white text-[#1A1A2E]/70 border border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63]"
+                }`}
+              >
+                All {categoryData.name}
+              </span>
+            </Link>
+            {categoryData.children.map((sub) => (
+              <Link key={sub.id} href={`/category/${sub.slug}`}>
+                <span
+                  className={`inline-flex items-center whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
+                    activeSubSlug === sub.slug
+                      ? "bg-[#E91E63] text-white shadow-md shadow-pink-200"
+                      : "bg-white text-[#1A1A2E]/70 border border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63]"
+                  }`}
+                >
+                  {sub.name}
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* ── Toolbar: product count, active filter badges, sort + filter toggle ── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-sm font-medium text-[#1A1A2E]/60">
+              <span className="text-[#1A1A2E] font-semibold">{filtered.length}</span>{" "}
+              {filtered.length === 1 ? "product" : "products"} found
+            </p>
+
+            {/* Active filter badges */}
             {activeFilterCount > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={clearFilters}>
-                Clear all
-              </Button>
+              <div className="flex flex-wrap gap-1.5">
+                {vegOnly && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E91E63]/10 text-[#E91E63] px-3 py-1 text-xs font-medium">
+                    Veg Only
+                    <button onClick={() => setVegOnly(false)} className="hover:bg-[#E91E63]/20 rounded-full p-0.5 transition-colors">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {minRating > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E91E63]/10 text-[#E91E63] px-3 py-1 text-xs font-medium">
+                    <Star className="h-3 w-3 fill-[#E91E63]" />
+                    {minRating}+
+                    <button onClick={() => setMinRating(0)} className="hover:bg-[#E91E63]/20 rounded-full p-0.5 transition-colors">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {selectedOccasion && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E91E63]/10 text-[#E91E63] px-3 py-1 text-xs font-medium capitalize">
+                    {selectedOccasion.replace(/-/g, " ")}
+                    <button onClick={() => setSelectedOccasion(null)} className="hover:bg-[#E91E63]/20 rounded-full p-0.5 transition-colors">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+                {(priceRange[0] > 0 || priceRange[1] < 5000) && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E91E63]/10 text-[#E91E63] px-3 py-1 text-xs font-medium">
+                    &#8377;{priceRange[0]}&ndash;&#8377;{priceRange[1]}
+                    <button onClick={() => setPriceRange([0, 5000])} className="hover:bg-[#E91E63]/20 rounded-full p-0.5 transition-colors">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Price range */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Price Range</label>
-              <Select
-                value={`${priceRange[0]}-${priceRange[1]}`}
-                onValueChange={(v) => {
-                  const [min, max] = v.split("-").map(Number)
-                  setPriceRange([min, max])
-                  setCurrentPage(1)
-                }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0-5000">All Prices</SelectItem>
-                  <SelectItem value="0-500">Under ₹500</SelectItem>
-                  <SelectItem value="500-1000">₹500 – ₹1,000</SelectItem>
-                  <SelectItem value="1000-2000">₹1,000 – ₹2,000</SelectItem>
-                  <SelectItem value="2000-5000">Above ₹2,000</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Veg / Non-veg */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Type</label>
-              <Select
-                value={vegOnly ? "veg" : "all"}
-                onValueChange={(v) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="veg">Veg Only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Rating */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Rating</label>
-              <Select
-                value={minRating.toString()}
-                onValueChange={(v) => { setMinRating(Number(v)); setCurrentPage(1) }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">Any Rating</SelectItem>
-                  <SelectItem value="4">4★ & above</SelectItem>
-                  <SelectItem value="3">3★ & above</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Occasion */}
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Occasion</label>
-              <Select
-                value={selectedOccasion || "all"}
-                onValueChange={(v) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
-              >
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Occasions</SelectItem>
-                  {OCCASIONS.map((occ) => (
-                    <SelectItem key={occ} value={occ} className="capitalize">
-                      {occ.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Active filter tags */}
-          {activeFilterCount > 0 && (
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {vegOnly && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  Veg Only
-                  <button onClick={() => setVegOnly(false)}><X className="h-3 w-3" /></button>
-                </Badge>
-              )}
-              {minRating > 0 && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  {minRating}★+
-                  <button onClick={() => setMinRating(0)}><X className="h-3 w-3" /></button>
-                </Badge>
-              )}
-              {selectedOccasion && (
-                <Badge variant="secondary" className="gap-1 pr-1 capitalize">
-                  {selectedOccasion.replace(/-/g, " ")}
-                  <button onClick={() => setSelectedOccasion(null)}><X className="h-3 w-3" /></button>
-                </Badge>
-              )}
-              {(priceRange[0] > 0 || priceRange[1] < 5000) && (
-                <Badge variant="secondary" className="gap-1 pr-1">
-                  ₹{priceRange[0]}–₹{priceRange[1]}
-                  <button onClick={() => setPriceRange([0, 5000])}><X className="h-3 w-3" /></button>
-                </Badge>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Product grid */}
-      {paginated.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:gap-4">
-          {paginated.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      ) : (
-        <div className="py-20 text-center">
-          <p className="text-lg font-medium">No products found</p>
-          <p className="mt-1 text-sm text-muted-foreground">Try adjusting your filters.</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>
-            Clear Filters
-          </Button>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+          <div className="flex items-center gap-2">
+            {/* Mobile filter toggle */}
             <Button
-              key={page}
-              variant={page === currentPage ? "default" : "outline"}
+              variant="outline"
               size="sm"
-              className="h-9 w-9 p-0"
-              onClick={() => setCurrentPage(page)}
+              className="gap-1.5 lg:hidden rounded-full border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63]"
+              onClick={() => setShowFilters(!showFilters)}
             >
-              {page}
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#E91E63] text-[10px] text-white font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
             </Button>
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage((p) => p + 1)}
-          >
-            Next
-          </Button>
+
+            {/* Sort dropdown */}
+            <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortOption); setCurrentPage(1) }}>
+              <SelectTrigger className="w-[170px] h-9 text-sm rounded-full border-gray-200 bg-white hover:border-[#E91E63]/30 transition-colors">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="popularity">Popularity</SelectItem>
+                <SelectItem value="price-low">Price: Low to High</SelectItem>
+                <SelectItem value="price-high">Price: High to Low</SelectItem>
+                <SelectItem value="newest">Newest First</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
+
+        {/* ── Mobile Collapsible Filter Panel ── */}
+        {showFilters && (
+          <div className="mb-6 lg:hidden card-premium p-5 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-[#1A1A2E] uppercase tracking-wider">Filters</h3>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="h-7 w-7 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="h-4 w-4 text-[#1A1A2E]/50" />
+              </button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* Price range */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+                  Price Range
+                </label>
+                <Select
+                  value={`${priceRange[0]}-${priceRange[1]}`}
+                  onValueChange={(v) => {
+                    const [min, max] = v.split("-").map(Number)
+                    setPriceRange([min, max])
+                    setCurrentPage(1)
+                  }}
+                >
+                  <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0-5000">All Prices</SelectItem>
+                    <SelectItem value="0-500">Under &#8377;500</SelectItem>
+                    <SelectItem value="500-1000">&#8377;500 &ndash; &#8377;1,000</SelectItem>
+                    <SelectItem value="1000-2000">&#8377;1,000 &ndash; &#8377;2,000</SelectItem>
+                    <SelectItem value="2000-5000">Above &#8377;2,000</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Type */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+                  Type
+                </label>
+                <Select
+                  value={vegOnly ? "veg" : "all"}
+                  onValueChange={(v) => { setVegOnly(v === "veg"); setCurrentPage(1) }}
+                >
+                  <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="veg">Veg Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Rating */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+                  Rating
+                </label>
+                <Select
+                  value={minRating.toString()}
+                  onValueChange={(v) => { setMinRating(Number(v)); setCurrentPage(1) }}
+                >
+                  <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Any Rating</SelectItem>
+                    <SelectItem value="4">
+                      <span className="flex items-center gap-1">
+                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                        4 &amp; above
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="3">
+                      <span className="flex items-center gap-1">
+                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                        3 &amp; above
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Occasion */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-[#1A1A2E]/60 mb-2 block">
+                  Occasion
+                </label>
+                <Select
+                  value={selectedOccasion || "all"}
+                  onValueChange={(v) => { setSelectedOccasion(v === "all" ? null : v); setCurrentPage(1) }}
+                >
+                  <SelectTrigger className="h-10 text-sm rounded-lg border-gray-200 bg-gray-50/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Occasions</SelectItem>
+                    {OCCASIONS.map((occ) => (
+                      <SelectItem key={occ} value={occ} className="capitalize">
+                        {occ.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setShowFilters(false)}
+                className="btn-gradient flex-1 py-2.5 px-4 text-sm rounded-lg"
+              >
+                Apply Filters
+              </button>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="px-4 py-2.5 text-sm font-medium text-[#E91E63] border border-[#E91E63]/20 rounded-lg hover:bg-[#E91E63]/5 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Main layout: sidebar + product grid ── */}
+        <div className="flex gap-8">
+          {/* Desktop Sidebar Filters */}
+          <aside className="hidden lg:block w-[260px] flex-shrink-0">
+            <div className="sticky top-24 card-premium p-5 border border-gray-100">
+              <div className="flex items-center gap-2 mb-5 pb-4 border-b border-gray-100">
+                <SlidersHorizontal className="h-4 w-4 text-[#E91E63]" />
+                <h3 className="text-sm font-bold text-[#1A1A2E] uppercase tracking-wider">Filters</h3>
+                {activeFilterCount > 0 && (
+                  <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-[#E91E63] text-[10px] text-white font-bold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </div>
+              {filterPanelContent}
+            </div>
+          </aside>
+
+          {/* Products area */}
+          <div className="flex-1 min-w-0">
+            {/* Product grid */}
+            {paginated.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
+                {paginated.map((product) => (
+                  <div key={product.id} className="hover-lift">
+                    <ProductCard product={product} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card-premium py-20 text-center border border-gray-100">
+                <div className="mx-auto h-16 w-16 flex items-center justify-center rounded-full bg-[#E91E63]/10 mb-4">
+                  <Sparkles className="h-8 w-8 text-[#E91E63]" />
+                </div>
+                <p className="text-lg font-semibold text-[#1A1A2E]">No products found</p>
+                <p className="mt-1 text-sm text-[#1A1A2E]/50">
+                  Try adjusting your filters to discover more items.
+                </p>
+                <button
+                  onClick={clearFilters}
+                  className="btn-gradient mt-5 py-2 px-6 text-sm rounded-lg"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-10 flex items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => p - 1)}
+                  className="rounded-full border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63] disabled:opacity-40"
+                >
+                  Previous
+                </Button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    className={`h-9 w-9 rounded-full text-sm font-medium transition-all duration-200 ${
+                      page === currentPage
+                        ? "bg-[#E91E63] text-white shadow-md shadow-pink-200"
+                        : "text-[#1A1A2E]/60 hover:bg-[#E91E63]/10 hover:text-[#E91E63]"
+                    }`}
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="rounded-full border-gray-200 hover:border-[#E91E63]/30 hover:text-[#E91E63] disabled:opacity-40"
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
