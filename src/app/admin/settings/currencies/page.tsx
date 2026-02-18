@@ -42,6 +42,123 @@ interface CurrencyConfig {
   isActive: boolean
 }
 
+// Top currencies with preset data — admin picks from dropdown, rate is fetched live
+const CURRENCY_PRESETS: Record<
+  string,
+  Omit<CurrencyConfig, "id" | "exchangeRate" | "isDefault" | "isActive">
+> = {
+  USD: {
+    code: "USD",
+    name: "US Dollar",
+    symbol: "$",
+    symbolPosition: "before",
+    markup: 3,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-US",
+    countries: ["US", "PR", "GU", "VI", "AS", "MP"],
+  },
+  EUR: {
+    code: "EUR",
+    name: "Euro",
+    symbol: "\u20AC",
+    symbolPosition: "before",
+    markup: 3,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "de-DE",
+    countries: ["DE", "FR", "IT", "ES", "NL", "BE", "AT", "IE", "FI", "PT", "GR", "LU"],
+  },
+  GBP: {
+    code: "GBP",
+    name: "British Pound",
+    symbol: "\u00A3",
+    symbolPosition: "before",
+    markup: 3,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-GB",
+    countries: ["GB", "GG", "JE", "IM"],
+  },
+  CAD: {
+    code: "CAD",
+    name: "Canadian Dollar",
+    symbol: "C$",
+    symbolPosition: "before",
+    markup: 3,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-CA",
+    countries: ["CA"],
+  },
+  AUD: {
+    code: "AUD",
+    name: "Australian Dollar",
+    symbol: "A$",
+    symbolPosition: "before",
+    markup: 3,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-AU",
+    countries: ["AU", "NZ"],
+  },
+  AED: {
+    code: "AED",
+    name: "UAE Dirham",
+    symbol: "AED",
+    symbolPosition: "before",
+    markup: 2,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-AE",
+    countries: ["AE"],
+  },
+  SGD: {
+    code: "SGD",
+    name: "Singapore Dollar",
+    symbol: "S$",
+    symbolPosition: "before",
+    markup: 3,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-SG",
+    countries: ["SG"],
+  },
+  SAR: {
+    code: "SAR",
+    name: "Saudi Riyal",
+    symbol: "SAR",
+    symbolPosition: "before",
+    markup: 2,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-SA",
+    countries: ["SA"],
+  },
+  QAR: {
+    code: "QAR",
+    name: "Qatari Riyal",
+    symbol: "QAR",
+    symbolPosition: "before",
+    markup: 2,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-QA",
+    countries: ["QA"],
+  },
+  KWD: {
+    code: "KWD",
+    name: "Kuwaiti Dinar",
+    symbol: "KWD",
+    symbolPosition: "before",
+    markup: 2,
+    rounding: "up",
+    roundTo: 0.01,
+    locale: "en-KW",
+    countries: ["KW"],
+  },
+}
+
 const EMPTY_FORM: Omit<CurrencyConfig, "id"> = {
   code: "",
   name: "",
@@ -67,6 +184,7 @@ export default function CurrenciesSettingsPage() {
   const [countriesInput, setCountriesInput] = useState("")
   const [error, setError] = useState("")
   const [syncing, setSyncing] = useState(false)
+  const [fetchingRate, setFetchingRate] = useState(false)
   const [syncResult, setSyncResult] = useState<{
     updated: string[]
     skipped: string[]
@@ -123,6 +241,41 @@ export default function CurrenciesSettingsPage() {
   useEffect(() => {
     fetchCurrencies()
   }, [fetchCurrencies])
+
+  /** Fetch a live exchange rate for a single currency code */
+  const fetchLiveRate = async (code: string) => {
+    setFetchingRate(true)
+    try {
+      const res = await fetch(`/api/admin/currencies/rate?code=${code}`)
+      const json = await res.json()
+      if (json.success && json.data?.rate) {
+        setForm((prev) => ({ ...prev, exchangeRate: json.data.rate }))
+      }
+    } catch {
+      // Rate fetch failed silently — admin can still type manually
+    } finally {
+      setFetchingRate(false)
+    }
+  }
+
+  /** Handle preset dropdown selection */
+  const handlePresetSelect = (code: string) => {
+    if (!code) return
+    const preset = CURRENCY_PRESETS[code]
+    if (!preset) return
+
+    setForm({
+      ...preset,
+      exchangeRate: form.exchangeRate, // keep current until fetched
+      isDefault: false,
+      isActive: true,
+    })
+    setCountriesInput(preset.countries.join(", "))
+    setError("")
+
+    // Fetch live rate in background
+    fetchLiveRate(code)
+  }
 
   const startEdit = (currency: CurrencyConfig) => {
     setEditingId(currency.id)
@@ -238,6 +391,12 @@ export default function CurrenciesSettingsPage() {
       return `${form.symbol}${rounded.toFixed(2)}`
     }
   }
+
+  // Filter presets to only show currencies not already configured
+  const existingCodes = new Set(currencies.map((c) => c.code))
+  const availablePresets = Object.keys(CURRENCY_PRESETS).filter(
+    (code) => !existingCodes.has(code)
+  )
 
   return (
     <div className="space-y-6">
@@ -359,6 +518,28 @@ export default function CurrenciesSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Preset Dropdown — only shown when creating */}
+            {!editingId && availablePresets.length > 0 && (
+              <div>
+                <Label>Quick Select</Label>
+                <select
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  value=""
+                  onChange={(e) => handlePresetSelect(e.target.value)}
+                >
+                  <option value="">-- Pick a currency to auto-fill --</option>
+                  {availablePresets.map((code) => (
+                    <option key={code} value={code}>
+                      {CURRENCY_PRESETS[code].symbol} {code} — {CURRENCY_PRESETS[code].name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  Selecting a currency auto-fills all fields and fetches the live exchange rate
+                </p>
+              </div>
+            )}
+
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <Label>Currency Code</Label>
@@ -394,17 +575,41 @@ export default function CurrenciesSettingsPage() {
                   onChange={(e) => setForm({ ...form, symbolPosition: e.target.value })}
                 >
                   <option value="before">Before (e.g. $10)</option>
-                  <option value="after">After (e.g. 10€)</option>
+                  <option value="after">After (e.g. 10&euro;)</option>
                 </select>
               </div>
               <div>
-                <Label>Exchange Rate (per 1 INR)</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  value={form.exchangeRate}
-                  onChange={(e) => setForm({ ...form, exchangeRate: parseFloat(e.target.value) || 0 })}
-                />
+                <Label>
+                  Exchange Rate (per 1 INR)
+                  {fetchingRate && (
+                    <Loader2 className="inline ml-1 h-3 w-3 animate-spin text-primary" />
+                  )}
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    step="0.000001"
+                    value={form.exchangeRate}
+                    onChange={(e) => setForm({ ...form, exchangeRate: parseFloat(e.target.value) || 0 })}
+                    className="flex-1"
+                  />
+                  {form.code && form.code.length >= 2 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 text-xs"
+                      disabled={fetchingRate}
+                      onClick={() => fetchLiveRate(form.code)}
+                    >
+                      {fetchingRate ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
               <div>
                 <Label>Markup %</Label>
