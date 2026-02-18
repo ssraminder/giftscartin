@@ -13,7 +13,7 @@
 | **Domain** | giftscart.in (production, eventual) |
 | **Live Staging** | https://giftscart.netlify.app |
 | **Supabase** | https://saeditdtacprxcnlgips.supabase.co |
-| **Current Phase** | Phase 1 (core build) — ~98% complete |
+| **Current Phase** | Phase 1 (core build) — ~99% complete |
 | **Last Updated** | 2026-02-18 |
 
 ### What's Done
@@ -35,12 +35,14 @@
 - Admin settings page with currencies management
 - **Product Variation System**: Weight/size variations for cakes, sweets, and other weight-based products
 - **Expanded categories**: Sahni Bakery-inspired categories (Pastries, Sweets, Dry Cakes, Biscuits, Namkeen, Decorations, Festive Hampers, Chocolates)
+- **Real product images**: 27+ products now have Supabase Storage image URLs (uploaded to `products` bucket)
+- **Next.js image config**: `next.config.mjs` configured with `remotePatterns` for Supabase storage domain (`saeditdtacprxcnlgips.supabase.co`)
 
 ### What's NOT Done
 - No MSG91 SMS integration (using Brevo email OTP instead)
 - Vendor dashboard is Phase 3 placeholder
 - No `[city]/page.tsx` city landing page
-- No real product images (all use `/placeholder-product.svg`)
+- ~18 products still use `/placeholder-product.svg` (pastries, sweets, dry cakes, biscuits, namkeen, decorations, festive hampers, chocolates, and a few others)
 - `prisma db push` needed to deploy ProductVariation + CurrencyConfig + Payment gateway fields to Supabase
 
 ---
@@ -60,7 +62,7 @@
 | `tsconfig.json` | Yes | Yes | ✅ Exists & Working |
 | `tailwind.config.ts` | Yes | Yes | ✅ Exists & Working |
 | `postcss.config.js` | Yes (spec) | `postcss.config.mjs` | ⚠️ Different extension (.mjs vs .js) |
-| `next.config.js` | Yes (spec) | `next.config.mjs` | ⚠️ Different extension (.mjs vs .js) |
+| `next.config.js` | Yes (spec) | `next.config.mjs` | ✅ Different extension (.mjs vs .js), has `images.remotePatterns` for Supabase |
 
 ### Prisma
 
@@ -297,9 +299,9 @@ All 32 components exist. Flagged items:
 |-----------|-------|
 | `components/home/trending-products.tsx` | Uses hardcoded product array with `/placeholder-product.svg` images |
 | `components/cart/coupon-input.tsx` | Coupon validation is client-side only |
-| `components/product/product-card.tsx` | Falls back to `/placeholder-product.svg` |
-| `components/product/addon-selector.tsx` | Falls back to `/placeholder-product.svg` |
-| `components/product/product-gallery.tsx` | Falls back to `/placeholder-product.svg` |
+| `components/product/product-card.tsx` | Falls back to `/placeholder-product.svg` when no image (working with Supabase URLs) |
+| `components/product/addon-selector.tsx` | Falls back to `/placeholder-product.svg` when no image |
+| `components/product/product-gallery.tsx` | Falls back to `/placeholder-product.svg` when no image (working with Supabase URLs) |
 
 No components contain "TODO", "coming soon", or "Phase 3" text.
 
@@ -374,7 +376,7 @@ All TypeScript errors are caused by missing `node_modules/` (dependencies not in
 
 2. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
-3. **Add real product images** — Upload product images to Supabase Storage, update seed data with real URLs.
+3. ~~**Add real product images**~~ — ✅ DONE. 27+ products have Supabase Storage URLs. `next.config.mjs` updated with `remotePatterns`. ~18 products still need images (pastries, sweets, dry cakes, biscuits, namkeen, decorations, festive hampers, chocolates).
 
 4. **Fix implicit-any TypeScript errors** — Add proper type annotations to select.tsx, sheet.tsx, use-cart.ts (~20 errors).
 
