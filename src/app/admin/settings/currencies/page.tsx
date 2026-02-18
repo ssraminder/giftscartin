@@ -72,10 +72,16 @@ export default function CurrenciesSettingsPage() {
     skipped: string[]
     lastUpdated: string
   } | null>(null)
+  const [syncError, setSyncError] = useState<{
+    error: string
+    detail?: string
+  } | null>(null)
 
   const handleSyncRates = async () => {
     setSyncing(true)
     setSyncResult(null)
+    setSyncError(null)
+    setError("")
     try {
       const res = await fetch("/api/admin/currencies/sync-rates", {
         method: "POST",
@@ -85,10 +91,16 @@ export default function CurrenciesSettingsPage() {
         setSyncResult(json.data)
         fetchCurrencies()
       } else {
-        setError(json.error || "Failed to sync rates")
+        setSyncError({
+          error: json.error || "Failed to sync rates",
+          detail: json.detail,
+        })
       }
     } catch {
-      setError("Network error while syncing rates")
+      setSyncError({
+        error: "Network error while syncing rates",
+        detail: "Could not connect to the sync API. Check your network connection.",
+      })
     } finally {
       setSyncing(false)
     }
@@ -303,6 +315,37 @@ export default function CurrenciesSettingsPage() {
                 Skipped (not found in API): {syncResult.skipped.join(", ")}
               </p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sync Error Banner */}
+      {syncError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-red-900">
+                  {syncError.error}
+                </p>
+                {syncError.detail && (
+                  <p className="text-xs text-red-700 mt-1 font-mono whitespace-pre-wrap">
+                    {syncError.detail}
+                  </p>
+                )}
+                <p className="text-xs text-red-600 mt-2">
+                  Tip: You can manually set exchange rates by clicking the edit (pencil) icon on each currency below.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-red-700 shrink-0"
+                onClick={() => setSyncError(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
