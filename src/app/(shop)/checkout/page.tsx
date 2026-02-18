@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
+import Script from "next/script"
 import { useSession } from "next-auth/react"
 import {
   AlertCircle,
@@ -17,6 +18,7 @@ import {
   Clock,
   CreditCard,
   Gift,
+  Globe,
   Loader2,
   MapPin,
   MessageSquare,
@@ -30,6 +32,8 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks/use-cart"
 import { formatPrice } from "@/lib/utils"
+
+// ─── Types ───
 
 interface AddressForm {
   name: string
@@ -71,6 +75,25 @@ interface ServiceabilityResult {
   zone?: { id: string; name: string; extraCharge: number }
 }
 
+type PaymentRegion = "india" | "international"
+type GatewayId = "razorpay" | "stripe" | "paypal" | "cod"
+
+interface GeoInfo {
+  region: PaymentRegion
+  currency: string
+  gateways: GatewayId[]
+}
+
+// Extend window for Razorpay SDK
+declare global {
+  interface Window {
+    Razorpay: new (options: Record<string, unknown>) => {
+      open: () => void
+      on: (event: string, handler: () => void) => void
+    }
+  }
+}
+
 // Step indicator data
 const STEPS = [
   { label: "Address", number: 1 },
@@ -91,6 +114,35 @@ function generateDates(count: number): { date: Date; label: string; isToday: boo
     })
   }
   return dates
+}
+
+// ─── Payment Gateway Display Config ───
+
+const GATEWAY_CONFIG: Record<GatewayId, {
+  label: string
+  description: string
+  icon: typeof CreditCard
+}> = {
+  razorpay: {
+    label: "Pay Online",
+    description: "UPI, Cards, Net Banking, Wallets",
+    icon: CreditCard,
+  },
+  stripe: {
+    label: "Pay with Card",
+    description: "Visa, Mastercard, Amex (USD)",
+    icon: CreditCard,
+  },
+  paypal: {
+    label: "PayPal",
+    description: "Pay securely with PayPal (USD)",
+    icon: Globe,
+  },
+  cod: {
+    label: "Cash on Delivery",
+    description: "Pay when your order arrives",
+    icon: Wallet,
+  },
 }
 
 export default function CheckoutPage() {
@@ -123,14 +175,38 @@ export default function CheckoutPage() {
   const [giftExpanded, setGiftExpanded] = useState(false)
   const [instructionsExpanded, setInstructionsExpanded] = useState(false)
 
-  // Payment
-  const [paymentMethod, setPaymentMethod] = useState<string>("razorpay")
+  // Payment / Geo
+  const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<GatewayId>("razorpay")
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false)
 
   // Order placement
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
 
   useEffect(() => setMounted(true), [])
+
+  // Detect payment region on mount
+  useEffect(() => {
+    async function detectRegion() {
+      try {
+        const res = await fetch("/api/geo")
+        const json = await res.json()
+        if (json.success && json.data) {
+          const data = json.data as GeoInfo
+          setGeoInfo(data)
+          // Auto-select first available gateway
+          if (data.gateways.length > 0) {
+            setPaymentMethod(data.gateways[0])
+          }
+        }
+      } catch {
+        // Fallback to India defaults
+        setGeoInfo({ region: "india", currency: "INR", gateways: ["razorpay", "cod"] })
+      }
+    }
+    detectRegion()
+  }, [])
 
   // Check serviceability when pincode reaches 6 digits
   const checkServiceability = useCallback(async (pincode: string) => {
@@ -282,6 +358,7 @@ export default function CheckoutPage() {
     }
   }
 
+  // ─── PLACE ORDER + INITIATE PAYMENT ───
   const handlePlaceOrder = async () => {
     if (!session?.user?.id) return
 
@@ -289,7 +366,8 @@ export default function CheckoutPage() {
     setOrderError(null)
 
     try {
-      const res = await fetch("/api/orders", {
+      // Step 1: Create the order
+      const orderRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -308,22 +386,142 @@ export default function CheckoutPage() {
         }),
       })
 
-      const json = await res.json()
-      if (json.success && json.data) {
+      const orderJson = await orderRes.json()
+      if (!orderJson.success || !orderJson.data) {
+        setOrderError(orderJson.error || "Failed to place order")
+        setPlacing(false)
+        return
+      }
+
+      const orderId = orderJson.data.id
+      const orderNumber = orderJson.data.orderNumber
+
+      // Step 2: Create payment based on selected gateway
+      const paymentRes = await fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, gateway: paymentMethod }),
+      })
+
+      const paymentJson = await paymentRes.json()
+      if (!paymentJson.success || !paymentJson.data) {
+        // Order created but payment initiation failed — redirect to order page
         clearCart()
-        router.push(`/orders/${json.data.id}?new=true`)
-      } else {
-        setOrderError(json.error || "Failed to place order")
+        router.push(`/orders/${orderId}?payment=error`)
+        return
+      }
+
+      const paymentData = paymentJson.data
+
+      // Step 3: Handle gateway-specific flow
+      if (paymentData.gateway === "cod") {
+        // COD — order is confirmed, redirect directly
+        clearCart()
+        router.push(`/orders/${orderId}?new=true`)
+        return
+      }
+
+      if (paymentData.gateway === "razorpay") {
+        // Open Razorpay checkout modal
+        if (!window.Razorpay) {
+          setOrderError("Payment gateway is loading. Please try again.")
+          setPlacing(false)
+          return
+        }
+
+        const options = {
+          key: paymentData.keyId,
+          amount: paymentData.amount,
+          currency: paymentData.currency,
+          name: "Gifts Cart India",
+          description: `Order ${orderNumber}`,
+          order_id: paymentData.razorpayOrderId,
+          handler: async (response: {
+            razorpay_order_id: string
+            razorpay_payment_id: string
+            razorpay_signature: string
+          }) => {
+            // Verify payment on server
+            try {
+              const verifyRes = await fetch("/api/payments/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  orderId,
+                  gateway: "razorpay",
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                }),
+              })
+              const verifyJson = await verifyRes.json()
+              clearCart()
+              if (verifyJson.success) {
+                router.push(`/orders/${orderId}?payment=success&gateway=razorpay`)
+              } else {
+                router.push(`/orders/${orderId}?payment=failed`)
+              }
+            } catch {
+              clearCart()
+              router.push(`/orders/${orderId}?payment=error`)
+            }
+          },
+          prefill: {
+            email: (session.user as { email?: string }).email || "",
+            contact: addressForm.phone,
+          },
+          theme: {
+            color: "#E91E63",
+          },
+          modal: {
+            ondismiss: () => {
+              setPlacing(false)
+              // Order exists but payment cancelled — go to order page
+              clearCart()
+              router.push(`/orders/${orderId}?payment=cancelled`)
+            },
+          },
+        }
+
+        const rzp = new window.Razorpay(options)
+        rzp.open()
+        return // Don't setPlacing(false) — Razorpay modal handles it
+      }
+
+      if (paymentData.gateway === "stripe") {
+        // Redirect to Stripe Checkout
+        clearCart()
+        window.location.href = paymentData.url
+        return
+      }
+
+      if (paymentData.gateway === "paypal") {
+        // Redirect to PayPal approval URL
+        clearCart()
+        window.location.href = paymentData.approvalUrl
+        return
       }
     } catch {
       setOrderError("Network error. Please try again.")
     } finally {
-      setPlacing(false)
+      if (paymentMethod !== "razorpay") {
+        setPlacing(false)
+      }
     }
   }
 
+  const availableGateways = geoInfo?.gateways || ["razorpay", "cod"]
+
   return (
     <div className="bg-[#FFF9F5] min-h-screen">
+      {/* Load Razorpay SDK if in India */}
+      {availableGateways.includes("razorpay") && (
+        <Script
+          src="https://checkout.razorpay.com/v1/checkout.js"
+          onLoad={() => setRazorpayLoaded(true)}
+        />
+      )}
+
       <div className="container mx-auto px-4 py-6 sm:py-8">
         {/* Header with Back Button */}
         <div className="mb-6 flex items-center gap-3">
@@ -334,6 +532,12 @@ export default function CheckoutPage() {
             <ArrowLeft className="h-4 w-4 text-gray-600" />
           </Link>
           <h1 className="text-xl font-bold sm:text-2xl text-gray-800">Checkout</h1>
+          {geoInfo && geoInfo.region === "international" && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 border border-blue-100">
+              <Globe className="h-3 w-3" />
+              International (USD)
+            </span>
+          )}
         </div>
 
         {/* Step Indicator */}
@@ -821,7 +1025,7 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                {/* Payment Method */}
+                {/* Payment Method — Dynamic based on Geo */}
                 <div className="card-premium overflow-hidden">
                   <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4 sm:px-6">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-teal-50">
@@ -829,63 +1033,51 @@ export default function CheckoutPage() {
                     </div>
                     <div>
                       <h2 className="font-semibold text-gray-800">Payment Method</h2>
-                      <p className="text-xs text-muted-foreground">Choose how you want to pay</p>
+                      <p className="text-xs text-muted-foreground">
+                        {geoInfo?.region === "international"
+                          ? "International payment options (USD)"
+                          : "Choose how you want to pay"}
+                      </p>
                     </div>
                   </div>
 
                   <div className="p-5 sm:p-6">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <button
-                        className={`group flex items-center gap-4 rounded-xl border-2 p-4 text-left transition-all ${
-                          paymentMethod === "razorpay"
-                            ? "border-pink-400 bg-pink-50/50 shadow-sm shadow-pink-100"
-                            : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
-                        }`}
-                        onClick={() => setPaymentMethod("razorpay")}
-                      >
-                        <div className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
-                          paymentMethod === "razorpay"
-                            ? "bg-gradient-to-br from-pink-500 to-rose-500 text-white"
-                            : "bg-gray-100 text-gray-500"
-                        }`}>
-                          <CreditCard className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-gray-800">Pay Online</p>
-                          <p className="text-xs text-muted-foreground leading-relaxed">UPI, Cards, Net Banking, Wallets</p>
-                        </div>
-                        {paymentMethod === "razorpay" && (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-pink-500">
-                            <Check className="h-3 w-3 text-white" />
-                          </div>
-                        )}
-                      </button>
+                      {availableGateways.map((gatewayId) => {
+                        const config = GATEWAY_CONFIG[gatewayId]
+                        if (!config) return null
+                        const isSelected = paymentMethod === gatewayId
+                        const IconComponent = config.icon
 
-                      <button
-                        className={`group flex items-center gap-4 rounded-xl border-2 p-4 text-left transition-all ${
-                          paymentMethod === "cod"
-                            ? "border-pink-400 bg-pink-50/50 shadow-sm shadow-pink-100"
-                            : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
-                        }`}
-                        onClick={() => setPaymentMethod("cod")}
-                      >
-                        <div className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
-                          paymentMethod === "cod"
-                            ? "bg-gradient-to-br from-pink-500 to-rose-500 text-white"
-                            : "bg-gray-100 text-gray-500"
-                        }`}>
-                          <Wallet className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-gray-800">Cash on Delivery</p>
-                          <p className="text-xs text-muted-foreground leading-relaxed">Pay when your order arrives</p>
-                        </div>
-                        {paymentMethod === "cod" && (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-pink-500">
-                            <Check className="h-3 w-3 text-white" />
-                          </div>
-                        )}
-                      </button>
+                        return (
+                          <button
+                            key={gatewayId}
+                            className={`group flex items-center gap-4 rounded-xl border-2 p-4 text-left transition-all ${
+                              isSelected
+                                ? "border-pink-400 bg-pink-50/50 shadow-sm shadow-pink-100"
+                                : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+                            }`}
+                            onClick={() => setPaymentMethod(gatewayId)}
+                          >
+                            <div className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
+                              isSelected
+                                ? "bg-gradient-to-br from-pink-500 to-rose-500 text-white"
+                                : "bg-gray-100 text-gray-500"
+                            }`}>
+                              <IconComponent className="h-5 w-5" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-gray-800">{config.label}</p>
+                              <p className="text-xs text-muted-foreground leading-relaxed">{config.description}</p>
+                            </div>
+                            {isSelected && (
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-pink-500">
+                                <Check className="h-3 w-3 text-white" />
+                              </div>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1002,17 +1194,22 @@ export default function CheckoutPage() {
                     className="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white"
                     size="lg"
                     onClick={handlePlaceOrder}
-                    disabled={placing}
+                    disabled={placing || (paymentMethod === "razorpay" && !razorpayLoaded)}
                   >
                     {placing ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Placing Order...
+                        Processing...
                       </>
-                    ) : (
+                    ) : paymentMethod === "cod" ? (
                       <>
                         <ShoppingBag className="mr-2 h-4 w-4" />
                         Place Order - {formatPrice(total)}
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Pay {formatPrice(total)}
                       </>
                     )}
                   </Button>

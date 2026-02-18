@@ -479,21 +479,33 @@ model OrderStatusHistory {
 // ==================== PAYMENTS ====================
 
 model Payment {
-  id                String        @id @default(cuid())
-  orderId           String        @unique
-  amount            Decimal       @db.Decimal(10, 2)
-  currency          String        @default("INR")
+  id                String         @id @default(cuid())
+  orderId           String         @unique
+  amount            Decimal        @db.Decimal(10, 2)
+  currency          String         @default("INR")
+  gateway           PaymentGateway @default(RAZORPAY)
   razorpayOrderId   String?
   razorpayPaymentId String?
   razorpaySignature String?
+  stripeSessionId   String?
+  stripePaymentIntentId String?
+  paypalOrderId     String?
+  paypalCaptureId   String?
   method            String?
-  status            PaymentStatus @default(PENDING)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  status            PaymentStatus  @default(PENDING)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
-  order             Order         @relation(fields: [orderId], references: [id])
+  order             Order          @relation(fields: [orderId], references: [id])
 
   @@map("payments")
+}
+
+enum PaymentGateway {
+  RAZORPAY
+  STRIPE
+  PAYPAL
+  COD
 }
 
 model VendorPayout {

@@ -98,15 +98,20 @@ export const createOrderSchema = z.object({
 
 // ==================== Payments ====================
 
+export const paymentGatewaySchema = z.enum(['razorpay', 'stripe', 'paypal', 'cod'])
+
 export const createPaymentOrderSchema = z.object({
   orderId: z.string().min(1),
+  gateway: paymentGatewaySchema.optional(),
 })
 
 export const verifyPaymentSchema = z.object({
   orderId: z.string().min(1),
-  razorpayOrderId: z.string().min(1),
-  razorpayPaymentId: z.string().min(1),
-  razorpaySignature: z.string().min(1),
+  gateway: z.enum(['razorpay', 'stripe', 'paypal']),
+  // Razorpay-specific (required when gateway=razorpay)
+  razorpayOrderId: z.string().optional(),
+  razorpayPaymentId: z.string().optional(),
+  razorpaySignature: z.string().optional(),
 })
 
 // ==================== Coupons ====================
@@ -169,6 +174,7 @@ export type AddToCartInput = z.infer<typeof addToCartSchema>
 export type UpdateCartItemInput = z.infer<typeof updateCartItemSchema>
 export type ServiceabilityInput = z.infer<typeof serviceabilitySchema>
 export type CreateOrderInput = z.infer<typeof createOrderSchema>
+export type PaymentGateway = z.infer<typeof paymentGatewaySchema>
 export type CreatePaymentOrderInput = z.infer<typeof createPaymentOrderSchema>
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>
 export type ApplyCouponInput = z.infer<typeof applyCouponSchema>

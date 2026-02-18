@@ -228,14 +228,21 @@ export interface OrderStatusHistory {
 
 // ==================== PAYMENTS ====================
 
+export type PaymentGateway = "RAZORPAY" | "STRIPE" | "PAYPAL" | "COD"
+
 export interface Payment {
   id: string
   orderId: string
   amount: number
   currency: string
+  gateway: PaymentGateway
   razorpayOrderId: string | null
   razorpayPaymentId: string | null
   razorpaySignature: string | null
+  stripeSessionId: string | null
+  stripePaymentIntentId: string | null
+  paypalOrderId: string | null
+  paypalCaptureId: string | null
   method: string | null
   status: PaymentStatus
   createdAt: string
