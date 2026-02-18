@@ -1291,8 +1291,33 @@ The following lib files were added beyond the original Phase 1 spec:
 - `src/components/providers/currency-provider.tsx` — Multi-currency context (resolves via `/api/currencies/resolve`)
 - `src/hooks/use-currency.ts` — Hook for currency formatting
 
-### Admin panel (partially built)
-Admin pages exist for: dashboard, orders, settings/currencies, vendors, products, cities. These are functional shells with real API connections, not just placeholder "Coming in Phase 3" pages.
+### Admin panel (fully built)
+Admin pages exist for: dashboard, orders, order detail (with vendor assignment), settings/currencies, vendors (with approval/suspend/terminate workflow + commission editing), products, cities. All pages have real API connections.
+
+### Vendor dashboard (fully built — Phase 3)
+The vendor dashboard is fully implemented with 6 API routes and 6 pages:
+
+**API Routes:**
+- `GET /api/vendor/dashboard` — Metrics (today's orders, pending, earnings, rating, online status, recent orders)
+- `GET/PATCH /api/vendor/orders` — Order list with status filter + pagination
+- `GET/PATCH /api/vendor/orders/[id]` — Order detail + actions (accept/reject/preparing/out_for_delivery/delivered)
+- `GET/PUT /api/vendor/products` — Product catalog + inline editing (cost price, prep time, daily limit, availability)
+- `GET /api/vendor/earnings` — Revenue/commission/net breakdown by period, payout history
+- `GET/PATCH /api/vendor/settings` — Full profile management (business info, online status, vacation mode, documents, bank details)
+
+**Admin APIs (Phase 3):**
+- `GET/PATCH /api/admin/vendors/[id]` — Vendor status changes (approve/reject/suspend/terminate) + commission rate editing + audit logging
+- `POST /api/admin/orders/[id]/assign` — Assign/reassign vendors to orders + audit logging
+
+**Real-time Notifications:**
+- `src/hooks/use-order-notifications.ts` — Supabase Realtime subscription (postgres_changes on orders table filtered by vendorId)
+- `src/components/vendor/order-notifications.tsx` — Bell icon with badge count, notification panel, audio beep on new orders
+
+**Vendor Order State Machine:**
+- PENDING → CONFIRMED (accept) or CANCELLED (reject)
+- CONFIRMED → PREPARING
+- PREPARING → OUT_FOR_DELIVERY
+- OUT_FOR_DELIVERY → DELIVERED
 ```
 
 ===COPY END===
