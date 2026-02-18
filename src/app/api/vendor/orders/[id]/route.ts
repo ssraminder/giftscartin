@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
+import { OrderStatus } from '@prisma/client'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -150,9 +151,9 @@ export async function PATCH(
       const updatedOrder = await tx.order.update({
         where: { id },
         data: {
-          status: newStatus as any,
+          status: newStatus as OrderStatus,
           ...(action === 'reject' && order.paymentStatus === 'PAID'
-            ? { paymentStatus: 'REFUNDED' }
+            ? { paymentStatus: 'REFUNDED' as const }
             : {}),
         },
       })
@@ -160,7 +161,7 @@ export async function PATCH(
       await tx.orderStatusHistory.create({
         data: {
           orderId: id,
-          status: newStatus as any,
+          status: newStatus as OrderStatus,
           note: note || `Vendor ${action}ed the order`,
           changedBy: vendor.userId,
         },

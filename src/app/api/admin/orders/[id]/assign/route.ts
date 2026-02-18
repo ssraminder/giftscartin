@@ -78,7 +78,7 @@ export async function POST(
       await tx.orderStatusHistory.create({
         data: {
           orderId: id,
-          status: order.status as any,
+          status: order.status,
           note: `Vendor assigned: ${vendor.businessName}`,
           changedBy: admin.id,
         },

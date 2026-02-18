@@ -229,7 +229,7 @@ export default function VendorDashboardPage() {
               <TrendingUp className="h-5 w-5 text-teal-600" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">Month's Earnings</p>
+              <p className="text-sm text-slate-500">Month&apos;s Earnings</p>
               <p className="text-xl font-bold text-slate-900">
                 {formatPrice(data.monthEarnings)}
               </p>
