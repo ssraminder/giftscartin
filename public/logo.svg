@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 48" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E91E63"/>
+      <stop offset="100%" stop-color="#FF6B9D"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="18" width="24" height="20" rx="3" fill="url(#g)"/>
+  <rect x="2" y="14" width="28" height="8" rx="2" fill="url(#g)"/>
+  <rect x="14" y="14" width="4" height="24" fill="white" opacity="0.3"/>
+  <path d="M16 14C16 14 10 8 8 6C6 4 8 2 10 4C12 6 16 14 16 14Z" fill="#E91E63"/>
+  <path d="M16 14C16 14 22 8 24 6C26 4 24 2 22 4C20 6 16 14 16 14Z" fill="#FF6B9D"/>
+  <text x="40" y="22" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="800" fill="#1A1A2E">Gifts Cart</text>
+  <text x="40" y="38" font-family="Inter, system-ui, sans-serif" font-size="12" font-weight="600" fill="#E91E63">India</text>
+</svg>
