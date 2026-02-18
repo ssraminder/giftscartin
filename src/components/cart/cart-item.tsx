@@ -17,8 +17,9 @@ export function CartItem({ item }: CartItemProps) {
   const updateQuantity = useCart((s) => s.updateQuantity)
   const removeItem = useCart((s) => s.removeItem)
 
+  const baseUnitPrice = item.variation ? item.variation.price : item.product.basePrice
   const addonTotal = item.addons.reduce((sum, a) => sum + a.price, 0)
-  const unitPrice = item.product.basePrice + addonTotal
+  const unitPrice = baseUnitPrice + addonTotal
   const lineTotal = unitPrice * item.quantity
 
   return (
@@ -47,9 +48,9 @@ export function CartItem({ item }: CartItemProps) {
             >
               {item.product.name}
             </Link>
-            {item.product.weight && (
+            {(item.variation || item.product.weight) && (
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {item.product.weight}
+                {item.variation ? item.variation.label : item.product.weight}
               </p>
             )}
           </div>

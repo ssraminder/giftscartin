@@ -2,12 +2,13 @@
 
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { AddonSelection, Product } from "@/types"
+import type { AddonSelection, Product, VariationSelection } from "@/types"
 
 export interface CartItemState {
   productId: string
   quantity: number
   addons: AddonSelection[]
+  variation: VariationSelection | null
   deliveryDate: string | null
   deliverySlot: string | null
   product: Product
@@ -17,10 +18,11 @@ interface CartStore {
   items: CartItemState[]
   couponCode: string | null
   couponDiscount: number
-  addItem: (product: Product, quantity?: number, addons?: AddonSelection[]) => void
+  addItem: (product: Product, quantity?: number, addons?: AddonSelection[], variation?: VariationSelection | null) => void
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   updateAddons: (productId: string, addons: AddonSelection[]) => void
+  updateVariation: (productId: string, variation: VariationSelection | null) => void
   updateDelivery: (productId: string, date: string | null, slot: string | null) => void
   setCoupon: (code: string | null, discount: number) => void
   clearCart: () => void
@@ -35,14 +37,14 @@ export const useCart = create<CartStore>()(
       couponCode: null,
       couponDiscount: 0,
 
-      addItem: (product, quantity = 1, addons = []) => {
+      addItem: (product, quantity = 1, addons = [], variation = null) => {
         set((state) => {
           const existing = state.items.find((i) => i.productId === product.id)
           if (existing) {
             return {
               items: state.items.map((i) =>
                 i.productId === product.id
-                  ? { ...i, quantity: i.quantity + quantity }
+                  ? { ...i, quantity: i.quantity + quantity, variation: variation ?? i.variation }
                   : i
               ),
             }
@@ -54,6 +56,7 @@ export const useCart = create<CartStore>()(
                 productId: product.id,
                 quantity,
                 addons,
+                variation,
                 deliveryDate: null,
                 deliverySlot: null,
                 product,
@@ -89,6 +92,14 @@ export const useCart = create<CartStore>()(
         }))
       },
 
+      updateVariation: (productId, variation) => {
+        set((state) => ({
+          items: state.items.map((i) =>
+            i.productId === productId ? { ...i, variation } : i
+          ),
+        }))
+      },
+
       updateDelivery: (productId, date, slot) => {
         set((state) => ({
           items: state.items.map((i) =>
@@ -109,8 +120,9 @@ export const useCart = create<CartStore>()(
 
       getSubtotal: () => {
         return get().items.reduce((sum, item) => {
+          const unitPrice = item.variation ? item.variation.price : item.product.basePrice
           const addonTotal = item.addons.reduce((a, addon) => a + addon.price, 0)
-          return sum + (item.product.basePrice + addonTotal) * item.quantity
+          return sum + (unitPrice + addonTotal) * item.quantity
         }, 0)
       },
     }),

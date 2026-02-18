@@ -16,6 +16,7 @@ export async function GET(
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
+        variations: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
         addons: { where: { isActive: true } },
         reviews: {
           orderBy: { createdAt: 'desc' },

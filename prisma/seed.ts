@@ -249,7 +249,7 @@ async function main() {
     },
   })
 
-  // Cake subcategories
+  // ── Cake Subcategories (inspired by Sahni Bakery + industry standard) ──
   const chocolateCakes = await prisma.category.upsert({
     where: { slug: 'chocolate-cakes' },
     update: {},
@@ -302,7 +302,183 @@ async function main() {
     },
   })
 
-  // Flower subcategories
+  await prisma.category.upsert({
+    where: { slug: 'premium-cakes' },
+    update: {},
+    create: {
+      name: 'Premium Cakes',
+      slug: 'premium-cakes',
+      description: 'Premium designer cakes for special occasions',
+      image: '/placeholder-product.svg',
+      parentId: cakesCategory.id,
+      sortOrder: 5,
+    },
+  })
+
+  await prisma.category.upsert({
+    where: { slug: 'fondant-cakes' },
+    update: {},
+    create: {
+      name: 'Fondant Cakes',
+      slug: 'fondant-cakes',
+      description: 'Beautifully decorated fondant cakes',
+      image: '/placeholder-product.svg',
+      parentId: cakesCategory.id,
+      sortOrder: 6,
+    },
+  })
+
+  await prisma.category.upsert({
+    where: { slug: 'wedding-cakes' },
+    update: {},
+    create: {
+      name: 'Wedding Cakes',
+      slug: 'wedding-cakes',
+      description: 'Multi-tier and designer wedding cakes',
+      image: '/placeholder-product.svg',
+      parentId: cakesCategory.id,
+      sortOrder: 7,
+    },
+  })
+
+  await prisma.category.upsert({
+    where: { slug: 'anniversary-cakes' },
+    update: {},
+    create: {
+      name: 'Anniversary Cakes',
+      slug: 'anniversary-cakes',
+      description: 'Romantic cakes for anniversary celebrations',
+      image: '/placeholder-product.svg',
+      parentId: cakesCategory.id,
+      sortOrder: 8,
+    },
+  })
+
+  await prisma.category.upsert({
+    where: { slug: 'customized-cakes' },
+    update: {},
+    create: {
+      name: 'Customized Cakes',
+      slug: 'customized-cakes',
+      description: 'Custom-designed cakes for any theme or occasion',
+      image: '/placeholder-product.svg',
+      parentId: cakesCategory.id,
+      sortOrder: 9,
+    },
+  })
+
+  await prisma.category.upsert({
+    where: { slug: 'valentines-cakes' },
+    update: {},
+    create: {
+      name: "Valentine's Cakes",
+      slug: 'valentines-cakes',
+      description: "Romantic cakes for Valentine's Day",
+      image: '/placeholder-product.svg',
+      parentId: cakesCategory.id,
+      sortOrder: 10,
+    },
+  })
+
+  // ── New top-level categories (Sahni Bakery inspired) ──
+
+  const pastryCategory = await prisma.category.upsert({
+    where: { slug: 'pastries' },
+    update: {},
+    create: {
+      name: 'Pastries',
+      slug: 'pastries',
+      description: 'Fresh baked pastries and patisserie items',
+      image: '/placeholder-product.svg',
+      sortOrder: 6,
+    },
+  })
+
+  const sweetsCategory = await prisma.category.upsert({
+    where: { slug: 'sweets' },
+    update: {},
+    create: {
+      name: 'Sweets',
+      slug: 'sweets',
+      description: 'Traditional Indian sweets and mithai',
+      image: '/placeholder-product.svg',
+      sortOrder: 7,
+    },
+  })
+
+  const dryCakesCategory = await prisma.category.upsert({
+    where: { slug: 'dry-cakes' },
+    update: {},
+    create: {
+      name: 'Dry Cakes',
+      slug: 'dry-cakes',
+      description: 'Long-lasting dry cakes and plum cakes',
+      image: '/placeholder-product.svg',
+      sortOrder: 8,
+    },
+  })
+
+  const biscuitsCategory = await prisma.category.upsert({
+    where: { slug: 'biscuits' },
+    update: {},
+    create: {
+      name: 'Biscuits & Rusks',
+      slug: 'biscuits',
+      description: 'Freshly baked biscuits, rusks, and cookies',
+      image: '/placeholder-product.svg',
+      sortOrder: 9,
+    },
+  })
+
+  const namkeenCategory = await prisma.category.upsert({
+    where: { slug: 'namkeen' },
+    update: {},
+    create: {
+      name: 'Namkeen & Snacks',
+      slug: 'namkeen',
+      description: 'Savoury namkeen, mathi, and snacks',
+      image: '/placeholder-product.svg',
+      sortOrder: 10,
+    },
+  })
+
+  const decorationsCategory = await prisma.category.upsert({
+    where: { slug: 'decorations' },
+    update: {},
+    create: {
+      name: 'Decoration Items',
+      slug: 'decorations',
+      description: 'Party decorations, toppers, candles, and more',
+      image: '/placeholder-product.svg',
+      sortOrder: 11,
+    },
+  })
+
+  const festiveCategory = await prisma.category.upsert({
+    where: { slug: 'festive-hampers' },
+    update: {},
+    create: {
+      name: 'Festive Hampers',
+      slug: 'festive-hampers',
+      description: 'Curated gift hampers for festivals like Diwali, Rakhi, and Holi',
+      image: '/placeholder-product.svg',
+      sortOrder: 12,
+    },
+  })
+
+  const chocolatesCategory = await prisma.category.upsert({
+    where: { slug: 'chocolates' },
+    update: {},
+    create: {
+      name: 'Chocolates',
+      slug: 'chocolates',
+      description: 'Premium chocolate boxes and assortments',
+      image: '/placeholder-product.svg',
+      sortOrder: 13,
+    },
+  })
+
+  // ── Flower subcategories ──
   await prisma.category.upsert({
     where: { slug: 'roses' },
     update: {},
@@ -981,6 +1157,402 @@ async function main() {
     }
   }
 
+  // ==================== NEW CATEGORY PRODUCTS ====================
+  console.log('Creating products for new categories...')
+
+  // Pastry products
+  await prisma.product.upsert({
+    where: { slug: 'chocolate-pastry' },
+    update: {},
+    create: {
+      name: 'Chocolate Pastry',
+      slug: 'chocolate-pastry',
+      description: 'Rich chocolate pastry with chocolate ganache topping and cream filling.',
+      shortDesc: 'Chocolate pastry with ganache',
+      categoryId: pastryCategory.id,
+      basePrice: 99,
+      images: ['/placeholder-product.svg'],
+      tags: ['pastry', 'chocolate'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'black-forest-pastry' },
+    update: {},
+    create: {
+      name: 'Black Forest Pastry',
+      slug: 'black-forest-pastry',
+      description: 'Classic black forest pastry with whipped cream and cherry.',
+      shortDesc: 'Black forest pastry with cherry',
+      categoryId: pastryCategory.id,
+      basePrice: 89,
+      images: ['/placeholder-product.svg'],
+      tags: ['pastry', 'classic'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'red-velvet-pastry' },
+    update: {},
+    create: {
+      name: 'Red Velvet Pastry',
+      slug: 'red-velvet-pastry',
+      description: 'Elegant red velvet pastry with cream cheese frosting.',
+      shortDesc: 'Red velvet pastry with cream cheese',
+      categoryId: pastryCategory.id,
+      basePrice: 109,
+      images: ['/placeholder-product.svg'],
+      tags: ['pastry', 'premium'],
+      occasion: ['birthday', 'anniversary'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'butterscotch-pastry' },
+    update: {},
+    create: {
+      name: 'Butterscotch Pastry',
+      slug: 'butterscotch-pastry',
+      description: 'Creamy butterscotch pastry with caramel crunch.',
+      shortDesc: 'Butterscotch pastry with caramel',
+      categoryId: pastryCategory.id,
+      basePrice: 89,
+      images: ['/placeholder-product.svg'],
+      tags: ['pastry', 'classic'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'pineapple-pastry' },
+    update: {},
+    create: {
+      name: 'Pineapple Pastry',
+      slug: 'pineapple-pastry',
+      description: 'Light pineapple pastry with fresh pineapple chunks.',
+      shortDesc: 'Pineapple pastry with fresh fruit',
+      categoryId: pastryCategory.id,
+      basePrice: 89,
+      images: ['/placeholder-product.svg'],
+      tags: ['pastry', 'fruity'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  // Sweet products (with weight variations added later)
+  const milkCake = await prisma.product.upsert({
+    where: { slug: 'milk-cake' },
+    update: {},
+    create: {
+      name: 'Milk Cake',
+      slug: 'milk-cake',
+      description: 'Traditional Indian milk cake (alwar ka mawa) made with fresh khoya and sugar.',
+      shortDesc: 'Traditional milk cake with khoya',
+      categoryId: sweetsCategory.id,
+      basePrice: 399,
+      images: ['/placeholder-product.svg'],
+      tags: ['traditional', 'mithai'],
+      occasion: ['diwali', 'rakhi', 'housewarming'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  const kalakandSweet = await prisma.product.upsert({
+    where: { slug: 'kalakand' },
+    update: {},
+    create: {
+      name: 'Kalakand',
+      slug: 'kalakand',
+      description: 'Soft and grainy milk sweet made with paneer and condensed milk, garnished with pistachios.',
+      shortDesc: 'Soft paneer sweet with pistachios',
+      categoryId: sweetsCategory.id,
+      basePrice: 449,
+      images: ['/placeholder-product.svg'],
+      tags: ['traditional', 'mithai', 'premium'],
+      occasion: ['diwali', 'rakhi', 'housewarming'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  const kajuKatli = await prisma.product.upsert({
+    where: { slug: 'kaju-katli' },
+    update: {},
+    create: {
+      name: 'Kaju Katli',
+      slug: 'kaju-katli',
+      description: 'Premium kaju katli (cashew fudge) made with pure cashew nuts and sugar. A festive favourite.',
+      shortDesc: 'Premium cashew fudge sweet',
+      categoryId: sweetsCategory.id,
+      basePrice: 599,
+      images: ['/placeholder-product.svg'],
+      tags: ['premium', 'mithai', 'bestseller'],
+      occasion: ['diwali', 'rakhi', 'birthday'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  const gulabJamun = await prisma.product.upsert({
+    where: { slug: 'gulab-jamun' },
+    update: {},
+    create: {
+      name: 'Gulab Jamun',
+      slug: 'gulab-jamun',
+      description: 'Soft and syrupy gulab jamun made with khoya, soaked in rose-flavoured sugar syrup.',
+      shortDesc: 'Soft khoya gulab jamun in syrup',
+      categoryId: sweetsCategory.id,
+      basePrice: 349,
+      images: ['/placeholder-product.svg'],
+      tags: ['traditional', 'mithai', 'popular'],
+      occasion: ['diwali', 'birthday', 'housewarming'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  const rasmalai = await prisma.product.upsert({
+    where: { slug: 'rasmalai' },
+    update: {},
+    create: {
+      name: 'Rasmalai',
+      slug: 'rasmalai',
+      description: 'Creamy rasmalai — soft paneer dumplings soaked in sweetened saffron milk, garnished with almonds.',
+      shortDesc: 'Saffron milk paneer dumplings',
+      categoryId: sweetsCategory.id,
+      basePrice: 499,
+      images: ['/placeholder-product.svg'],
+      tags: ['premium', 'mithai'],
+      occasion: ['diwali', 'birthday', 'anniversary'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  // Dry Cake products
+  await prisma.product.upsert({
+    where: { slug: 'fruit-cake-dry' },
+    update: {},
+    create: {
+      name: 'Fruit Dry Cake',
+      slug: 'fruit-cake-dry',
+      description: 'Rich fruit dry cake loaded with mixed dry fruits and tutti frutti. Perfect with tea.',
+      shortDesc: 'Rich fruit dry cake with dry fruits',
+      categoryId: dryCakesCategory.id,
+      basePrice: 349,
+      images: ['/placeholder-product.svg'],
+      tags: ['dry-cake', 'fruity'],
+      occasion: ['christmas', 'birthday'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'chocolate-dry-cake' },
+    update: {},
+    create: {
+      name: 'Chocolate Dry Cake',
+      slug: 'chocolate-dry-cake',
+      description: 'Dense chocolate dry cake with chocolate chips, perfect for gifting.',
+      shortDesc: 'Dense chocolate chip dry cake',
+      categoryId: dryCakesCategory.id,
+      basePrice: 399,
+      images: ['/placeholder-product.svg'],
+      tags: ['dry-cake', 'chocolate'],
+      occasion: ['birthday', 'christmas'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  // Biscuit & Rusk products
+  await prisma.product.upsert({
+    where: { slug: 'fruit-cake-rusk' },
+    update: {},
+    create: {
+      name: 'Fruit Cake Rusk',
+      slug: 'fruit-cake-rusk',
+      description: 'Crunchy fruit cake rusk with dry fruits. Perfect tea-time snack.',
+      shortDesc: 'Crunchy fruit cake rusk',
+      categoryId: biscuitsCategory.id,
+      basePrice: 199,
+      images: ['/placeholder-product.svg'],
+      tags: ['rusk', 'snack'],
+      occasion: [],
+      weight: '400g',
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'atta-biscuits' },
+    update: {},
+    create: {
+      name: 'Atta Biscuits',
+      slug: 'atta-biscuits',
+      description: 'Wholesome atta (wheat) biscuits baked to perfection. Healthy and delicious.',
+      shortDesc: 'Wholesome wheat biscuits',
+      categoryId: biscuitsCategory.id,
+      basePrice: 149,
+      images: ['/placeholder-product.svg'],
+      tags: ['biscuit', 'healthy'],
+      occasion: [],
+      weight: '400g',
+      isVeg: true,
+    },
+  })
+
+  // Namkeen products
+  await prisma.product.upsert({
+    where: { slug: 'mathri-namkeen' },
+    update: {},
+    create: {
+      name: 'Mathri',
+      slug: 'mathri-namkeen',
+      description: 'Crispy and flaky traditional mathri, seasoned with ajwain and salt.',
+      shortDesc: 'Crispy traditional mathri',
+      categoryId: namkeenCategory.id,
+      basePrice: 179,
+      images: ['/placeholder-product.svg'],
+      tags: ['namkeen', 'traditional'],
+      occasion: ['diwali'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'mix-namkeen' },
+    update: {},
+    create: {
+      name: 'Mix Namkeen',
+      slug: 'mix-namkeen',
+      description: 'Assorted mix namkeen with sev, peanuts, and spiced chivda.',
+      shortDesc: 'Assorted mix namkeen',
+      categoryId: namkeenCategory.id,
+      basePrice: 199,
+      images: ['/placeholder-product.svg'],
+      tags: ['namkeen', 'snack'],
+      occasion: ['diwali'],
+      weight: '500g',
+      isVeg: true,
+    },
+  })
+
+  // Decoration products
+  await prisma.product.upsert({
+    where: { slug: 'sparkling-candle' },
+    update: {},
+    create: {
+      name: 'Sparkling Birthday Candle',
+      slug: 'sparkling-candle',
+      description: 'Sparkling fountain candle that creates a magical effect on any cake.',
+      shortDesc: 'Sparkling fountain candle',
+      categoryId: decorationsCategory.id,
+      basePrice: 149,
+      images: ['/placeholder-product.svg'],
+      tags: ['decoration', 'candle'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'happy-birthday-banner' },
+    update: {},
+    create: {
+      name: 'Happy Birthday Banner',
+      slug: 'happy-birthday-banner',
+      description: 'Gold foil "Happy Birthday" banner for party decoration.',
+      shortDesc: 'Gold foil birthday banner',
+      categoryId: decorationsCategory.id,
+      basePrice: 199,
+      images: ['/placeholder-product.svg'],
+      tags: ['decoration', 'banner'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  // Festive Hamper products
+  await prisma.product.upsert({
+    where: { slug: 'diwali-dry-fruit-hamper' },
+    update: {},
+    create: {
+      name: 'Diwali Dry Fruit Hamper',
+      slug: 'diwali-dry-fruit-hamper',
+      description: 'Premium Diwali hamper with almonds, cashews, pistachios, and raisins in a decorative box.',
+      shortDesc: 'Premium dry fruit Diwali hamper',
+      categoryId: festiveCategory.id,
+      basePrice: 1549,
+      images: ['/placeholder-product.svg'],
+      tags: ['hamper', 'premium', 'dry-fruits'],
+      occasion: ['diwali'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'festive-sweet-box' },
+    update: {},
+    create: {
+      name: 'Festive Sweet Box',
+      slug: 'festive-sweet-box',
+      description: 'Assorted sweet box with kaju katli, gulab jamun, rasmalai, and barfi for festive gifting.',
+      shortDesc: 'Assorted festive sweet box',
+      categoryId: festiveCategory.id,
+      basePrice: 999,
+      images: ['/placeholder-product.svg'],
+      tags: ['hamper', 'sweets', 'festive'],
+      occasion: ['diwali', 'rakhi'],
+      isVeg: true,
+    },
+  })
+
+  // Chocolate products
+  await prisma.product.upsert({
+    where: { slug: 'assorted-chocolate-box' },
+    update: {},
+    create: {
+      name: 'Assorted Chocolate Box',
+      slug: 'assorted-chocolate-box',
+      description: 'Premium assorted chocolate box with dark, milk, and white chocolates. 24 pieces.',
+      shortDesc: '24-piece assorted chocolate box',
+      categoryId: chocolatesCategory.id,
+      basePrice: 899,
+      images: ['/placeholder-product.svg'],
+      tags: ['chocolate', 'premium'],
+      occasion: ['birthday', 'valentines', 'anniversary'],
+      isVeg: true,
+    },
+  })
+
+  await prisma.product.upsert({
+    where: { slug: 'dark-chocolate-truffles-box' },
+    update: {},
+    create: {
+      name: 'Dark Chocolate Truffles',
+      slug: 'dark-chocolate-truffles-box',
+      description: 'Handcrafted dark chocolate truffles in a luxury gift box. 12 pieces.',
+      shortDesc: '12-piece dark chocolate truffles',
+      categoryId: chocolatesCategory.id,
+      basePrice: 699,
+      images: ['/placeholder-product.svg'],
+      tags: ['chocolate', 'premium', 'dark'],
+      occasion: ['valentines', 'anniversary'],
+      isVeg: true,
+    },
+  })
+
   // ==================== PRODUCT ADDONS ====================
   console.log('Creating product addons...')
 
@@ -1006,6 +1578,108 @@ async function main() {
           productId: product.id,
           name: addon.name,
           price: addon.price,
+          isActive: true,
+        },
+      })
+    }
+  }
+
+  // ==================== PRODUCT VARIATIONS (Weight) ====================
+  console.log('Creating product weight variations...')
+
+  // Standard cake weight tiers (Indian bakery standard)
+  // basePrice in product = 500g price, variations provide 1kg, 1.5kg, 2kg, 3kg prices
+  const cakeWeightVariations = [
+    { label: '500g (Half Kg)', value: '500', sortOrder: 0, isDefault: true, multiplier: 1 },
+    { label: '1 Kg', value: '1000', sortOrder: 1, isDefault: false, multiplier: 1.85 },
+    { label: '1.5 Kg', value: '1500', sortOrder: 2, isDefault: false, multiplier: 2.7 },
+    { label: '2 Kg', value: '2000', sortOrder: 3, isDefault: false, multiplier: 3.5 },
+    { label: '3 Kg', value: '3000', sortOrder: 4, isDefault: false, multiplier: 5.0 },
+  ]
+
+  const cakeProductsForVariations = [
+    chocolateTruffleCake,  // base 599
+    redVelvetCake,         // base 699
+    blackForestCake,       // base 549
+    butterscotchCake,      // base 499
+    pineappleCake,         // base 549
+    egglessChocolateCake,  // base 649
+  ]
+
+  for (const product of cakeProductsForVariations) {
+    for (const v of cakeWeightVariations) {
+      const price = Math.round(Number(product.basePrice) * v.multiplier)
+      await prisma.productVariation.upsert({
+        where: {
+          productId_type_value: { productId: product.id, type: 'weight', value: v.value },
+        },
+        update: {},
+        create: {
+          productId: product.id,
+          type: 'weight',
+          label: v.label,
+          value: v.value,
+          price,
+          sortOrder: v.sortOrder,
+          isDefault: v.isDefault,
+          isActive: true,
+        },
+      })
+    }
+  }
+
+  // Photo cake variations (start at 1kg since photo print needs surface area)
+  const photoCakeVariations = [
+    { label: '1 Kg', value: '1000', sortOrder: 0, isDefault: true, price: 899 },
+    { label: '1.5 Kg', value: '1500', sortOrder: 1, isDefault: false, price: 1349 },
+    { label: '2 Kg', value: '2000', sortOrder: 2, isDefault: false, price: 1749 },
+    { label: '3 Kg', value: '3000', sortOrder: 3, isDefault: false, price: 2499 },
+  ]
+
+  for (const v of photoCakeVariations) {
+    await prisma.productVariation.upsert({
+      where: {
+        productId_type_value: { productId: photoCake.id, type: 'weight', value: v.value },
+      },
+      update: {},
+      create: {
+        productId: photoCake.id,
+        type: 'weight',
+        label: v.label,
+        value: v.value,
+        price: v.price,
+        sortOrder: v.sortOrder,
+        isDefault: v.isDefault,
+        isActive: true,
+      },
+    })
+  }
+
+  // Sweet weight variations (250g, 500g, 1kg)
+  const sweetWeightVariations = [
+    { label: '250g', value: '250', sortOrder: 0, isDefault: false, multiplier: 0.55 },
+    { label: '500g', value: '500', sortOrder: 1, isDefault: true, multiplier: 1 },
+    { label: '1 Kg', value: '1000', sortOrder: 2, isDefault: false, multiplier: 1.9 },
+  ]
+
+  const sweetProducts = [milkCake, kalakandSweet, kajuKatli, gulabJamun, rasmalai]
+
+  for (const product of sweetProducts) {
+    for (const v of sweetWeightVariations) {
+      const price = Math.round(Number(product.basePrice) * v.multiplier)
+      await prisma.productVariation.upsert({
+        where: {
+          productId_type_value: { productId: product.id, type: 'weight', value: v.value },
+        },
+        update: {},
+        create: {
+          productId: product.id,
+          type: 'weight',
+          label: v.label,
+          value: v.value,
+          price,
+          sortOrder: v.sortOrder,
+          isDefault: v.isDefault,
           isActive: true,
         },
       })

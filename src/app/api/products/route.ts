@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
         take: pageSize,
         include: {
           category: { select: { id: true, name: true, slug: true } },
+          variations: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
           addons: { where: { isActive: true } },
         },
       }),

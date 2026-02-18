@@ -181,6 +181,7 @@ Uses @netlify/plugin-nextjs for Next.js support. Create netlify.toml at project 
 │   │   │   ├── product-card.tsx    # Card used in grids
 │   │   │   ├── product-gallery.tsx # Image gallery on detail page
 │   │   │   ├── delivery-slot-picker.tsx  # Date + slot selection
+│   │   │   ├── variation-selector.tsx  # Weight/size variation buttons
 │   │   │   ├── addon-selector.tsx  # Add-on items (flowers + chocolate etc.)
 │   │   │   └── review-list.tsx     # Customer reviews
 │   │   │
@@ -565,6 +566,7 @@ model Product {
   updatedAt       DateTime @updatedAt
 
   category        Category       @relation(fields: [categoryId], references: [id])
+  variations      ProductVariation[]
   vendorProducts  VendorProduct[]
   orderItems      OrderItem[]
   cartItems       CartItem[]
@@ -572,6 +574,24 @@ model Product {
   addons          ProductAddon[]
 
   @@map("products")
+}
+
+model ProductVariation {
+  id        String  @id @default(cuid())
+  productId String
+  type      String  // "weight", "size", "pack", "tier"
+  label     String  // Display label: "500g", "1 Kg", "2 Kg"
+  value     String  // Sortable value: "500", "1000", "2000" (grams for weight)
+  price     Decimal @db.Decimal(10, 2) // Absolute price for this variation
+  sku       String? // Optional SKU suffix
+  sortOrder Int     @default(0)
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, type, value])
+  @@map("product_variations")
 }
 
 model ProductAddon {
@@ -675,13 +695,15 @@ enum BusinessModel {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  productId String
-  name      String
-  quantity  Int
-  price     Decimal @db.Decimal(10, 2)
-  addons    Json?
+  id             String  @id @default(cuid())
+  orderId        String
+  productId      String
+  name           String
+  quantity       Int
+  price          Decimal @db.Decimal(10, 2)
+  addons         Json?
+  variationId    String? // ID of selected ProductVariation
+  variationLabel String? // Snapshot: "1 Kg", "2 Kg" etc.
 
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
@@ -792,6 +814,7 @@ model CartItem {
   productId    String
   quantity     Int      @default(1)
   addons       Json?
+  variationId  String?  // ID of selected ProductVariation
   deliveryDate DateTime? @db.Date
   deliverySlot String?
   createdAt    DateTime @default(now())
@@ -1187,6 +1210,62 @@ Execute in this order:
 13. Brand name is "Gifts Cart India", business entity is "Cital Enterprises". Never use "GiftIndia" in any user-facing text.
 14. Partner/referral pages show "[Partner Name] managed by Cital Enterprises" — never hide the Cital Enterprises attribution.
 15. FSSAI license number 12726011000025 must be displayed on the website footer (food delivery compliance).
+16. **Product variations** — Products like cakes and sweets support weight variations (500g, 1kg, 2kg etc.) via the `ProductVariation` model. The `basePrice` on Product is the starting/default price. When variations exist, the `VariationSelector` component renders clickable weight buttons and the selected variation's price is used throughout cart/checkout. Addons are applied on top of the variation price.
+
+---
+
+## Product Variation System
+
+### How Weight/Size Variations Work
+
+Inspired by WooCommerce product addons + Indian bakery standards (Winni, FNP, Sahni Bakery):
+
+1. **Variations** = Product attributes that change the base price (weight, size, tier, pack)
+2. **Addons** = Optional extras that add to the price (candles, greeting card, topper)
+3. Each `ProductVariation` has an **absolute price** (not a multiplier)
+4. One variation per type can be marked `isDefault: true` — this is auto-selected on page load
+5. The `Product.basePrice` = price of the default variation (or lowest price, for "Starting from" display)
+
+### Variation Types
+| Type | Example Values | Used By |
+|------|---------------|---------|
+| `weight` | 500g, 1 Kg, 1.5 Kg, 2 Kg, 3 Kg, 5 Kg | Cakes, Sweets, Dry Cakes, Namkeen |
+| `size` | Small, Medium, Large | Flower bouquets, Gift baskets |
+| `pack` | 6 pcs, 12 pcs, 24 pcs | Pastries, Chocolates, Biscuits |
+| `tier` | 1 Tier, 2 Tier, 3 Tier | Wedding cakes |
+
+### Standard Cake Weight Tiers (India)
+| Weight | Serves | Typical Price Multiplier |
+|--------|--------|------------------------|
+| 500g (Half Kg) | 4-6 | 1x (base) |
+| 1 Kg | 10-12 | ~1.85x |
+| 1.5 Kg | 15-18 | ~2.7x |
+| 2 Kg | 20-25 | ~3.5x |
+| 3 Kg | 30-35 | ~5x |
+| 5 Kg | 50+ | ~8x |
+
+### Data Flow
+- **Product page**: `VariationSelector` component → user picks weight → `selectedVariation` state updates → price recalculates
+- **Add to cart**: `addItem(product, qty, addons, variation)` → stored in Zustand `CartItemState.variation`
+- **Cart display**: Shows `variation.label` (e.g., "1 Kg") and uses `variation.price` for calculations
+- **Order creation**: `OrderItem.variationId` + `OrderItem.variationLabel` snapshot the selection
+- **API**: Both `/api/products` and `/api/products/[id]` include `variations` in their response
+
+### Key Components
+- `src/components/product/variation-selector.tsx` — Renders variation buttons grouped by type
+- `src/hooks/use-cart.ts` — `CartItemState.variation: VariationSelection | null`
+- `src/types/index.ts` — `ProductVariation`, `VariationSelection` interfaces
+
+### Categories (Sahni Bakery inspired)
+
+**Top-level categories:**
+Cakes, Flowers, Combos, Plants, Gifts, Pastries, Sweets, Dry Cakes, Biscuits & Rusks, Namkeen & Snacks, Decoration Items, Festive Hampers, Chocolates
+
+**Cake subcategories:**
+Chocolate Cakes, Fruit Cakes, Photo Cakes, Eggless Cakes, Premium Cakes, Fondant Cakes, Wedding Cakes, Anniversary Cakes, Customized Cakes, Valentine's Cakes
+
+**Flower subcategories:**
+Roses, Mixed Bouquets, Premium Flowers
 ```
 
 ===COPY END===
