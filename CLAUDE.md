@@ -1266,6 +1266,33 @@ Chocolate Cakes, Fruit Cakes, Photo Cakes, Eggless Cakes, Premium Cakes, Fondant
 
 **Flower subcategories:**
 Roses, Mixed Bouquets, Premium Flowers
+
+---
+
+## Known Issues & Database Notes
+
+### product_variations table was missing from initial migration
+The `product_variations` table was not created during the initial `prisma db push`. It was created manually via SQL. If re-running migrations or setting up a fresh database, verify this table exists. The `/api/products` endpoint will return 500 if it's missing because the Prisma query includes `include: { variations: true }`.
+
+### Frontend city parameter not passed to product API
+The `trending-products.tsx` and `category/[slug]/page.tsx` components do not pass the `city` query parameter to `/api/products`. The API's vendor-availability filter (`where.vendorProducts.some`) is gated behind `if (city)`, so it currently returns all active products. If city-based filtering is enforced in the future, these components must use the `useCity()` hook to pass the selected city slug.
+
+### Zod import path
+All Zod schemas in `src/lib/validations.ts` import from `zod/v4` (not `zod`). Ensure the installed zod version supports this import path.
+
+### Additional lib files beyond spec
+The following lib files were added beyond the original Phase 1 spec:
+- `src/lib/stripe.ts` — Stripe checkout integration
+- `src/lib/paypal.ts` — PayPal REST API integration
+- `src/lib/email.ts` — Transactional email helpers
+- `src/lib/geo.ts` — IP-based geolocation for currency resolution
+
+### Additional providers beyond spec
+- `src/components/providers/currency-provider.tsx` — Multi-currency context (resolves via `/api/currencies/resolve`)
+- `src/hooks/use-currency.ts` — Hook for currency formatting
+
+### Admin panel (partially built)
+Admin pages exist for: dashboard, orders, settings/currencies, vendors, products, cities. These are functional shells with real API connections, not just placeholder "Coming in Phase 3" pages.
 ```
 
 ===COPY END===
