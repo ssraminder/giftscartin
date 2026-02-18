@@ -250,17 +250,20 @@ See PROGRESS.md section 1I for current task list.
 
 -----
 
-## Planned Phases (Not Yet Built)
-
-### Phase A — Schema Foundation
+### Phase A — Schema Foundation ✅ COMPLETE (2026-02-18)
 
 New tables: product_attributes, product_attribute_options, product_variations,
 product_addon_groups, product_addon_options, product_upsells,
 vendor_product_variations, category_addon_templates,
 category_addon_template_options, seo_settings.
 New columns on products and categories: SEO fields.
-New enum: AddonType (CHECKBOX, RADIO, SELECT, TEXT_INPUT, TEXTAREA, FILE_UPLOAD).
-New Supabase bucket: order-uploads (private).
+New enums: ProductType (SIMPLE, VARIABLE), AddonType (CHECKBOX, RADIO, SELECT, TEXT_INPUT, TEXTAREA, FILE_UPLOAD).
+ProductVariation model migrated from simple type/label/value to JSONB attributes.
+Existing product_addons migrated to product_addon_groups structure.
+Cakes category addon templates seeded (Name on Cake, Message Card).
+SQL migration: prisma/migrations/phase-a-schema-foundation.sql
+
+## Planned Phases (Not Yet Built)
 
 ### Phase B — SEO Infrastructure
 
