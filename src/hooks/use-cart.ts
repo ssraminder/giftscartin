@@ -15,11 +15,14 @@ export interface CartItemState {
 
 interface CartStore {
   items: CartItemState[]
+  couponCode: string | null
+  couponDiscount: number
   addItem: (product: Product, quantity?: number, addons?: AddonSelection[]) => void
   removeItem: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   updateAddons: (productId: string, addons: AddonSelection[]) => void
   updateDelivery: (productId: string, date: string | null, slot: string | null) => void
+  setCoupon: (code: string | null, discount: number) => void
   clearCart: () => void
   getItemCount: () => number
   getSubtotal: () => number
@@ -29,6 +32,8 @@ export const useCart = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      couponCode: null,
+      couponDiscount: 0,
 
       addItem: (product, quantity = 1, addons = []) => {
         set((state) => {
@@ -94,7 +99,9 @@ export const useCart = create<CartStore>()(
         }))
       },
 
-      clearCart: () => set({ items: [] }),
+      setCoupon: (code, discount) => set({ couponCode: code, couponDiscount: discount }),
+
+      clearCart: () => set({ items: [], couponCode: null, couponDiscount: 0 }),
 
       getItemCount: () => {
         return get().items.reduce((sum, i) => sum + i.quantity, 0)

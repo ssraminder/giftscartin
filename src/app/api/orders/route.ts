@@ -2,8 +2,38 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
-import { createOrderSchema, paginationSchema } from '@/lib/validations'
+import { paginationSchema } from '@/lib/validations'
 import { generateOrderNumber } from '@/lib/utils'
+import { z } from 'zod/v4'
+
+const inlineAddressSchema = z.object({
+  name: z.string().min(2).max(100),
+  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid phone'),
+  address: z.string().min(5).max(500),
+  landmark: z.string().max(200).optional(),
+  city: z.string().min(2).max(100),
+  state: z.string().min(2).max(100),
+  pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode'),
+})
+
+const createOrderBodySchema = z.object({
+  items: z.array(z.object({
+    productId: z.string().min(1),
+    quantity: z.number().int().min(1).max(10),
+    addons: z.array(z.object({
+      addonId: z.string(),
+      name: z.string(),
+      price: z.number(),
+    })).optional(),
+  })).min(1),
+  deliveryDate: z.string().min(1, 'Delivery date is required'),
+  deliverySlot: z.string().min(1, 'Delivery slot is required'),
+  addressId: z.string().min(1),
+  address: inlineAddressSchema.optional(),
+  giftMessage: z.string().max(500).optional(),
+  specialInstructions: z.string().max(500).optional(),
+  couponCode: z.string().max(50).optional(),
+})
 
 async function getSessionUser() {
   const session = await getServerSession(authOptions)
@@ -68,7 +98,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Create a new order from cart
+// POST: Create a new order
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser()
@@ -80,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const parsed = createOrderSchema.safeParse(body)
+    const parsed = createOrderBodySchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -89,13 +119,37 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { addressId, deliveryDate, deliverySlot, giftMessage, specialInstructions, couponCode } =
-      parsed.data
+    const {
+      items: orderItems,
+      addressId,
+      address: inlineAddress,
+      deliveryDate,
+      deliverySlot,
+      giftMessage,
+      specialInstructions,
+      couponCode,
+    } = parsed.data
 
-    // Verify address belongs to user
-    const address = await prisma.address.findFirst({
-      where: { id: addressId, userId: user.id },
-    })
+    // Resolve address: create inline or look up existing
+    let address
+    if (inlineAddress && (addressId === 'inline' || addressId === '__CREATE__')) {
+      address = await prisma.address.create({
+        data: {
+          userId: user.id,
+          name: inlineAddress.name,
+          phone: inlineAddress.phone,
+          address: inlineAddress.address,
+          landmark: inlineAddress.landmark || null,
+          city: inlineAddress.city,
+          state: inlineAddress.state,
+          pincode: inlineAddress.pincode,
+        },
+      })
+    } else {
+      address = await prisma.address.findFirst({
+        where: { id: addressId, userId: user.id },
+      })
+    }
 
     if (!address) {
       return NextResponse.json(
@@ -104,28 +158,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch cart items
-    const cartItems = await prisma.cartItem.findMany({
-      where: { userId: user.id },
-      include: { product: true },
+    // Verify each product exists and is active, calculate subtotal
+    const productIds = orderItems.map((item) => item.productId)
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, isActive: true },
     })
 
-    if (cartItems.length === 0) {
+    if (products.length !== productIds.length) {
+      const foundIds = new Set(products.map((p) => p.id))
+      const missing = productIds.filter((id) => !foundIds.has(id))
       return NextResponse.json(
-        { success: false, error: 'Cart is empty' },
+        { success: false, error: `Products not found or inactive: ${missing.join(', ')}` },
         { status: 400 }
       )
     }
 
-    // Calculate subtotal
-    const subtotal = cartItems.reduce((sum, item) => {
-      const itemPrice = Number(item.product.basePrice) * item.quantity
-      const addonTotal = Array.isArray(item.addons)
-        ? (item.addons as Array<{ price: number }>).reduce((a, addon) => a + addon.price, 0) *
-          item.quantity
-        : 0
-      return sum + itemPrice + addonTotal
-    }, 0)
+    const productMap = new Map(products.map((p) => [p.id, p]))
+
+    // Calculate subtotal from product basePrice * quantity
+    let subtotal = 0
+    const itemsForOrder = orderItems.map((item) => {
+      const product = productMap.get(item.productId)!
+      const basePrice = Number(product.basePrice)
+      const addonTotal = item.addons?.reduce((sum, a) => sum + a.price, 0) ?? 0
+      const lineTotal = (basePrice + addonTotal) * item.quantity
+      subtotal += lineTotal
+
+      return {
+        productId: product.id,
+        name: product.name,
+        quantity: item.quantity,
+        price: product.basePrice,
+        addons: item.addons ?? undefined,
+      }
+    })
 
     // Calculate delivery charge based on pincode zone
     let deliveryCharge = 0
@@ -149,8 +215,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check for active delivery surcharges on deliveryDate
+    let surcharge = 0
+    const deliveryDateObj = new Date(deliveryDate)
+    const surcharges = await prisma.deliverySurcharge.findMany({
+      where: {
+        isActive: true,
+        startDate: { lte: deliveryDateObj },
+        endDate: { gte: deliveryDateObj },
+      },
+    })
+
+    for (const s of surcharges) {
+      surcharge += Number(s.amount)
+    }
+
     // Apply coupon discount
     let discount = 0
+    let appliedCouponId: string | null = null
     if (couponCode) {
       const coupon = await prisma.coupon.findUnique({
         where: { code: couponCode },
@@ -164,29 +246,36 @@ export async function POST(request: NextRequest) {
         subtotal >= Number(coupon.minOrderAmount) &&
         (coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit)
       ) {
-        if (coupon.discountType === 'percentage') {
-          discount = (subtotal * Number(coupon.discountValue)) / 100
-          if (coupon.maxDiscount) {
-            discount = Math.min(discount, Number(coupon.maxDiscount))
-          }
-        } else {
-          discount = Number(coupon.discountValue)
-        }
-
-        // Increment coupon usage
-        await prisma.coupon.update({
-          where: { id: coupon.id },
-          data: { usedCount: { increment: 1 } },
+        // Check per-user limit
+        const userUsage = await prisma.order.count({
+          where: {
+            userId: user.id,
+            couponCode: coupon.code,
+            status: { notIn: ['CANCELLED', 'REFUNDED'] },
+          },
         })
+
+        if (userUsage < coupon.perUserLimit) {
+          if (coupon.discountType === 'percentage') {
+            discount = (subtotal * Number(coupon.discountValue)) / 100
+            if (coupon.maxDiscount) {
+              discount = Math.min(discount, Number(coupon.maxDiscount))
+            }
+          } else {
+            discount = Number(coupon.discountValue)
+          }
+          discount = Math.round(Math.min(discount, subtotal))
+          appliedCouponId = coupon.id
+        }
       }
     }
 
-    const total = subtotal + deliveryCharge - discount
+    const total = subtotal + deliveryCharge + surcharge - discount
 
     // Determine city code for order number
     const cityCode = zone?.city.slug.substring(0, 3).toUpperCase() || 'GEN'
 
-    // Find an available vendor for the pincode
+    // Find best available vendor: pincode match, APPROVED, isOnline, sort by rating DESC
     const vendorPincode = await prisma.vendorPincode.findFirst({
       where: {
         pincode: address.pincode,
@@ -194,9 +283,10 @@ export async function POST(request: NextRequest) {
         vendor: { status: 'APPROVED' },
       },
       include: { vendor: true },
+      orderBy: { vendor: { rating: 'desc' } },
     })
 
-    // Create order within a transaction
+    // Create order in transaction
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
@@ -204,24 +294,18 @@ export async function POST(request: NextRequest) {
           userId: user.id,
           vendorId: vendorPincode?.vendor.id ?? null,
           addressId,
-          deliveryDate: new Date(deliveryDate),
+          deliveryDate: deliveryDateObj,
           deliverySlot,
           deliveryCharge,
           subtotal,
           discount,
-          surcharge: 0,
+          surcharge,
           total,
-          giftMessage,
-          specialInstructions,
-          couponCode,
+          giftMessage: giftMessage || null,
+          specialInstructions: specialInstructions || null,
+          couponCode: couponCode || null,
           items: {
-            create: cartItems.map((item) => ({
-              productId: item.product.id,
-              name: item.product.name,
-              quantity: item.quantity,
-              price: item.product.basePrice,
-              addons: item.addons ?? undefined,
-            })),
+            create: itemsForOrder,
           },
           statusHistory: {
             create: {
@@ -236,6 +320,14 @@ export async function POST(request: NextRequest) {
           statusHistory: true,
         },
       })
+
+      // Increment coupon usage if applied
+      if (appliedCouponId) {
+        await tx.coupon.update({
+          where: { id: appliedCouponId },
+          data: { usedCount: { increment: 1 } },
+        })
+      }
 
       // Clear the user's cart
       await tx.cartItem.deleteMany({ where: { userId: user.id } })

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { serviceabilitySchema } from '@/lib/validations'
+import { z } from 'zod/v4'
+
+const serviceabilitySchema = z.object({
+  pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode (6 digits)'),
+  productId: z.string().optional(),
+  citySlug: z.string().optional(),
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,13 +20,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { pincode, productId } = parsed.data
+    const { pincode, productId, citySlug } = parsed.data
 
     // Find zones that service this pincode
     const zones = await prisma.cityZone.findMany({
       where: {
         pincodes: { has: pincode },
         isActive: true,
+        ...(citySlug ? { city: { slug: citySlug } } : {}),
       },
       include: {
         city: {
@@ -40,8 +47,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
+          isServiceable: false,
           serviceable: false,
           message: 'Sorry, we do not deliver to this pincode yet.',
+          vendorCount: 0,
+          deliveryCharge: 0,
+          availableSlots: [],
+          freeDeliveryAbove: 0,
         },
       })
     }
@@ -51,8 +63,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: {
+          isServiceable: false,
           serviceable: false,
           message: 'Delivery to this area is temporarily unavailable.',
+          vendorCount: 0,
+          deliveryCharge: 0,
+          availableSlots: [],
+          freeDeliveryAbove: 0,
         },
       })
     }
@@ -95,29 +112,54 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const availableSlots = deliveryConfigs
-      .filter((dc) => dc.slot.isActive)
-      .map((dc) => ({
-        id: dc.slot.id,
-        name: dc.slot.name,
-        slug: dc.slot.slug,
-        startTime: dc.slot.startTime,
-        endTime: dc.slot.endTime,
-        charge: dc.chargeOverride ?? dc.slot.baseCharge,
+    // If no city delivery configs, fall back to all active delivery slots
+    let availableSlots
+    if (deliveryConfigs.length > 0) {
+      availableSlots = deliveryConfigs
+        .filter((dc) => dc.slot.isActive)
+        .map((dc) => ({
+          id: dc.slot.id,
+          name: dc.slot.name,
+          slug: dc.slot.slug,
+          startTime: dc.slot.startTime,
+          endTime: dc.slot.endTime,
+          charge: Number(dc.chargeOverride ?? dc.slot.baseCharge),
+        }))
+    } else {
+      const allSlots = await prisma.deliverySlot.findMany({
+        where: { isActive: true },
+      })
+      availableSlots = allSlots.map((slot) => ({
+        id: slot.id,
+        name: slot.name,
+        slug: slot.slug,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        charge: Number(slot.baseCharge),
       }))
+    }
+
+    const baseCharge = Number(zone.city.baseDeliveryCharge)
+    const zoneExtra = Number(zone.extraCharge)
+    const deliveryCharge = baseCharge + zoneExtra
+    const freeDeliveryAbove = Number(zone.city.freeDeliveryAbove)
 
     return NextResponse.json({
       success: true,
       data: {
+        isServiceable: true,
         serviceable: true,
         city: zone.city,
         zone: {
           id: zone.id,
           name: zone.name,
-          extraCharge: zone.extraCharge,
+          extraCharge: Number(zone.extraCharge),
         },
         vendorCount,
         productAvailable,
+        deliveryCharge,
+        freeDeliveryAbove,
+        availableSlots,
         deliverySlots: availableSlots,
       },
     })
