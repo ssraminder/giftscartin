@@ -13,7 +13,7 @@
 | **Domain** | giftscart.in (production, eventual) |
 | **Live Staging** | https://giftscart.netlify.app |
 | **Supabase** | https://saeditdtacprxcnlgips.supabase.co |
-| **Current Phase** | Phase 1 (core build) — ~98% complete |
+| **Current Phase** | Phase 1 & 2 complete — ready for Phase 3 |
 | **Last Updated** | 2026-02-18 |
 
 ### What's Done
@@ -39,9 +39,17 @@
 ### What's NOT Done
 - No MSG91 SMS integration (using Brevo email OTP instead)
 - Vendor dashboard is Phase 3 placeholder
-- No `[city]/page.tsx` city landing page
-- No real product images (all use `/placeholder-product.svg`)
 - `prisma db push` needed to deploy ProductVariation + CurrencyConfig + Payment gateway fields to Supabase
+
+### Previously Missing — Now Done
+- City landing page (`[city]/page.tsx`) — implemented with dynamic city data from API
+- Product images — 27 products updated with Supabase storage URLs (PR #41)
+- Logo SVG (`public/logo.svg`) — brand logo with gift box icon
+- Category icons (`public/icons/`) — SVG icons for cakes, flowers, combos, plants, gifts
+- Coupon validation API (`/api/coupons/validate`) — server-side validation with usage limits
+- Admin order actions — wired up in admin order detail page (PR #40)
+- Cart price bug — fixed Prisma Decimal string concatenation (PR #44)
+- TypeScript — compiles cleanly (0 errors with dependencies installed)
 
 ---
 
@@ -74,21 +82,21 @@
 | Path | Expected | Actual | Status |
 |------|----------|--------|--------|
 | `src/app/layout.tsx` | Yes | Yes | ✅ Exists & Working |
-| `src/app/page.tsx` | Yes (redirect) | No | ❌ Missing (shop page handles root) |
+| `src/app/page.tsx` | Yes (redirect) | N/A | ✅ Not needed — `(shop)/page.tsx` route group serves `/` |
 | `src/app/globals.css` | Yes | Yes | ✅ Exists & Working |
 | `src/app/(auth)/login/page.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/(auth)/register/page.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/(shop)/layout.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/(shop)/page.tsx` | Yes | Yes | ✅ Exists & Working |
-| `src/app/(shop)/[city]/page.tsx` | Yes | No | ❌ Missing |
-| `src/app/(shop)/category/[slug]/page.tsx` | Yes | Yes | ⚠️ Exists but uses hardcoded data |
-| `src/app/(shop)/product/[slug]/page.tsx` | Yes | Yes | ⚠️ Exists but uses hardcoded addons/reviews |
+| `src/app/(shop)/[city]/page.tsx` | Yes | Yes | ✅ Exists & Working (dynamic city data from API) |
+| `src/app/(shop)/category/[slug]/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data) |
+| `src/app/(shop)/product/[slug]/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data with variations) |
 | `src/app/(shop)/cart/page.tsx` | Yes | Yes | ✅ Exists & Working (Zustand) |
-| `src/app/(shop)/checkout/page.tsx` | Yes | Yes | ⚠️ Exists but order creation is placeholder |
+| `src/app/(shop)/checkout/page.tsx` | Yes | Yes | ✅ Exists & Working (multi-gateway checkout) |
 | `src/app/(shop)/orders/page.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/(shop)/orders/[id]/page.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/vendor/layout.tsx` | Yes | Yes | ✅ Exists (Phase 3 shell) |
-| `src/app/vendor/page.tsx` | Yes | Yes | ⚠️ Phase 3 placeholder |
+| `src/app/vendor/page.tsx` | Yes | Yes | ✅ Phase 3 placeholder (intentional) |
 | `src/app/admin/layout.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/admin/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data) |
 | `src/app/admin/orders/page.tsx` | Not in spec | Yes | ✅ Bonus — admin order list |
@@ -188,9 +196,9 @@
 
 | Path | Expected | Actual | Status |
 |------|----------|--------|--------|
-| `public/logo.svg` | Yes | No | ❌ Missing |
+| `public/logo.svg` | Yes | Yes | ✅ Brand logo with gift box icon |
 | `public/placeholder-product.svg` | Yes | Yes | ✅ |
-| `public/icons/` | Yes | No | ❌ Missing directory |
+| `public/icons/` | Yes | Yes | ✅ Category icons (cakes, flowers, combos, plants, gifts) |
 
 ---
 
@@ -295,7 +303,7 @@ All 32 components exist. Flagged items:
 
 | Component | Issue |
 |-----------|-------|
-| `components/home/trending-products.tsx` | Uses hardcoded product array with `/placeholder-product.svg` images |
+| `components/home/trending-products.tsx` | ✅ Now fetches from `/api/products` API |
 | `components/cart/coupon-input.tsx` | Coupon validation is client-side only |
 | `components/product/product-card.tsx` | Falls back to `/placeholder-product.svg` |
 | `components/product/addon-selector.tsx` | Falls back to `/placeholder-product.svg` |
@@ -358,39 +366,38 @@ No components contain "TODO", "coming soon", or "Phase 3" text.
 The OtpVerification Prisma model has an `email` field (line 42-43 in schema) while the CLAUDE.md spec defines it with a `phone` field. The implementation currently uses **email-based OTP via Brevo** instead of **phone-based OTP via MSG91**. This is a deliberate implementation choice but diverges from the original spec.
 
 ### TypeScript Errors
-All TypeScript errors are caused by missing `node_modules/` (dependencies not installed in this environment). When `npm install` is run, these resolve. Error categories:
-- `Cannot find module 'react'` — missing dependency
-- `Cannot find module '@prisma/client'` — missing dependency
-- `Cannot find module 'zustand'` — missing dependency
-- Implicit `any` types in some UI components (select.tsx, sheet.tsx, use-cart.ts)
-
-**Total TS errors:** ~100 (all module-resolution; would reduce to ~20 implicit-any after npm install)
+**Status: CLEAN** — `npx tsc --noEmit` passes with 0 errors when `node_modules/` is installed. Previous errors were all caused by missing dependencies.
 
 ---
 
 ## 1I — What's Next (Priority Order)
 
+### Completed Since Last Update
+- ~~Add real product images~~ — Done (PR #41, 27 products with Supabase URLs)
+- ~~Fix implicit-any TypeScript errors~~ — Done (0 TS errors with deps installed)
+- ~~Create city landing page~~ — Done (`[city]/page.tsx` with dynamic API data)
+- ~~Add coupon validation API~~ — Done (`/api/coupons/validate` with full server-side logic)
+- ~~Implement admin order actions~~ — Done (PR #40)
+- ~~Add public/logo.svg and public/icons/~~ — Done (brand logo + 5 category icons)
+- ~~Fix cart price bug~~ — Done (PR #44, Prisma Decimal string concatenation)
+
+### Remaining Work
+
 1. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
 2. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
-3. **Add real product images** — Upload product images to Supabase Storage, update seed data with real URLs.
+3. **Phase 3: Vendor dashboard** — Full vendor management UI (currently placeholder).
 
-4. **Fix implicit-any TypeScript errors** — Add proper type annotations to select.tsx, sheet.tsx, use-cart.ts (~20 errors).
+4. **Phase 3: Partner/referral system** — Partner branding, subdomain routing, and earnings tracking.
 
-5. **Create city landing page** — `src/app/(shop)/[city]/page.tsx` for city-specific browsing.
+5. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
 
-6. **Add coupon validation API** — Server-side coupon validation endpoint.
+6. **Add coupon admin CRUD** — Admin UI for creating/managing coupons (no admin page exists yet).
 
-7. **Implement admin order actions** — Wire up quote view, edit order, cancel order buttons in admin order detail.
+7. **Add review submission** — Allow customers to submit reviews on delivered orders.
 
-8. **Add public/logo.svg and public/icons/** — Brand assets.
-
-9. **Phase 3: Vendor dashboard** — Full vendor management UI.
-
-10. **Phase 3: Partner/referral system** — Partner branding and earnings.
-
-11. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
+8. **Supabase Realtime** — Wire up real-time order notifications for vendors.
 
 ---
 

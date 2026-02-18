@@ -42,6 +42,9 @@ All Phase 1 build steps have been completed:
 | Exchange rate sync fixes (timeout, fallback API, error UI) | Done | #37, #38 |
 | Currency preset dropdown + live rate fetch | Done | #38 |
 | Admin pages for vendors, products, cities management | Done | latest |
+| Product images from Supabase storage | Done | #41 |
+| Image display fix (Next.js config) | Done | #42 |
+| Cart price bug fix (Prisma Decimal) | Done | #44 |
 
 ---
 
