@@ -6,7 +6,7 @@ import { ShoppingBag, Truck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 
 interface CartSummaryProps {
   subtotal: number
@@ -26,6 +26,7 @@ export function CartSummary({
   onPlaceOrder,
   placing = false,
 }: CartSummaryProps) {
+  const { formatPrice } = useCurrency()
   const total = subtotal - discount + deliveryCharge
   const freeDeliveryThreshold = 499
 

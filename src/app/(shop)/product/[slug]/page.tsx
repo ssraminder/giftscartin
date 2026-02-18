@@ -15,7 +15,7 @@ import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
 import { AddonSelector } from "@/components/product/addon-selector"
 import { ReviewList } from "@/components/product/review-list"
 import { ProductCard } from "@/components/product/product-card"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import type { Product, ProductAddon, Review, AddonSelection, ApiResponse, PaginatedData } from "@/types"
 
@@ -83,6 +83,7 @@ interface ProductWithDetails extends Omit<Product, 'category' | 'addons'> {
 export default function ProductDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const { formatPrice } = useCurrency()
   const slug = params.slug as string
 
   const addItem = useCart((s) => s.addItem)

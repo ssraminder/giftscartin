@@ -57,6 +57,18 @@ export function getPaymentRegionFromRequest(request: Request): PaymentRegion {
   return 'india'
 }
 
+/**
+ * Get the ISO country code from a request object.
+ */
+export function getCountryFromRequest(request: Request): string {
+  return (
+    request.headers.get('cf-ipcountry') ||
+    request.headers.get('x-vercel-ip-country') ||
+    request.headers.get('x-country') ||
+    'IN'
+  ).toUpperCase()
+}
+
 // INR to USD approximate conversion rate (updated periodically)
 // In production, use a real-time forex API
 const INR_TO_USD_RATE = 0.012

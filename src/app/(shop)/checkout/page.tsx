@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks/use-cart"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 
 // ─── Types ───
 
@@ -148,6 +148,7 @@ const GATEWAY_CONFIG: Record<GatewayId, {
 export default function CheckoutPage() {
   const router = useRouter()
   const { data: session, status: authStatus } = useSession()
+  const { formatPrice } = useCurrency()
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
   const clearCart = useCart((s) => s.clearCart)

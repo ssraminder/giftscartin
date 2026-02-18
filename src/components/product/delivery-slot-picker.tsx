@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { cn } from "@/lib/utils"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 import { ChevronLeft, ChevronRight, Clock, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -53,6 +53,7 @@ export function DeliverySlotPicker({
   onDateChange,
   onSlotChange,
 }: DeliverySlotPickerProps) {
+  const { formatPrice } = useCurrency()
   const dates = useMemo(() => generateDates(30), [])
   const [weekOffset, setWeekOffset] = useState(0)
 

@@ -21,7 +21,7 @@ Gifts Cart India is an online gifting platform (similar to Winni.in/FNP) that co
 - **Auth:** NextAuth.js v4 with custom credentials provider (phone + OTP)
 - **OTP:** Brevo (email OTP via Brevo Transactional Email API)
 - **Email:** Brevo (transactional emails)
-- **Payments:** Razorpay
+- **Payments:** Razorpay (India) + Stripe Checkout (International) + PayPal REST API (International) + COD
 - **Storage:** Supabase Storage (product images, vendor logos)
 - **Real-time:** Supabase Realtime (order notifications to vendors)
 - **Hosting:** Netlify
@@ -44,6 +44,12 @@ NEXTAUTH_SECRET=
 NEXTAUTH_URL=http://localhost:3000
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
+NEXT_PUBLIC_RAZORPAY_KEY_ID=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+PAYPAL_CLIENT_ID=
+PAYPAL_CLIENT_SECRET=
 BREVO_API_KEY=
 BREVO_SENDER_EMAIL=noreply@giftscart.in
 BREVO_SENDER_NAME=Gifts Cart India
@@ -839,6 +845,28 @@ model Review {
   @@map("reviews")
 }
 
+// ==================== CURRENCY CONFIG ====================
+
+model CurrencyConfig {
+  id             String   @id @default(cuid())
+  code           String   @unique          // "USD", "INR", "GBP", "AED"
+  name           String                    // "US Dollar", "Indian Rupee"
+  symbol         String                    // "$", "₹", "£"
+  symbolPosition String   @default("before") // "before" or "after"
+  exchangeRate   Decimal  @db.Decimal(12, 6) // How much of this currency = 1 INR
+  markup         Decimal  @default(0) @db.Decimal(5, 2) // % markup on converted price
+  rounding       String   @default("nearest") // "nearest", "up", "down", "none"
+  roundTo        Decimal  @default(0.01) @db.Decimal(10, 2) // Round to nearest X
+  locale         String   @default("en-US") // Intl locale for formatting
+  countries      String[] // ISO country codes mapped to this currency
+  isDefault      Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("currency_configs")
+}
+
 // ==================== ADMIN AUDIT ====================
 
 model AuditLog {
@@ -1151,7 +1179,7 @@ Execute in this order:
 5. All API routes return consistent format: { success: boolean, data?: any, error?: string }
 6. Use server components by default, client components only when needed (interactivity)
 7. Mobile-first design — design for mobile, enhance for desktop
-8. Indian locale — prices in ₹, phone numbers 10 digits, pincodes 6 digits
+8. **Currency-aware pricing** — All product prices stored in INR in the database. Frontend uses `useCurrency().formatPrice(inrAmount)` for display. Currency is resolved via `/api/currencies/resolve` based on visitor IP. Admin configures currencies at `/admin/settings/currencies`.
 9. Use "use client" directive only in components that need browser APIs or interactivity
 10. Always handle loading and error states in UI
 11. Product images use next/image with proper width/height for performance

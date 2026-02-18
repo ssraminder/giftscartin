@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { CityProvider } from "@/components/providers/city-provider"
+import { CurrencyProvider } from "@/components/providers/currency-provider"
 import { CartHydration } from "@/components/providers/cart-provider"
 
 export const metadata: Metadata = {
@@ -19,10 +20,12 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans antialiased">
         <SessionProvider>
-          <CityProvider>
-            <CartHydration />
-            {children}
-          </CityProvider>
+          <CurrencyProvider>
+            <CityProvider>
+              <CartHydration />
+              {children}
+            </CityProvider>
+          </CurrencyProvider>
         </SessionProvider>
       </body>
     </html>

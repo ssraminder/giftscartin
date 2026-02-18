@@ -1012,6 +1012,104 @@ async function main() {
     }
   }
 
+  // ==================== CURRENCY CONFIGS ====================
+  console.log('Creating currency configs...')
+
+  await prisma.currencyConfig.upsert({
+    where: { code: 'INR' },
+    update: {},
+    create: {
+      code: 'INR',
+      name: 'Indian Rupee',
+      symbol: '₹',
+      symbolPosition: 'before',
+      exchangeRate: 1,
+      markup: 0,
+      rounding: 'nearest',
+      roundTo: 1,
+      locale: 'en-IN',
+      countries: ['IN'],
+      isDefault: true,
+      isActive: true,
+    },
+  })
+
+  await prisma.currencyConfig.upsert({
+    where: { code: 'USD' },
+    update: {},
+    create: {
+      code: 'USD',
+      name: 'US Dollar',
+      symbol: '$',
+      symbolPosition: 'before',
+      exchangeRate: 0.012,
+      markup: 3,
+      rounding: 'up',
+      roundTo: 0.01,
+      locale: 'en-US',
+      countries: ['US', 'CA', 'AU', 'NZ', 'PR', 'GU', 'VI', 'AS', 'MP'],
+      isDefault: false,
+      isActive: true,
+    },
+  })
+
+  await prisma.currencyConfig.upsert({
+    where: { code: 'GBP' },
+    update: {},
+    create: {
+      code: 'GBP',
+      name: 'British Pound',
+      symbol: '£',
+      symbolPosition: 'before',
+      exchangeRate: 0.0095,
+      markup: 3,
+      rounding: 'up',
+      roundTo: 0.01,
+      locale: 'en-GB',
+      countries: ['GB', 'GG', 'JE', 'IM'],
+      isDefault: false,
+      isActive: true,
+    },
+  })
+
+  await prisma.currencyConfig.upsert({
+    where: { code: 'AED' },
+    update: {},
+    create: {
+      code: 'AED',
+      name: 'UAE Dirham',
+      symbol: 'AED',
+      symbolPosition: 'before',
+      exchangeRate: 0.044,
+      markup: 2,
+      rounding: 'up',
+      roundTo: 0.01,
+      locale: 'en-AE',
+      countries: ['AE'],
+      isDefault: false,
+      isActive: true,
+    },
+  })
+
+  await prisma.currencyConfig.upsert({
+    where: { code: 'EUR' },
+    update: {},
+    create: {
+      code: 'EUR',
+      name: 'Euro',
+      symbol: '€',
+      symbolPosition: 'before',
+      exchangeRate: 0.011,
+      markup: 3,
+      rounding: 'up',
+      roundTo: 0.01,
+      locale: 'de-DE',
+      countries: ['DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'IE', 'FI', 'PT', 'GR', 'LU'],
+      isDefault: false,
+      isActive: true,
+    },
+  })
+
   console.log('Seeding completed successfully!')
 }
 

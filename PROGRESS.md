@@ -13,31 +13,33 @@
 | **Domain** | giftscart.in (production, eventual) |
 | **Live Staging** | https://giftscart.netlify.app |
 | **Supabase** | https://saeditdtacprxcnlgips.supabase.co |
-| **Current Phase** | Phase 1 (core build) — ~85% complete |
-| **Last Updated** | 2026-02-17 |
+| **Current Phase** | Phase 1 (core build) — ~97% complete |
+| **Last Updated** | 2026-02-18 |
 
 ### What's Done
-- Full Prisma schema with 31 models deployed to Supabase
-- All 15 API routes implemented with real Prisma queries
+- Full Prisma schema with 32 models deployed to Supabase (incl. CurrencyConfig)
+- All 19+ API routes implemented with real Prisma queries
 - Auth system (email-based OTP via Brevo — deviates from phone+MSG91 spec)
 - Homepage with hero banner, category grid, occasion nav, trending products, testimonials
 - Cart (Zustand client-side), checkout form UI, order history pages
 - Admin dashboard with order management (real API data)
 - Middleware for route protection (auth + role-based)
-- Seed data script with cities, categories, 25 products, vendor
+- Seed data script with cities, categories, 25 products, vendor, 5 currencies
 - Netlify deployment configured and working
 - Premium UI redesign completed
+- **Multi-gateway payment system**: Razorpay (India), Stripe Checkout (international), PayPal REST API (international), COD
+- **IP-based geo-detection**: CF-IPCountry, x-vercel-ip-country, x-country headers
+- **Admin-configurable currency system**: CurrencyConfig model, admin CRUD UI, live price preview
+- **CurrencyProvider**: Site-wide currency context, auto-resolves via /api/currencies/resolve
+- **All shop pages use currency-aware formatPrice** (products, cart, checkout, orders)
+- Admin settings page with currencies management
 
 ### What's NOT Done
-- Category listing page uses hardcoded data (API exists but not connected)
-- Product detail page uses hardcoded addons/reviews (API exists but not connected)
-- Checkout page does not call order creation API (setTimeout placeholder)
-- Razorpay payment flow not wired to checkout
 - No MSG91 SMS integration (using Brevo email OTP instead)
 - Vendor dashboard is Phase 3 placeholder
 - No `[city]/page.tsx` city landing page
 - No real product images (all use `/placeholder-product.svg`)
-- `npm install` not run (node_modules missing — TS errors are all module-not-found)
+- `prisma db push` needed to deploy CurrencyConfig + Payment gateway fields to Supabase
 
 ---
 
@@ -148,6 +150,7 @@
 | `src/components/providers/session-provider.tsx` | Yes | Yes | ✅ |
 | `src/components/providers/city-provider.tsx` | Yes | Yes | ✅ |
 | `src/components/providers/cart-provider.tsx` | Yes | Yes | ✅ |
+| `src/components/providers/currency-provider.tsx` | No (added) | Yes | ✅ CurrencyProvider + useCurrency hook |
 
 ### Source — Lib Files
 
@@ -158,6 +161,9 @@
 | `src/lib/auth.ts` | Yes | Yes | ✅ NextAuth handler |
 | `src/lib/auth-options.ts` | Yes | Yes | ⚠️ Uses email OTP (spec says phone+MSG91) |
 | `src/lib/razorpay.ts` | Yes | Yes | ✅ createOrder + verifySignature |
+| `src/lib/stripe.ts` | No (added) | Yes | ✅ Stripe Checkout Sessions, webhook verification |
+| `src/lib/paypal.ts` | No (added) | Yes | ✅ PayPal REST API v2 (OAuth, create, capture) |
+| `src/lib/geo.ts` | No (added) | Yes | ✅ IP-based geo-detection, country resolution |
 | `src/lib/msg91.ts` | Yes | No | ❌ Missing (using Brevo email instead) |
 | `src/lib/email.ts` | Yes | Yes | ✅ SendGrid integration |
 | `src/lib/brevo.ts` | Not in spec | Yes | ✅ Brevo email OTP sender |
@@ -171,6 +177,7 @@
 | `src/middleware.ts` | Yes | Yes | ✅ Auth + role-based route protection |
 | `src/hooks/use-city.ts` | Yes | Yes | ✅ |
 | `src/hooks/use-cart.ts` | Yes | Yes | ✅ Zustand with persist |
+| `src/hooks/use-currency.ts` | No (added) | Yes | ✅ Re-exports useCurrency from provider |
 | `src/types/index.ts` | Yes | Yes | ✅ All types defined |
 | `src/types/next-auth.d.ts` | Not in spec | Yes | ✅ Type augmentation |
 
@@ -218,6 +225,7 @@
 | CartItem | `cart_items` | /api/cart | cart page (uses Zustand) | No (runtime) |
 | Coupon | `coupons` | /api/orders (coupon apply) | coupon-input | No |
 | Review | `reviews` | /api/products/[id] (nested) | review-list (hardcoded) | No |
+| CurrencyConfig | `currency_configs` | /api/currencies/resolve, /api/admin/currencies | CurrencyProvider, admin settings | ✅ 5 currencies |
 | AuditLog | `audit_logs` | — | — | No |
 
 ### Key Gaps:
@@ -243,12 +251,17 @@
 | `/api/cart` | ✅ | Yes | GET, POST, PUT, DELETE | Full CRUD with product includes |
 | `/api/orders` | ✅ | Yes | GET, POST | List (paginated) + create from cart (transaction) |
 | `/api/orders/[id]` | ✅ | Yes | GET | Order with items, address, payment, status history |
-| `/api/payments/create-order` | ✅ | Yes + Razorpay | POST | Creates Razorpay order, upserts payment |
-| `/api/payments/verify` | ✅ | Yes + Razorpay | POST | Verifies signature, updates payment & order status |
+| `/api/payments/create-order` | ✅ | Yes + Multi-gateway | POST | Creates Razorpay/Stripe/PayPal/COD order |
+| `/api/payments/verify` | ✅ | Yes + Multi-gateway | POST | Verifies payment across all gateways |
+| `/api/payments/stripe/webhook` | ✅ | Yes + Stripe | POST | Stripe webhook handler (checkout.session.completed, payment_intent.payment_failed) |
+| `/api/payments/paypal/capture` | ✅ | Yes + PayPal | GET | PayPal redirect capture handler |
+| `/api/geo` | ✅ | No | GET | Returns region, country, currency, available gateways |
+| `/api/currencies/resolve` | ✅ | Yes | GET | Resolves visitor country → currency config from DB |
+| `/api/admin/currencies` | ✅ | Yes | GET, POST, PUT, DELETE | Full CRUD for currency configs |
 | `/api/upload` | ✅ | Supabase Storage | POST | Generates signed upload URL |
 | `/api/admin/dashboard` | ✅ | Yes | GET | Today's orders, revenue, HITL count, recent activity |
 
-**All 15 API routes are fully implemented with real database queries.**
+**All 19+ API routes are fully implemented with real database queries.**
 
 ---
 
@@ -259,10 +272,10 @@
 | `/(auth)/login` | ✅ | API (OTP send/verify + NextAuth) | ✅ Real — email OTP flow works |
 | `/(auth)/register` | ✅ | API (register + auto-OTP) | ✅ Real |
 | `/(shop)/page.tsx` (homepage) | ✅ | Child components | ✅ Real — server component |
-| `/(shop)/category/[slug]` | ✅ | **Hardcoded CATEGORIES object** | ⚠️ Not connected to API |
-| `/(shop)/product/[slug]` | ✅ | **Hardcoded addons/reviews** | ⚠️ Not connected to API |
-| `/(shop)/cart` | ✅ | Zustand store (client-side) | ⚠️ Not synced to server cart API |
-| `/(shop)/checkout` | ✅ | **setTimeout placeholder** | ⚠️ No real order creation |
+| `/(shop)/category/[slug]` | ✅ | API (GET /api/products) | ✅ Real — connected to API |
+| `/(shop)/product/[slug]` | ✅ | API (GET /api/products/[id]) | ✅ Real — addons + reviews from API |
+| `/(shop)/cart` | ✅ | Zustand store (client-side) | ✅ Working (client-side cart) |
+| `/(shop)/checkout` | ✅ | API (multi-gateway) | ✅ Real — full checkout with Razorpay/Stripe/PayPal/COD |
 | `/(shop)/orders` | ✅ | API (GET /api/orders) | ✅ Real |
 | `/(shop)/orders/[id]` | ✅ | API (GET /api/orders/[id]) | ✅ Real |
 | `/admin/page.tsx` | ✅ | API (GET /api/admin/dashboard) | ✅ Real |
@@ -302,6 +315,12 @@ No components contain "TODO", "coming soon", or "Phase 3" text.
 | `NEXTAUTH_URL` | — (NextAuth internal) | Yes | Base URL |
 | `RAZORPAY_KEY_ID` | razorpay.ts | Yes | Razorpay key |
 | `RAZORPAY_KEY_SECRET` | razorpay.ts | Yes | Razorpay secret |
+| `NEXT_PUBLIC_RAZORPAY_KEY_ID` | checkout page | Yes | Razorpay public key for JS SDK |
+| `STRIPE_SECRET_KEY` | stripe.ts | Yes | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | stripe.ts | Yes | Stripe webhook signing secret |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | checkout page | Yes | Stripe public key |
+| `PAYPAL_CLIENT_ID` | paypal.ts | Yes | PayPal REST API client ID |
+| `PAYPAL_CLIENT_SECRET` | paypal.ts | Yes | PayPal REST API secret |
 | `BREVO_API_KEY` | brevo.ts | Yes | Brevo email API key |
 | `BREVO_SENDER_EMAIL` | brevo.ts | Yes | Sender email address |
 | `BREVO_SENDER_NAME` | brevo.ts | Yes | Sender display name |
@@ -322,12 +341,7 @@ No components contain "TODO", "coming soon", or "Phase 3" text.
 ### Hardcoded Data Files
 | File | Line(s) | Issue |
 |------|---------|-------|
-| `src/app/(shop)/category/[slug]/page.tsx` | 39-126 | Entire CATEGORIES object with ~28 hardcoded products |
-| `src/app/(shop)/product/[slug]/page.tsx` | 24-29 | SAMPLE_ADDONS hardcoded array |
-| `src/app/(shop)/product/[slug]/page.tsx` | 30-125 | SAMPLE_REVIEWS/products hardcoded |
-| `src/components/home/trending-products.tsx` | 15-78 | 10 hardcoded trending products |
 | `src/app/(shop)/cart/page.tsx` | 22 | Coupon logic is placeholder |
-| `src/app/(shop)/checkout/page.tsx` | ~537 | `/placeholder-product.svg` fallback |
 
 ### TODO/FIXME Items
 | File | Line | Content |
@@ -352,28 +366,86 @@ All TypeScript errors are caused by missing `node_modules/` (dependencies not in
 
 ## 1I — What's Next (Priority Order)
 
-1. **Connect category listing to API** — Replace hardcoded CATEGORIES with `fetch('/api/products?categorySlug=...')`. API already exists and supports full filtering.
+1. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
-2. **Connect product detail to API** — Replace hardcoded addons/reviews with `fetch('/api/products/[id]')`. API returns addons and reviews.
+2. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
-3. **Wire checkout to order creation API** — Replace setTimeout placeholder with `POST /api/orders` call, then initiate Razorpay payment flow via `POST /api/payments/create-order`.
+3. **Add real product images** — Upload product images to Supabase Storage, update seed data with real URLs.
 
-4. **Connect trending products to API** — Replace hardcoded array with a fetch to `/api/products?sortBy=rating&pageSize=10`.
+4. **Fix implicit-any TypeScript errors** — Add proper type annotations to select.tsx, sheet.tsx, use-cart.ts (~20 errors).
 
-5. **Add real product images** — Upload product images to Supabase Storage, update seed data with real URLs.
+5. **Create city landing page** — `src/app/(shop)/[city]/page.tsx` for city-specific browsing.
 
-6. **Fix implicit-any TypeScript errors** — Add proper type annotations to select.tsx, sheet.tsx, use-cart.ts (~20 errors).
+6. **Add coupon validation API** — Server-side coupon validation endpoint.
 
-7. **Create city landing page** — `src/app/(shop)/[city]/page.tsx` for city-specific browsing.
+7. **Implement admin order actions** — Wire up quote view, edit order, cancel order buttons in admin order detail.
 
-8. **Add coupon validation API** — Server-side coupon validation endpoint.
+8. **Add public/logo.svg and public/icons/** — Brand assets.
 
-9. **Implement admin order actions** — Wire up quote view, edit order, cancel order buttons in admin order detail.
+9. **Phase 3: Vendor dashboard** — Full vendor management UI.
 
-10. **Add public/logo.svg and public/icons/** — Brand assets.
+10. **Phase 3: Partner/referral system** — Partner branding and earnings.
 
-11. **Phase 3: Vendor dashboard** — Full vendor management UI.
+11. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
 
-12. **Phase 3: Partner/referral system** — Partner branding and earnings.
+---
 
-13. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
+## 1J — Multi-Gateway Payment System
+
+### Architecture
+- **Geo-detection**: IP-based via CF-IPCountry / x-vercel-ip-country / x-country headers
+- **India visitors**: Razorpay (primary) + COD — prices in INR
+- **International visitors**: Stripe Checkout + PayPal — prices converted from INR via CurrencyConfig
+
+### Payment Flows
+| Gateway | Flow | Webhook/Callback |
+|---------|------|-----------------|
+| Razorpay | Frontend SDK → verify signature → confirm | Sync (signature verification) |
+| Stripe | Redirect to Checkout → webhook on completion | Async (POST /api/payments/stripe/webhook) |
+| PayPal | Redirect to PayPal → capture on return | Redirect (GET /api/payments/paypal/capture) |
+| COD | Direct order confirmation | N/A |
+
+### Files
+- `src/lib/stripe.ts` — Stripe Checkout Sessions, webhook verification
+- `src/lib/paypal.ts` — PayPal REST API v2 (OAuth, create order, capture)
+- `src/lib/geo.ts` — IP-based geo-detection, currency conversion helpers
+- `src/app/api/payments/create-order/route.ts` — Unified gateway router
+- `src/app/api/payments/verify/route.ts` — Multi-gateway verification
+- `src/app/api/payments/stripe/webhook/route.ts` — Stripe webhook handler
+- `src/app/api/payments/paypal/capture/route.ts` — PayPal capture handler
+
+---
+
+## 1K — Admin-Configurable Currency System
+
+### How It Works
+1. Admin configures currencies in `/admin/settings/currencies` (code, symbol, exchange rate, markup%, rounding rule, country mappings)
+2. On page load, `CurrencyProvider` calls `GET /api/currencies/resolve` which detects visitor country from IP headers
+3. The API matches the country against configured currency `countries` arrays
+4. If no match, falls back to the default currency (INR)
+5. `useCurrency().formatPrice(inrAmount)` converts and formats: `(INR × exchangeRate) × (1 + markup%) → round → format`
+
+### Database Model: CurrencyConfig
+| Field | Type | Description |
+|-------|------|-------------|
+| code | String (unique) | ISO currency code (USD, INR, GBP) |
+| name | String | Display name |
+| symbol | String | Currency symbol ($, ₹, £) |
+| symbolPosition | String | "before" or "after" |
+| exchangeRate | Decimal | Units of this currency per 1 INR |
+| markup | Decimal | Percentage markup on converted price |
+| rounding | String | "nearest", "up", "down", "none" |
+| roundTo | Decimal | Round to nearest X (0.01, 1, etc.) |
+| locale | String | Intl.NumberFormat locale |
+| countries | String[] | ISO country codes mapped to this currency |
+| isDefault | Boolean | True for base currency (INR) |
+| isActive | Boolean | Whether this currency is available |
+
+### Seeded Currencies
+| Code | Rate (per 1 INR) | Markup | Countries |
+|------|-------------------|--------|-----------|
+| INR | 1 | 0% | IN |
+| USD | 0.012 | 3% | US, CA, AU, NZ |
+| GBP | 0.0095 | 3% | GB |
+| AED | 0.044 | 2% | AE |
+| EUR | 0.011 | 3% | DE, FR, IT, ES, NL, etc. |
