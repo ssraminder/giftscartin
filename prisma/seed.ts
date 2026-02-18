@@ -532,7 +532,7 @@ async function main() {
       shortDesc: 'Rich chocolate truffle cake with ganache',
       categoryId: chocolateCakes.id,
       basePrice: 599,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/ChatGPT%20Image%20Feb%2017,%202026,%2005_28_19%20PM.png'],
       tags: ['bestseller', 'chocolate'],
       occasion: ['birthday', 'anniversary'],
       weight: '500g',
@@ -550,7 +550,7 @@ async function main() {
       shortDesc: 'Classic red velvet with cream cheese frosting',
       categoryId: cakesCategory.id,
       basePrice: 699,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/ChatGPT%20Image%20Feb%2017,%202026,%2005_30_42%20PM.png'],
       tags: ['popular', 'premium'],
       occasion: ['birthday', 'anniversary', 'valentines'],
       weight: '500g',
@@ -568,7 +568,7 @@ async function main() {
       shortDesc: 'Traditional black forest with cherries',
       categoryId: chocolateCakes.id,
       basePrice: 549,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_black_forest.png'],
       tags: ['classic', 'chocolate'],
       occasion: ['birthday'],
       weight: '500g',
@@ -586,7 +586,7 @@ async function main() {
       shortDesc: 'Butterscotch cake with caramel bits',
       categoryId: cakesCategory.id,
       basePrice: 499,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_butterscotch.png'],
       tags: ['classic'],
       occasion: ['birthday'],
       weight: '500g',
@@ -604,7 +604,7 @@ async function main() {
       shortDesc: 'Personalized photo cake on vanilla base',
       categoryId: photoCakes.id,
       basePrice: 899,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_photo_cake.png'],
       tags: ['personalized', 'premium'],
       occasion: ['birthday', 'anniversary'],
       weight: '1kg',
@@ -623,7 +623,7 @@ async function main() {
       shortDesc: 'Fresh pineapple cake with whipped cream',
       categoryId: fruitCakes.id,
       basePrice: 549,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_pineapple.png'],
       tags: ['fruity', 'classic'],
       occasion: ['birthday'],
       weight: '500g',
@@ -660,7 +660,7 @@ async function main() {
       shortDesc: '12 fresh red roses bouquet',
       categoryId: flowersCategory.id,
       basePrice: 699,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_red_roses.png'],
       tags: ['bestseller', 'romantic'],
       occasion: ['valentines', 'anniversary', 'birthday'],
       isVeg: true,
@@ -677,7 +677,7 @@ async function main() {
       shortDesc: 'Mixed seasonal flowers in basket',
       categoryId: flowersCategory.id,
       basePrice: 899,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_mixed_flowers.png'],
       tags: ['premium', 'arrangement'],
       occasion: ['birthday', 'anniversary', 'housewarming'],
       isVeg: true,
@@ -694,7 +694,7 @@ async function main() {
       shortDesc: 'Exotic purple orchid bunch',
       categoryId: flowersCategory.id,
       basePrice: 1299,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_orchid.png'],
       tags: ['premium', 'exotic'],
       occasion: ['anniversary', 'birthday'],
       isVeg: true,
@@ -746,7 +746,7 @@ async function main() {
       shortDesc: 'Chocolate cake + red roses bouquet',
       categoryId: combosCategory.id,
       basePrice: 1199,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_cake_flowers.png'],
       tags: ['bestseller', 'combo', 'value'],
       occasion: ['birthday', 'anniversary', 'valentines'],
       isVeg: true,
@@ -832,7 +832,7 @@ async function main() {
       shortDesc: 'Money plant in ceramic pot',
       categoryId: plantsCategory.id,
       basePrice: 399,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_money_plant.png'],
       tags: ['lucky', 'indoor'],
       occasion: ['housewarming', 'birthday'],
       isVeg: true,
@@ -849,7 +849,7 @@ async function main() {
       shortDesc: 'Prosperity jade plant in stylish pot',
       categoryId: plantsCategory.id,
       basePrice: 499,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_jade_plant.png'],
       tags: ['lucky', 'indoor', 'succulent'],
       occasion: ['housewarming', 'diwali'],
       isVeg: true,
@@ -866,7 +866,7 @@ async function main() {
       shortDesc: 'Air purifying peace lily',
       categoryId: plantsCategory.id,
       basePrice: 599,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_peace_lily.png'],
       tags: ['air-purifying', 'indoor'],
       occasion: ['housewarming', 'birthday'],
       isVeg: true,
@@ -900,7 +900,7 @@ async function main() {
       shortDesc: 'Miniature bonsai in ceramic pot',
       categoryId: plantsCategory.id,
       basePrice: 899,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_bonsai.png'],
       tags: ['premium', 'unique'],
       occasion: ['birthday', 'housewarming'],
       isVeg: true,
@@ -918,7 +918,7 @@ async function main() {
       shortDesc: '24 assorted premium chocolates',
       categoryId: giftsCategory.id,
       basePrice: 799,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_choco_box.png'],
       tags: ['premium', 'chocolate'],
       occasion: ['birthday', 'anniversary', 'diwali'],
       isVeg: true,
@@ -935,7 +935,7 @@ async function main() {
       shortDesc: '3 luxury scented candles set',
       categoryId: giftsCategory.id,
       basePrice: 699,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_scented_candle.png'],
       tags: ['luxury', 'home-decor'],
       occasion: ['birthday', 'housewarming', 'diwali'],
       isVeg: true,
@@ -952,7 +952,7 @@ async function main() {
       shortDesc: 'Custom photo printed ceramic mug',
       categoryId: giftsCategory.id,
       basePrice: 349,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_mug.png'],
       tags: ['personalized'],
       occasion: ['birthday', 'anniversary'],
       isVeg: true,
@@ -969,7 +969,7 @@ async function main() {
       shortDesc: 'Premium assorted dry fruits gift box',
       categoryId: giftsCategory.id,
       basePrice: 999,
-      images: ['/placeholder-product.svg'],
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_dry_fruit_box.png'],
       tags: ['premium', 'healthy'],
       occasion: ['diwali', 'birthday', 'housewarming'],
       isVeg: true,
@@ -989,6 +989,171 @@ async function main() {
       images: ['/placeholder-product.svg'],
       tags: ['soft-toy', 'cute'],
       occasion: ['valentines', 'birthday'],
+      isVeg: true,
+    },
+  })
+
+  // ==================== NEW PRODUCTS WITH IMAGES ====================
+  console.log('Creating new products with Supabase images...')
+
+  // Mango Delight Cake
+  await prisma.product.upsert({
+    where: { slug: 'mango-delight-cake' },
+    update: {},
+    create: {
+      name: 'Mango Delight Cake',
+      slug: 'mango-delight-cake',
+      description: 'Bright and tropical mango cake with layers of fresh mango mousse and sponge, topped with mango slices.',
+      shortDesc: 'Tropical mango mousse cake',
+      categoryId: fruitCakes.id,
+      basePrice: 649,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_mango_cake.png'],
+      tags: ['fruity', 'seasonal'],
+      occasion: ['birthday'],
+      isVeg: true,
+    },
+  })
+
+  // Yellow Roses Bouquet
+  await prisma.product.upsert({
+    where: { slug: 'yellow-roses-bouquet' },
+    update: {},
+    create: {
+      name: 'Yellow Roses Bouquet',
+      slug: 'yellow-roses-bouquet',
+      description: 'Cheerful bouquet of 12 bright yellow roses wrapped in white paper with baby\'s breath fillers.',
+      shortDesc: '12 yellow roses with baby\'s breath',
+      categoryId: flowersCategory.id,
+      basePrice: 699,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_yellow_roses.png'],
+      tags: ['cheerful', 'roses'],
+      occasion: ['birthday', 'congratulations', 'friendship-day'],
+      isVeg: true,
+    },
+  })
+
+  // White Lily Bouquet
+  await prisma.product.upsert({
+    where: { slug: 'white-lily-bouquet' },
+    update: {},
+    create: {
+      name: 'White Lily Bouquet',
+      slug: 'white-lily-bouquet',
+      description: 'Elegant bouquet of fresh white lilies with eucalyptus greens, wrapped in premium paper.',
+      shortDesc: 'Elegant white lilies bouquet',
+      categoryId: flowersCategory.id,
+      basePrice: 899,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_lily_bouquet.png'],
+      tags: ['elegant', 'premium', 'lily'],
+      occasion: ['anniversary', 'sympathy', 'birthday'],
+      isVeg: true,
+    },
+  })
+
+  // Chocolate Bouquet
+  await prisma.product.upsert({
+    where: { slug: 'chocolate-bouquet' },
+    update: {},
+    create: {
+      name: 'Chocolate Bouquet',
+      slug: 'chocolate-bouquet',
+      description: 'Luxurious bouquet made with Ferrero Rocher and Dairy Milk chocolates, wrapped like a flower arrangement.',
+      shortDesc: 'Ferrero Rocher & Dairy Milk bouquet',
+      categoryId: combosCategory.id,
+      basePrice: 999,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_choco_bouquet%20(1).png'],
+      tags: ['chocolate', 'premium', 'unique'],
+      occasion: ['valentines', 'birthday', 'anniversary'],
+      isVeg: true,
+    },
+  })
+
+  // Celebration Gift Box
+  await prisma.product.upsert({
+    where: { slug: 'celebration-gift-box' },
+    update: {},
+    create: {
+      name: 'Celebration Gift Box',
+      slug: 'celebration-gift-box',
+      description: 'Premium celebration gift box containing a cake slice, chocolates, a scented candle, and a greeting card.',
+      shortDesc: 'Cake + chocolates + candle + card box',
+      categoryId: combosCategory.id,
+      basePrice: 1299,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_celebration_box.png'],
+      tags: ['premium', 'gift-box'],
+      occasion: ['birthday', 'anniversary', 'congratulations'],
+      isVeg: true,
+    },
+  })
+
+  // Teddy & Roses Combo
+  await prisma.product.upsert({
+    where: { slug: 'teddy-roses-combo' },
+    update: {},
+    create: {
+      name: 'Teddy & Roses Combo',
+      slug: 'teddy-roses-combo',
+      description: 'Adorable combo of a cute brown teddy bear, a small bouquet of red roses, and a box of chocolates.',
+      shortDesc: 'Teddy bear + roses + chocolates',
+      categoryId: combosCategory.id,
+      basePrice: 1099,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_teddy_combo.png'],
+      tags: ['romantic', 'combo', 'cute'],
+      occasion: ['valentines', 'birthday', 'anniversary'],
+      isVeg: true,
+    },
+  })
+
+  // Lucky Bamboo
+  await prisma.product.upsert({
+    where: { slug: 'lucky-bamboo' },
+    update: {},
+    create: {
+      name: 'Lucky Bamboo',
+      slug: 'lucky-bamboo',
+      description: 'Two-layer lucky bamboo arrangement in a clear glass vase with white pebbles. Symbol of good fortune.',
+      shortDesc: 'Two-layer lucky bamboo in glass vase',
+      categoryId: plantsCategory.id,
+      basePrice: 499,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_bamboo.png'],
+      tags: ['lucky', 'indoor', 'zen'],
+      occasion: ['housewarming', 'diwali', 'birthday'],
+      isVeg: true,
+    },
+  })
+
+  // Personalized Photo Cushion
+  await prisma.product.upsert({
+    where: { slug: 'personalized-photo-cushion' },
+    update: {},
+    create: {
+      name: 'Personalized Photo Cushion',
+      slug: 'personalized-photo-cushion',
+      description: 'Soft square cushion with your favorite photo printed in vibrant colors. A cozy and memorable gift.',
+      shortDesc: 'Custom photo printed cushion',
+      categoryId: giftsCategory.id,
+      basePrice: 449,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_cushion.png'],
+      tags: ['personalized', 'home-decor'],
+      occasion: ['birthday', 'anniversary', 'valentines'],
+      isVeg: true,
+    },
+  })
+
+  // Mini Perfume Gift Set
+  await prisma.product.upsert({
+    where: { slug: 'mini-perfume-gift-set' },
+    update: {},
+    create: {
+      name: 'Mini Perfume Gift Set',
+      slug: 'mini-perfume-gift-set',
+      description: 'Elegant set of 4 mini perfume bottles in a luxurious gift box. Perfect for fragrance lovers.',
+      shortDesc: '4 mini perfume bottles gift set',
+      categoryId: giftsCategory.id,
+      basePrice: 899,
+      images: ['https://saeditdtacprxcnlgips.supabase.co/storage/v1/object/public/products/prod_perfume_set.png'],
+      tags: ['luxury', 'fragrance', 'premium'],
+      occasion: ['birthday', 'anniversary', 'valentines'],
       isVeg: true,
     },
   })
