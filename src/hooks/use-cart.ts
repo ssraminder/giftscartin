@@ -38,13 +38,20 @@ export const useCart = create<CartStore>()(
       couponDiscount: 0,
 
       addItem: (product, quantity = 1, addons = [], variation = null) => {
+        // Normalize prices to numbers (Prisma Decimal serializes as strings in JSON)
+        const normalizedProduct = { ...product, basePrice: Number(product.basePrice) }
+        const normalizedAddons = addons.map((a) => ({ ...a, price: Number(a.price) }))
+        const normalizedVariation = variation
+          ? { ...variation, price: Number(variation.price) }
+          : null
+
         set((state) => {
-          const existing = state.items.find((i) => i.productId === product.id)
+          const existing = state.items.find((i) => i.productId === normalizedProduct.id)
           if (existing) {
             return {
               items: state.items.map((i) =>
-                i.productId === product.id
-                  ? { ...i, quantity: i.quantity + quantity, variation: variation ?? i.variation }
+                i.productId === normalizedProduct.id
+                  ? { ...i, quantity: i.quantity + quantity, variation: normalizedVariation ?? i.variation }
                   : i
               ),
             }
@@ -53,13 +60,13 @@ export const useCart = create<CartStore>()(
             items: [
               ...state.items,
               {
-                productId: product.id,
+                productId: normalizedProduct.id,
                 quantity,
-                addons,
-                variation,
+                addons: normalizedAddons,
+                variation: normalizedVariation,
                 deliveryDate: null,
                 deliverySlot: null,
-                product,
+                product: normalizedProduct,
               },
             ],
           }
@@ -120,8 +127,8 @@ export const useCart = create<CartStore>()(
 
       getSubtotal: () => {
         return get().items.reduce((sum, item) => {
-          const unitPrice = item.variation ? item.variation.price : item.product.basePrice
-          const addonTotal = item.addons.reduce((a, addon) => a + addon.price, 0)
+          const unitPrice = Number(item.variation ? item.variation.price : item.product.basePrice)
+          const addonTotal = item.addons.reduce((a, addon) => a + Number(addon.price), 0)
           return sum + (unitPrice + addonTotal) * item.quantity
         }, 0)
       },
