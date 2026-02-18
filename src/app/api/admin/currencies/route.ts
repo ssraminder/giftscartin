@@ -23,6 +23,18 @@ const updateSchema = currencySchema.partial().extend({
   id: z.string().min(1),
 })
 
+/** Extract a human-readable message from any error */
+function errorDetail(error: unknown): string {
+  if (error instanceof Error) {
+    // Prisma unique constraint
+    if (error.message.includes('Unique constraint')) {
+      return 'A currency with this code already exists'
+    }
+    return error.message
+  }
+  return String(error)
+}
+
 /**
  * GET /api/admin/currencies
  * List all currency configs.
@@ -48,8 +60,9 @@ export async function GET() {
       })),
     })
   } catch (error) {
-    console.error('Admin currencies GET error:', error)
-    return NextResponse.json({ success: false, error: 'Failed to fetch currencies' }, { status: 500 })
+    const detail = errorDetail(error)
+    console.error('Admin currencies GET error:', detail)
+    return NextResponse.json({ success: false, error: `Failed to fetch currencies: ${detail}` }, { status: 500 })
   }
 }
 
@@ -87,13 +100,15 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
+    // Zod validation error (duck-typed for Zod v4 compatibility)
     if (error && typeof error === 'object' && 'issues' in error) {
       const issue = (error as { issues: Array<{ path?: (string | number)[]; message: string }> }).issues[0]
       const field = issue.path?.length ? issue.path.join('.') : 'input'
       return NextResponse.json({ success: false, error: `${field}: ${issue.message}` }, { status: 400 })
     }
-    console.error('Admin currencies POST error:', error)
-    return NextResponse.json({ success: false, error: 'Failed to create currency' }, { status: 500 })
+    const detail = errorDetail(error)
+    console.error('Admin currencies POST error:', detail)
+    return NextResponse.json({ success: false, error: `Failed to create currency: ${detail}` }, { status: 500 })
   }
 }
 
@@ -139,8 +154,9 @@ export async function PUT(request: NextRequest) {
       const field = issue.path?.length ? issue.path.join('.') : 'input'
       return NextResponse.json({ success: false, error: `${field}: ${issue.message}` }, { status: 400 })
     }
-    console.error('Admin currencies PUT error:', error)
-    return NextResponse.json({ success: false, error: 'Failed to update currency' }, { status: 500 })
+    const detail = errorDetail(error)
+    console.error('Admin currencies PUT error:', detail)
+    return NextResponse.json({ success: false, error: `Failed to update currency: ${detail}` }, { status: 500 })
   }
 }
 
@@ -174,7 +190,8 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Admin currencies DELETE error:', error)
-    return NextResponse.json({ success: false, error: 'Failed to delete currency' }, { status: 500 })
+    const detail = errorDetail(error)
+    console.error('Admin currencies DELETE error:', detail)
+    return NextResponse.json({ success: false, error: `Failed to delete currency: ${detail}` }, { status: 500 })
   }
 }
