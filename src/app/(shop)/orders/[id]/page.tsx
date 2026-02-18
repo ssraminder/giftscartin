@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 import type { Order, OrderStatus, ApiResponse } from "@/types"
 
 const ORDER_STEPS: { status: OrderStatus; label: string; icon: React.ElementType }[] = [
@@ -83,6 +83,7 @@ function OrderDetailSkeleton() {
 export default function OrderDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const { formatPrice } = useCurrency()
   const isNewOrder = searchParams.get("new") === "true"
   const orderId = params.id as string
   const { data: session, status: authStatus } = useSession()

@@ -3,7 +3,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { createRazorpayOrder } from '@/lib/razorpay'
-import { createPaymentOrderSchema } from '@/lib/validations'
+import { createStripeCheckoutSession } from '@/lib/stripe'
+import { createPayPalOrder } from '@/lib/paypal'
+import { getPaymentRegionFromRequest, inrToUsd } from '@/lib/geo'
+import { z } from 'zod/v4'
+
+const createPaymentSchema = z.object({
+  orderId: z.string().min(1),
+  gateway: z.enum(['razorpay', 'stripe', 'paypal', 'cod']).optional(),
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const parsed = createPaymentOrderSchema.safeParse(body)
+    const parsed = createPaymentSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(
@@ -25,7 +33,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { orderId } = parsed.data
+    const { orderId, gateway: requestedGateway } = parsed.data
 
     // Fetch the order and verify ownership
     const order = await prisma.order.findUnique({
@@ -54,35 +62,180 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create Razorpay order
+    // Determine gateway: use requested gateway, or auto-detect from IP
+    const region = getPaymentRegionFromRequest(request)
+    const gateway = requestedGateway || (region === 'india' ? 'razorpay' : 'stripe')
     const amount = Number(order.total)
-    const razorpayOrder = await createRazorpayOrder(amount, 'INR', order.orderNumber)
+    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
 
-    // Create or update payment record
-    await prisma.payment.upsert({
-      where: { orderId: order.id },
-      update: {
-        amount: order.total,
-        razorpayOrderId: razorpayOrder.id,
-        status: 'PENDING',
-      },
-      create: {
+    // ─── COD ───
+    if (gateway === 'cod') {
+      await prisma.payment.upsert({
+        where: { orderId: order.id },
+        update: {
+          amount: order.total,
+          currency: 'INR',
+          gateway: 'COD',
+          status: 'PENDING',
+        },
+        create: {
+          orderId: order.id,
+          amount: order.total,
+          currency: 'INR',
+          gateway: 'COD',
+          status: 'PENDING',
+        },
+      })
+
+      // Confirm order directly for COD
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          paymentMethod: 'cod',
+          status: 'CONFIRMED',
+        },
+      })
+
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId,
+          status: 'CONFIRMED',
+          note: 'Cash on delivery order confirmed',
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          gateway: 'cod',
+          orderId,
+          orderNumber: order.orderNumber,
+        },
+      })
+    }
+
+    // ─── RAZORPAY ───
+    if (gateway === 'razorpay') {
+      const razorpayOrder = await createRazorpayOrder(amount, 'INR', order.orderNumber)
+
+      await prisma.payment.upsert({
+        where: { orderId: order.id },
+        update: {
+          amount: order.total,
+          currency: 'INR',
+          gateway: 'RAZORPAY',
+          razorpayOrderId: razorpayOrder.id,
+          status: 'PENDING',
+        },
+        create: {
+          orderId: order.id,
+          amount: order.total,
+          currency: 'INR',
+          gateway: 'RAZORPAY',
+          razorpayOrderId: razorpayOrder.id,
+          status: 'PENDING',
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          gateway: 'razorpay',
+          razorpayOrderId: razorpayOrder.id,
+          amount: razorpayOrder.amount,
+          currency: razorpayOrder.currency,
+          keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID,
+        },
+      })
+    }
+
+    // ─── STRIPE ───
+    if (gateway === 'stripe') {
+      const usdAmount = inrToUsd(amount)
+
+      const stripeSession = await createStripeCheckoutSession({
         orderId: order.id,
-        amount: order.total,
-        razorpayOrderId: razorpayOrder.id,
-        status: 'PENDING',
-      },
-    })
+        orderNumber: order.orderNumber,
+        amountInr: amount,
+        customerEmail: (session.user as { email?: string }).email || undefined,
+        successUrl: `${baseUrl}/orders/${order.id}?payment=success&gateway=stripe`,
+        cancelUrl: `${baseUrl}/orders/${order.id}?payment=cancelled`,
+      })
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        razorpayOrderId: razorpayOrder.id,
-        amount: razorpayOrder.amount,
-        currency: razorpayOrder.currency,
-        keyId: process.env.RAZORPAY_KEY_ID,
-      },
-    })
+      await prisma.payment.upsert({
+        where: { orderId: order.id },
+        update: {
+          amount: usdAmount,
+          currency: 'USD',
+          gateway: 'STRIPE',
+          stripeSessionId: stripeSession.sessionId,
+          status: 'PENDING',
+        },
+        create: {
+          orderId: order.id,
+          amount: usdAmount,
+          currency: 'USD',
+          gateway: 'STRIPE',
+          stripeSessionId: stripeSession.sessionId,
+          status: 'PENDING',
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          gateway: 'stripe',
+          sessionId: stripeSession.sessionId,
+          url: stripeSession.url,
+        },
+      })
+    }
+
+    // ─── PAYPAL ───
+    if (gateway === 'paypal') {
+      const usdAmount = inrToUsd(amount)
+
+      const paypalOrder = await createPayPalOrder({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amountInr: amount,
+        returnUrl: `${baseUrl}/api/payments/paypal/capture?orderId=${order.id}`,
+        cancelUrl: `${baseUrl}/orders/${order.id}?payment=cancelled`,
+      })
+
+      await prisma.payment.upsert({
+        where: { orderId: order.id },
+        update: {
+          amount: usdAmount,
+          currency: 'USD',
+          gateway: 'PAYPAL',
+          paypalOrderId: paypalOrder.paypalOrderId,
+          status: 'PENDING',
+        },
+        create: {
+          orderId: order.id,
+          amount: usdAmount,
+          currency: 'USD',
+          gateway: 'PAYPAL',
+          paypalOrderId: paypalOrder.paypalOrderId,
+          status: 'PENDING',
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          gateway: 'paypal',
+          paypalOrderId: paypalOrder.paypalOrderId,
+          approvalUrl: paypalOrder.approvalUrl,
+        },
+      })
+    }
+
+    return NextResponse.json(
+      { success: false, error: `Unsupported gateway: ${gateway}` },
+      { status: 400 }
+    )
   } catch (error) {
     console.error('POST /api/payments/create-order error:', error)
     return NextResponse.json(

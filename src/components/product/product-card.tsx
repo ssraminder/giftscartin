@@ -5,7 +5,7 @@ import Link from "next/link"
 import { ShoppingCart, Star, Truck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import type { Product } from "@/types"
 
@@ -14,6 +14,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
+  const { formatPrice } = useCurrency()
   const addItem = useCart((s) => s.addItem)
 
   const handleAddToCart = (e: React.MouseEvent) => {

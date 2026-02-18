@@ -479,21 +479,33 @@ model OrderStatusHistory {
 // ==================== PAYMENTS ====================
 
 model Payment {
-  id                String        @id @default(cuid())
-  orderId           String        @unique
-  amount            Decimal       @db.Decimal(10, 2)
-  currency          String        @default("INR")
+  id                String         @id @default(cuid())
+  orderId           String         @unique
+  amount            Decimal        @db.Decimal(10, 2)
+  currency          String         @default("INR")
+  gateway           PaymentGateway @default(RAZORPAY)
   razorpayOrderId   String?
   razorpayPaymentId String?
   razorpaySignature String?
+  stripeSessionId   String?
+  stripePaymentIntentId String?
+  paypalOrderId     String?
+  paypalCaptureId   String?
   method            String?
-  status            PaymentStatus @default(PENDING)
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  status            PaymentStatus  @default(PENDING)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
-  order             Order         @relation(fields: [orderId], references: [id])
+  order             Order          @relation(fields: [orderId], references: [id])
 
   @@map("payments")
+}
+
+enum PaymentGateway {
+  RAZORPAY
+  STRIPE
+  PAYPAL
+  COD
 }
 
 model VendorPayout {
@@ -617,6 +629,28 @@ model Review {
   product   Product  @relation(fields: [productId], references: [id])
 
   @@map("reviews")
+}
+
+// ==================== CURRENCY CONFIG ====================
+
+model CurrencyConfig {
+  id             String   @id @default(cuid())
+  code           String   @unique          // "USD", "INR", "GBP", "AED"
+  name           String                    // "US Dollar", "Indian Rupee"
+  symbol         String                    // "$", "₹", "£"
+  symbolPosition String   @default("before") // "before" or "after"
+  exchangeRate   Decimal  @db.Decimal(12, 6) // How much of this currency = 1 INR
+  markup         Decimal  @default(0) @db.Decimal(5, 2) // % markup on converted price
+  rounding       String   @default("nearest") // "nearest", "up", "down", "none"
+  roundTo        Decimal  @default(0.01) @db.Decimal(10, 2) // Round to nearest X (e.g. 0.01, 1, 0.99)
+  locale         String   @default("en-US") // Intl locale for formatting
+  countries      String[] // ISO country codes mapped to this currency ["US","CA","GB"]
+  isDefault      Boolean  @default(false)   // True for INR (base currency)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("currency_configs")
 }
 
 // ==================== ADMIN AUDIT ====================

@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Minus, Plus, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 import { useCart, type CartItemState } from "@/hooks/use-cart"
 
 interface CartItemProps {
@@ -13,6 +13,7 @@ interface CartItemProps {
 }
 
 export function CartItem({ item }: CartItemProps) {
+  const { formatPrice } = useCurrency()
   const updateQuantity = useCart((s) => s.updateQuantity)
   const removeItem = useCart((s) => s.removeItem)
 

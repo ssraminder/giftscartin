@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { formatPrice } from "@/lib/utils"
+import { useCurrency } from "@/hooks/use-currency"
 import type { ProductAddon } from "@/types"
 import type { AddonSelection } from "@/types"
 
@@ -14,6 +14,7 @@ interface AddonSelectorProps {
 }
 
 export function AddonSelector({ addons, selected, onChange }: AddonSelectorProps) {
+  const { formatPrice } = useCurrency()
   if (addons.length === 0) return null
 
   const isSelected = (addonId: string) =>

@@ -3,7 +3,18 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { verifyRazorpaySignature } from '@/lib/razorpay'
-import { verifyPaymentSchema } from '@/lib/validations'
+import { getStripeSession } from '@/lib/stripe'
+import { getPayPalOrder } from '@/lib/paypal'
+import { z } from 'zod/v4'
+
+const verifyPaymentSchema = z.object({
+  orderId: z.string().min(1),
+  gateway: z.enum(['razorpay', 'stripe', 'paypal']),
+  // Razorpay-specific
+  razorpayOrderId: z.string().optional(),
+  razorpayPaymentId: z.string().optional(),
+  razorpaySignature: z.string().optional(),
+})
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +36,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { orderId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = parsed.data
+    const { orderId, gateway } = parsed.data
 
     // Verify the order exists and belongs to the user
     const order = await prisma.order.findUnique({
@@ -47,65 +58,146 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify the Razorpay signature
-    const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)
+    // ─── RAZORPAY VERIFICATION ───
+    if (gateway === 'razorpay') {
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = parsed.data
 
-    if (!isValid) {
-      // Update payment as failed
-      if (order.payment) {
-        await prisma.payment.update({
-          where: { id: order.payment.id },
-          data: { status: 'FAILED' },
+      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+        return NextResponse.json(
+          { success: false, error: 'Missing Razorpay payment details' },
+          { status: 400 }
+        )
+      }
+
+      const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)
+
+      if (!isValid) {
+        if (order.payment) {
+          await prisma.payment.update({
+            where: { id: order.payment.id },
+            data: { status: 'FAILED' },
+          })
+        }
+
+        await prisma.order.update({
+          where: { id: orderId },
+          data: { paymentStatus: 'FAILED' },
+        })
+
+        return NextResponse.json(
+          { success: false, error: 'Payment verification failed' },
+          { status: 400 }
+        )
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { orderId: order.id },
+          data: {
+            razorpayPaymentId,
+            razorpaySignature,
+            status: 'PAID',
+          },
+        })
+
+        await tx.order.update({
+          where: { id: orderId },
+          data: {
+            paymentStatus: 'PAID',
+            paymentMethod: 'razorpay',
+            status: 'CONFIRMED',
+          },
+        })
+
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId,
+            status: 'CONFIRMED',
+            note: 'Payment verified via Razorpay',
+          },
+        })
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: { verified: true, gateway: 'razorpay', orderId, orderNumber: order.orderNumber },
+      })
+    }
+
+    // ─── STRIPE VERIFICATION ───
+    // (Stripe is primarily verified via webhook, but this route can check status)
+    if (gateway === 'stripe') {
+      if (!order.payment?.stripeSessionId) {
+        return NextResponse.json(
+          { success: false, error: 'No Stripe session found for this order' },
+          { status: 400 }
+        )
+      }
+
+      const stripeSession = await getStripeSession(order.payment.stripeSessionId)
+
+      if (stripeSession.payment_status === 'paid') {
+        // Webhook may have already updated, but ensure consistency
+        await prisma.$transaction(async (tx) => {
+          await tx.payment.update({
+            where: { orderId: order.id },
+            data: {
+              stripePaymentIntentId: stripeSession.payment_intent as string,
+              status: 'PAID',
+            },
+          })
+
+          await tx.order.update({
+            where: { id: orderId },
+            data: {
+              paymentStatus: 'PAID',
+              paymentMethod: 'stripe',
+              status: 'CONFIRMED',
+            },
+          })
+        })
+
+        return NextResponse.json({
+          success: true,
+          data: { verified: true, gateway: 'stripe', orderId, orderNumber: order.orderNumber },
         })
       }
 
-      await prisma.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: 'FAILED' },
-      })
-
       return NextResponse.json(
-        { success: false, error: 'Payment verification failed' },
+        { success: false, error: 'Stripe payment not yet completed' },
         { status: 400 }
       )
     }
 
-    // Update payment and order status in a transaction
-    await prisma.$transaction(async (tx) => {
-      // Update payment record
-      await tx.payment.update({
-        where: { orderId: order.id },
-        data: {
-          razorpayPaymentId,
-          razorpaySignature,
-          status: 'PAID',
-        },
-      })
+    // ─── PAYPAL VERIFICATION ───
+    // (PayPal capture happens in the capture route, but this can check status)
+    if (gateway === 'paypal') {
+      if (!order.payment?.paypalOrderId) {
+        return NextResponse.json(
+          { success: false, error: 'No PayPal order found' },
+          { status: 400 }
+        )
+      }
 
-      // Update order payment status
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: 'PAID',
-          paymentMethod: 'razorpay',
-          status: 'CONFIRMED',
-        },
-      })
+      const paypalOrder = await getPayPalOrder(order.payment.paypalOrderId)
 
-      // Add status history entry
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId,
-          status: 'CONFIRMED',
-          note: 'Payment verified successfully',
-        },
-      })
-    })
+      if (paypalOrder.status === 'COMPLETED') {
+        return NextResponse.json({
+          success: true,
+          data: { verified: true, gateway: 'paypal', orderId, orderNumber: order.orderNumber },
+        })
+      }
 
-    return NextResponse.json({
-      success: true,
-      data: { verified: true, orderId, orderNumber: order.orderNumber },
-    })
+      return NextResponse.json(
+        { success: false, error: 'PayPal payment not yet completed' },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json(
+      { success: false, error: 'Unsupported gateway' },
+      { status: 400 }
+    )
   } catch (error) {
     console.error('POST /api/payments/verify error:', error)
     return NextResponse.json(
