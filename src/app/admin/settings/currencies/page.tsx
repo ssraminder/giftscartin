@@ -66,6 +66,33 @@ export default function CurrenciesSettingsPage() {
   const [form, setForm] = useState<Omit<CurrencyConfig, "id">>(EMPTY_FORM)
   const [countriesInput, setCountriesInput] = useState("")
   const [error, setError] = useState("")
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{
+    updated: string[]
+    skipped: string[]
+    lastUpdated: string
+  } | null>(null)
+
+  const handleSyncRates = async () => {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch("/api/admin/currencies/sync-rates", {
+        method: "POST",
+      })
+      const json = await res.json()
+      if (json.success) {
+        setSyncResult(json.data)
+        fetchCurrencies()
+      } else {
+        setError(json.error || "Failed to sync rates")
+      }
+    } catch {
+      setError("Network error while syncing rates")
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const fetchCurrencies = useCallback(async () => {
     try {
@@ -216,6 +243,19 @@ export default function CurrenciesSettingsPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSyncRates}
+            disabled={syncing}
+          >
+            {syncing ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            {syncing ? "Syncing..." : "Sync Rates"}
+          </Button>
           <Button variant="outline" size="sm" onClick={fetchCurrencies}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
@@ -226,6 +266,46 @@ export default function CurrenciesSettingsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Sync Result Banner */}
+      {syncResult && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-900">
+                  Exchange rates synced from ExchangeRate-API
+                </p>
+                <p className="text-xs text-green-700 mt-0.5">
+                  Source updated: {syncResult.lastUpdated}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-green-700"
+                onClick={() => setSyncResult(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {syncResult.updated.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {syncResult.updated.map((line) => (
+                  <p key={line} className="text-xs text-green-800 font-mono">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
+            {syncResult.skipped.length > 0 && (
+              <p className="mt-1 text-xs text-amber-700">
+                Skipped (not found in API): {syncResult.skipped.join(", ")}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create / Edit Form */}
       {(showCreate || editingId) && (
@@ -482,6 +562,8 @@ export default function CurrenciesSettingsPage() {
             <li>If no match is found, the default currency (INR) is used</li>
             <li>Prices are converted from INR using: (INR price x exchange rate) x (1 + markup%)</li>
             <li>The result is then rounded according to the rounding rule</li>
+            <li>Exchange rates auto-sync daily at 6:00 AM IST via ExchangeRate-API (free, no key)</li>
+            <li>Use the &quot;Sync Rates&quot; button above to manually trigger a rate update</li>
           </ul>
         </CardContent>
       </Card>
