@@ -13,9 +13,10 @@ import {
   Menu,
   X,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
+import OrderNotifications from "@/components/vendor/order-notifications"
 
 const sidebarLinks = [
   { href: "/vendor", label: "Dashboard", icon: LayoutDashboard },
@@ -32,21 +33,41 @@ export default function VendorLayout({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [vendorId, setVendorId] = useState<string | null>(null)
+
+  // Fetch vendor ID for realtime subscriptions
+  useEffect(() => {
+    async function fetchVendorId() {
+      try {
+        const res = await fetch("/api/vendor/settings")
+        const json = await res.json()
+        if (json.success && json.data?.id) {
+          setVendorId(json.data.id)
+        }
+      } catch {
+        // Ignore - notifications just won't work
+      }
+    }
+    fetchVendorId()
+  }, [])
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Mobile header */}
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-teal-700 px-4 text-white lg:hidden">
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="rounded-md p-1.5 hover:bg-teal-600"
-        >
-          {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-        <div className="flex items-center gap-2">
-          <Store className="h-5 w-5" />
-          <span className="font-semibold">Vendor Dashboard</span>
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b bg-teal-700 px-4 text-white lg:hidden">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="rounded-md p-1.5 hover:bg-teal-600"
+          >
+            {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+          <div className="flex items-center gap-2">
+            <Store className="h-5 w-5" />
+            <span className="font-semibold">Vendor Dashboard</span>
+          </div>
         </div>
+        <OrderNotifications vendorId={vendorId} />
       </header>
 
       {/* Mobile sidebar overlay */}
@@ -66,9 +87,14 @@ export default function VendorLayout({
           )}
         >
           {/* Sidebar header */}
-          <div className="flex h-14 items-center gap-2 border-b border-teal-700 px-6">
-            <Store className="h-5 w-5" />
-            <span className="text-lg font-semibold">Vendor Dashboard</span>
+          <div className="flex h-14 items-center justify-between border-b border-teal-700 px-6">
+            <div className="flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              <span className="text-lg font-semibold">Vendor Dashboard</span>
+            </div>
+            <div className="hidden lg:block">
+              <OrderNotifications vendorId={vendorId} />
+            </div>
           </div>
 
           {/* Navigation */}

@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Package,
   Pencil,
+  Store,
   Truck,
   XCircle,
 } from "lucide-react"
@@ -139,6 +140,9 @@ export default function AdminOrderDetailPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [vendors, setVendors] = useState<{ id: string; businessName: string; status: string; city: { name: string } }[]>([])
+  const [assigningVendor, setAssigningVendor] = useState(false)
+  const [selectedVendorId, setSelectedVendorId] = useState("")
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -156,9 +160,46 @@ export default function AdminOrderDetailPage() {
     }
   }, [orderId])
 
+  const fetchVendors = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/vendors")
+      const json = await res.json()
+      if (json.success) {
+        setVendors(json.data.filter((v: { status: string }) => v.status === "APPROVED"))
+      }
+    } catch {
+      // Ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchOrder()
-  }, [fetchOrder])
+    fetchVendors()
+  }, [fetchOrder, fetchVendors])
+
+  const handleAssignVendor = async () => {
+    if (!selectedVendorId) return
+    setAssigningVendor(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId: selectedVendorId }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setSelectedVendorId("")
+        fetchOrder()
+      } else {
+        setActionError(json.error || "Failed to assign vendor")
+      }
+    } catch {
+      setActionError("Network error. Please try again.")
+    } finally {
+      setAssigningVendor(false)
+    }
+  }
 
   const handleCancelOrder = async () => {
     setCancelling(true)
@@ -517,6 +558,70 @@ export default function AdminOrderDetailPage() {
           </div>
         </Card>
       )}
+
+      {/* ==================== VENDOR ASSIGNMENT ==================== */}
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
+          <Store className="h-4 w-4" />
+          Vendor Assignment
+        </h2>
+        {order.vendorId ? (
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              Assigned to vendor ID: <span className="font-mono text-xs">{order.vendorId}</span>
+            </p>
+            {!isCancelled && !isDelivered && (
+              <div className="flex items-center gap-2 pt-1">
+                <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+                  <SelectTrigger className="h-8 w-[220px] text-sm">
+                    <SelectValue placeholder="Reassign vendor..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendors.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.businessName} ({v.city.name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAssignVendor}
+                  disabled={!selectedVendorId || assigningVendor}
+                >
+                  {assigningVendor ? "Assigning..." : "Reassign"}
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-amber-600">No vendor assigned to this order</p>
+            <div className="flex items-center gap-2">
+              <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+                <SelectTrigger className="h-8 w-[220px] text-sm">
+                  <SelectValue placeholder="Select vendor..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {vendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.businessName} ({v.city.name})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                onClick={handleAssignVendor}
+                disabled={!selectedVendorId || assigningVendor}
+              >
+                {assigningVendor ? "Assigning..." : "Assign Vendor"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* ==================== DELIVERY DETAILS ==================== */}
       <Card className="p-4">
