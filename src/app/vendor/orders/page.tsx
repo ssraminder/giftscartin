@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import {
@@ -73,7 +73,7 @@ const statusFilters = [
   { label: "Cancelled", value: "CANCELLED" },
 ]
 
-export default function VendorOrdersPage() {
+function VendorOrdersContent() {
   const searchParams = useSearchParams()
   const initialStatus = searchParams.get("status") || ""
 
@@ -85,7 +85,7 @@ export default function VendorOrdersPage() {
   const [statusFilter, setStatusFilter] = useState(initialStatus)
   const pageSize = 10
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -108,11 +108,11 @@ export default function VendorOrdersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, statusFilter])
 
   useEffect(() => {
     fetchOrders()
-  }, [page, statusFilter])
+  }, [fetchOrders])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -290,5 +290,31 @@ export default function VendorOrdersPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function VendorOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Orders</h1>
+            <p className="text-sm text-slate-500">Loading orders...</p>
+          </div>
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <div className="h-20 animate-pulse rounded bg-slate-100" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <VendorOrdersContent />
+    </Suspense>
   )
 }

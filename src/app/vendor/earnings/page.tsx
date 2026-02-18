@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Card,
   CardContent,
@@ -69,7 +69,7 @@ export default function VendorEarningsPage() {
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("month")
 
-  const fetchEarnings = async () => {
+  const fetchEarnings = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -85,11 +85,11 @@ export default function VendorEarningsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [period])
 
   useEffect(() => {
     fetchEarnings()
-  }, [period])
+  }, [fetchEarnings])
 
   if (loading) {
     return (

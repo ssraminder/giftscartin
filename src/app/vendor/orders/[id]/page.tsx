@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
+import { useCallback, useEffect, useState, use } from "react"
 import Link from "next/link"
 import {
   Card,
@@ -170,7 +170,7 @@ export default function VendorOrderDetailPage({
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionNote, setActionNote] = useState("")
 
-  const fetchOrder = async () => {
+  const fetchOrder = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -186,11 +186,11 @@ export default function VendorOrderDetailPage({
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
     fetchOrder()
-  }, [id])
+  }, [fetchOrder])
 
   const handleAction = async (action: string, confirmMsg?: string) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return
