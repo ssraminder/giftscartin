@@ -1,6 +1,6 @@
 # Gifts Cart India — Progress Tracker
 
-**Last Updated:** 2026-02-18
+**Last Updated:** 2026-02-18 (Phase 3 complete)
 
 ---
 
@@ -221,3 +221,17 @@ src/
 - **Config:** `netlify.toml` at project root
 - **Build command:** `npm run build`
 - **Publish directory:** `.next`
+
+---
+
+## What's Next (Potential Phase 4)
+
+- Customer order tracking page with real-time status updates
+- Vendor onboarding self-registration flow
+- Review & rating system (post-delivery)
+- Coupon management admin UI
+- Push notifications (FCM/Web Push)
+- SEO optimization (meta tags, structured data, sitemap)
+- Analytics dashboard (admin)
+- Partner/referral portal
+- Delivery partner tracking integration
