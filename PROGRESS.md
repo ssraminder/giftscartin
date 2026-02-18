@@ -6,50 +6,57 @@
 
 ## 1A — Project Status Summary
 
-| Field | Value |
-|-------|-------|
-| **Platform Name** | Gifts Cart India |
-| **Business Entity** | Cital Enterprises |
-| **Domain** | giftscart.in (production, eventual) |
-| **Live Staging** | https://giftscart.netlify.app |
-| **Supabase** | https://saeditdtacprxcnlgips.supabase.co |
-| **Current Phase** | Phase 1 & 2 complete — ready for Phase 3 |
-| **Last Updated** | 2026-02-18 |
+|Field          |Value                                                                             |
+|---------------|----------------------------------------------------------------------------------|
+|Platform Name  |Gifts Cart India                                                                  |
+|Business Entity|Cital Enterprises                                                                 |
+|Domain         |giftscart.in (production, eventual)                                               |
+|Live Staging   |https://giftscart.netlify.app                                                     |
+|Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
+|Current Phase  |Phase 3 (Vendor Ecosystem) — in progress. Phase A-E planned (product system + SEO)|
+|Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
-- Full Prisma schema with 33 models deployed to Supabase (incl. CurrencyConfig, ProductVariation)
-- All 19+ API routes implemented with real Prisma queries
-- Auth system (email-based OTP via Brevo — deviates from phone+MSG91 spec)
-- Homepage with hero banner, category grid, occasion nav, trending products, testimonials
-- Cart (Zustand client-side), checkout form UI, order history pages
-- Admin dashboard with order management (real API data)
-- Middleware for route protection (auth + role-based)
-- Seed data script with cities, 13 categories + 13 subcategories, 45+ products, vendor, 5 currencies
-- Netlify deployment configured and working
-- Premium UI redesign completed
-- **Multi-gateway payment system**: Razorpay (India), Stripe Checkout (international), PayPal REST API (international), COD
-- **IP-based geo-detection**: CF-IPCountry, x-vercel-ip-country, x-country headers
-- **Admin-configurable currency system**: CurrencyConfig model, admin CRUD UI, live price preview
-- **CurrencyProvider**: Site-wide currency context, auto-resolves via /api/currencies/resolve
-- **All shop pages use currency-aware formatPrice** (products, cart, checkout, orders)
-- Admin settings page with currencies management
-- **Product Variation System**: Weight/size variations for cakes, sweets, and other weight-based products
-- **Expanded categories**: Sahni Bakery-inspired categories (Pastries, Sweets, Dry Cakes, Biscuits, Namkeen, Decorations, Festive Hampers, Chocolates)
 
-### What's NOT Done
-- No MSG91 SMS integration (using Brevo email OTP instead)
-- Vendor dashboard is Phase 3 placeholder
-- `prisma db push` needed to deploy ProductVariation + CurrencyConfig + Payment gateway fields to Supabase
+- Full Prisma schema 31 models deployed to Supabase
+- All 15 API routes with real Prisma queries
+- Auth: email OTP via Brevo (intentional deviation from phone+MSG91 spec)
+- Homepage, order history, order tracking — connected to real API
+- Admin dashboard: orders, vendor management, delivery config (real data)
+- Vendor dashboard: orders, products, earnings, settings (real data — Phase 3 PR #46)
+- Multi-currency support with sync-exchange-rates scheduled function
+- Guest checkout support
+- Referral logo branding system (?ref=CODE)
+- Platform rebrand: Gifts Cart India by Cital Enterprises
+- Netlify auto-deploy from GitHub, build passing
 
-### Previously Missing — Now Done
-- City landing page (`[city]/page.tsx`) — implemented with dynamic city data from API
-- Product images — 27 products updated with Supabase storage URLs (PR #41)
-- Logo SVG (`public/logo.svg`) — brand logo with gift box icon
-- Category icons (`public/icons/`) — SVG icons for cakes, flowers, combos, plants, gifts
-- Coupon validation API (`/api/coupons/validate`) — server-side validation with usage limits
-- Admin order actions — wired up in admin order detail page (PR #40)
-- Cart price bug — fixed Prisma Decimal string concatenation (PR #44)
-- TypeScript — compiles cleanly (0 errors with dependencies installed)
+### What's NOT Done (Priority Order)
+
+#### Customer-Facing Fixes (needed before launch)
+
+- Category listing page — hardcoded data, API exists but not connected
+- Product detail page — hardcoded addons/reviews, needs real API data
+- Checkout — setTimeout placeholder, no real order creation or Razorpay flow
+- No city landing page ([city]/page.tsx)
+- No real product images (all use /placeholder-product.svg)
+
+#### Product System (Phases A-E — planned)
+
+- Schema: variations, addon groups, upsells, SEO fields (Phase A)
+- SEO infrastructure: metadata, sitemap, JSON-LD, breadcrumbs (Phase B)
+- Admin product form: WooCommerce-style create + edit (Phase C)
+- Customer-facing variations + addons display (Phase D)
+- AI content + image generation (Phase E)
+
+#### Management Features (Phase 3 continuation)
+
+- Admin product management (CRUD)
+- Admin category management
+- Admin delivery configuration UI
+- Vendor delivery config (pincodes, slots, capacity)
+- Coupon management
+- Partner/referral management
+- Audit log viewer
 
 ---
 
@@ -563,3 +570,25 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 2. Run `npx prisma db seed` to populate variations and new categories/products
 3. Add admin CRUD for managing product variations
 4. Add variation support to vendor product pricing (vendor-specific variation prices)
+
+---
+
+## 1J — Architectural Decisions Log
+
+Record of key design decisions made during planning. Reference before building
+any feature in these areas.
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Auth method | Email OTP via Brevo | MSG91 signup issues; email works reliably |
+| Egg preference | Variation (not addon) | Defines what product IS; determines vendor eligibility |
+| Candles/Balloons | Upsell products (not addons) | Can be ordered independently; cleaner separation |
+| Addon templates | Option B (linked copies) | Full per-product flexibility + auto-propagation via template_group_id |
+| Template propagation | Explicit detach (is_overridden flag) | Prevents accidental detachment from implicit edits |
+| Vendor availability | Variation level (vendor_product_variations) | Supports eggless-only vendors correctly |
+| Photo upload | FILE_UPLOAD addon type on photo cake product | order-uploads bucket (private), signed URLs |
+| URL structure | Flat (/product/slug, /category/slug) | City-prefixed URLs too complex, local SEO via content signals |
+| Image generation | GPT-image-1.5 (not DALL-E 3) | Natively multimodal, accepts reference image, 4x faster |
+| SEO content | Claude claude-opus-4-5 | Best copywriting quality for Indian gifting context |
+| Storage buckets | products (public) + order-uploads (private) | Customer photos must never be publicly accessible |
+| Product upsells | Separate product_upsells table | Clean cart line items, separate vendor assignment |
