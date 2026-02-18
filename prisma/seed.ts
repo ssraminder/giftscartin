@@ -1710,7 +1710,7 @@ async function main() {
 
   await prisma.currencyConfig.upsert({
     where: { code: 'USD' },
-    update: {},
+    update: { exchangeRate: 0.012 },
     create: {
       code: 'USD',
       name: 'US Dollar',
@@ -1729,7 +1729,7 @@ async function main() {
 
   await prisma.currencyConfig.upsert({
     where: { code: 'GBP' },
-    update: {},
+    update: { exchangeRate: 0.0095 },
     create: {
       code: 'GBP',
       name: 'British Pound',
@@ -1748,7 +1748,7 @@ async function main() {
 
   await prisma.currencyConfig.upsert({
     where: { code: 'AED' },
-    update: {},
+    update: { exchangeRate: 0.044 },
     create: {
       code: 'AED',
       name: 'UAE Dirham',
@@ -1767,7 +1767,7 @@ async function main() {
 
   await prisma.currencyConfig.upsert({
     where: { code: 'EUR' },
-    update: {},
+    update: { exchangeRate: 0.011 },
     create: {
       code: 'EUR',
       name: 'Euro',
