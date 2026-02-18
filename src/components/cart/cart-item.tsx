@@ -17,8 +17,8 @@ export function CartItem({ item }: CartItemProps) {
   const updateQuantity = useCart((s) => s.updateQuantity)
   const removeItem = useCart((s) => s.removeItem)
 
-  const baseUnitPrice = item.variation ? item.variation.price : item.product.basePrice
-  const addonTotal = item.addons.reduce((sum, a) => sum + a.price, 0)
+  const baseUnitPrice = Number(item.variation ? item.variation.price : item.product.basePrice)
+  const addonTotal = item.addons.reduce((sum, a) => sum + Number(a.price), 0)
   const unitPrice = baseUnitPrice + addonTotal
   const lineTotal = unitPrice * item.quantity
 

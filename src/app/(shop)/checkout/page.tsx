@@ -1125,7 +1125,8 @@ export default function CheckoutPage() {
 
                 <div className="space-y-3">
                   {items.map((item) => {
-                    const addonTotal = item.addons.reduce((s, a) => s + a.price, 0)
+                    const unitPrice = Number(item.variation ? item.variation.price : item.product.basePrice)
+                    const addonTotal = item.addons.reduce((s, a) => s + Number(a.price), 0)
                     return (
                       <div key={item.productId} className="flex gap-3">
                         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-50 border border-gray-100">
@@ -1148,7 +1149,7 @@ export default function CheckoutPage() {
                             </p>
                           </div>
                           <span className="text-sm font-semibold shrink-0 text-gray-800">
-                            {formatPrice((item.product.basePrice + addonTotal) * item.quantity)}
+                            {formatPrice((unitPrice + addonTotal) * item.quantity)}
                           </span>
                         </div>
                       </div>
