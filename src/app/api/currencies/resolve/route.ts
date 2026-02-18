@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Hardcoded INR fallback so the site never breaks even if the DB is unreachable
+const INR_FALLBACK = {
+  code: 'INR',
+  name: 'Indian Rupee',
+  symbol: '\u20B9',
+  symbolPosition: 'before',
+  exchangeRate: 1,
+  markup: 0,
+  rounding: 'nearest',
+  roundTo: 1,
+  locale: 'en-IN',
+}
+
 /**
  * GET /api/currencies/resolve
  * Resolves the best currency config for the visitor based on their country code.
@@ -17,23 +30,54 @@ export async function GET(request: NextRequest) {
       'IN'
     ).toUpperCase()
 
-    // Find a currency config that includes this country
-    const allCurrencies = await prisma.currencyConfig.findMany({
-      where: { isActive: true },
-    })
+    let matched: typeof INR_FALLBACK | null = null
 
-    let matched = allCurrencies.find((c) =>
-      c.countries.includes(country)
-    )
+    try {
+      // Find a currency config that includes this country
+      const allCurrencies = await prisma.currencyConfig.findMany({
+        where: { isActive: true },
+      })
 
-    // If no country match, use the default currency (INR)
-    if (!matched) {
-      matched = allCurrencies.find((c) => c.isDefault)
+      const countryMatch = allCurrencies.find((c) =>
+        c.countries.includes(country)
+      )
+
+      if (countryMatch) {
+        matched = {
+          code: countryMatch.code,
+          name: countryMatch.name,
+          symbol: countryMatch.symbol,
+          symbolPosition: countryMatch.symbolPosition,
+          exchangeRate: Number(countryMatch.exchangeRate),
+          markup: Number(countryMatch.markup),
+          rounding: countryMatch.rounding,
+          roundTo: Number(countryMatch.roundTo),
+          locale: countryMatch.locale,
+        }
+      } else {
+        // Use the default currency
+        const defaultCurrency = allCurrencies.find((c) => c.isDefault) || allCurrencies[0]
+        if (defaultCurrency) {
+          matched = {
+            code: defaultCurrency.code,
+            name: defaultCurrency.name,
+            symbol: defaultCurrency.symbol,
+            symbolPosition: defaultCurrency.symbolPosition,
+            exchangeRate: Number(defaultCurrency.exchangeRate),
+            markup: Number(defaultCurrency.markup),
+            rounding: defaultCurrency.rounding,
+            roundTo: Number(defaultCurrency.roundTo),
+            locale: defaultCurrency.locale,
+          }
+        }
+      }
+    } catch (dbError) {
+      console.error('Currency resolve DB error:', dbError)
+      // Fall through to INR_FALLBACK below
     }
 
-    // Final fallback if somehow no default exists
     if (!matched) {
-      matched = allCurrencies.find((c) => c.code === 'INR') || allCurrencies[0]
+      matched = INR_FALLBACK
     }
 
     const region = country === 'IN' ? 'india' : 'international'
@@ -45,26 +89,20 @@ export async function GET(request: NextRequest) {
         country,
         region,
         gateways,
-        currency: matched
-          ? {
-              code: matched.code,
-              name: matched.name,
-              symbol: matched.symbol,
-              symbolPosition: matched.symbolPosition,
-              exchangeRate: Number(matched.exchangeRate),
-              markup: Number(matched.markup),
-              rounding: matched.rounding,
-              roundTo: Number(matched.roundTo),
-              locale: matched.locale,
-            }
-          : null,
+        currency: matched,
       },
     })
   } catch (error) {
     console.error('Currency resolve error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to resolve currency' },
-      { status: 500 }
-    )
+    // Even on total failure, return INR fallback so the site keeps working
+    return NextResponse.json({
+      success: true,
+      data: {
+        country: 'IN',
+        region: 'india',
+        gateways: ['razorpay', 'cod'],
+        currency: INR_FALLBACK,
+      },
+    })
   }
 }

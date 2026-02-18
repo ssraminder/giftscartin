@@ -87,8 +87,10 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ success: false, error: error.issues[0].message }, { status: 400 })
+    if (error && typeof error === 'object' && 'issues' in error) {
+      const issue = (error as { issues: Array<{ path?: (string | number)[]; message: string }> }).issues[0]
+      const field = issue.path?.length ? issue.path.join('.') : 'input'
+      return NextResponse.json({ success: false, error: `${field}: ${issue.message}` }, { status: 400 })
     }
     console.error('Admin currencies POST error:', error)
     return NextResponse.json({ success: false, error: 'Failed to create currency' }, { status: 500 })
@@ -132,8 +134,10 @@ export async function PUT(request: NextRequest) {
       },
     })
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ success: false, error: error.issues[0].message }, { status: 400 })
+    if (error && typeof error === 'object' && 'issues' in error) {
+      const issue = (error as { issues: Array<{ path?: (string | number)[]; message: string }> }).issues[0]
+      const field = issue.path?.length ? issue.path.join('.') : 'input'
+      return NextResponse.json({ success: false, error: `${field}: ${issue.message}` }, { status: 400 })
     }
     console.error('Admin currencies PUT error:', error)
     return NextResponse.json({ success: false, error: 'Failed to update currency' }, { status: 500 })
