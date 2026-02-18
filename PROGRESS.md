@@ -13,18 +13,18 @@
 | **Domain** | giftscart.in (production, eventual) |
 | **Live Staging** | https://giftscart.netlify.app |
 | **Supabase** | https://saeditdtacprxcnlgips.supabase.co |
-| **Current Phase** | Phase 1 (core build) — ~97% complete |
+| **Current Phase** | Phase 1 (core build) — ~98% complete |
 | **Last Updated** | 2026-02-18 |
 
 ### What's Done
-- Full Prisma schema with 32 models deployed to Supabase (incl. CurrencyConfig)
+- Full Prisma schema with 33 models deployed to Supabase (incl. CurrencyConfig, ProductVariation)
 - All 19+ API routes implemented with real Prisma queries
 - Auth system (email-based OTP via Brevo — deviates from phone+MSG91 spec)
 - Homepage with hero banner, category grid, occasion nav, trending products, testimonials
 - Cart (Zustand client-side), checkout form UI, order history pages
 - Admin dashboard with order management (real API data)
 - Middleware for route protection (auth + role-based)
-- Seed data script with cities, categories, 25 products, vendor, 5 currencies
+- Seed data script with cities, 13 categories + 13 subcategories, 45+ products, vendor, 5 currencies
 - Netlify deployment configured and working
 - Premium UI redesign completed
 - **Multi-gateway payment system**: Razorpay (India), Stripe Checkout (international), PayPal REST API (international), COD
@@ -33,13 +33,15 @@
 - **CurrencyProvider**: Site-wide currency context, auto-resolves via /api/currencies/resolve
 - **All shop pages use currency-aware formatPrice** (products, cart, checkout, orders)
 - Admin settings page with currencies management
+- **Product Variation System**: Weight/size variations for cakes, sweets, and other weight-based products
+- **Expanded categories**: Sahni Bakery-inspired categories (Pastries, Sweets, Dry Cakes, Biscuits, Namkeen, Decorations, Festive Hampers, Chocolates)
 
 ### What's NOT Done
 - No MSG91 SMS integration (using Brevo email OTP instead)
 - Vendor dashboard is Phase 3 placeholder
 - No `[city]/page.tsx` city landing page
 - No real product images (all use `/placeholder-product.svg`)
-- `prisma db push` needed to deploy CurrencyConfig + Payment gateway fields to Supabase
+- `prisma db push` needed to deploy ProductVariation + CurrencyConfig + Payment gateway fields to Supabase
 
 ---
 
@@ -142,6 +144,7 @@
 | `src/components/product/product-card.tsx` | Yes | Yes | ✅ |
 | `src/components/product/product-gallery.tsx` | Yes | Yes | ✅ |
 | `src/components/product/delivery-slot-picker.tsx` | Yes | Yes | ✅ |
+| `src/components/product/variation-selector.tsx` | No (new) | Yes | ✅ Weight/size variation buttons |
 | `src/components/product/addon-selector.tsx` | Yes | Yes | ✅ |
 | `src/components/product/review-list.tsx` | Yes | Yes | ✅ |
 | `src/components/cart/cart-item.tsx` | Yes | Yes | ✅ |
@@ -214,6 +217,7 @@
 | Category | `categories` | /api/categories | category page, category-grid | ✅ 5 + 8 sub |
 | Product | `products` | /api/products, /api/products/[id] | product page, product-card | ✅ 25 products |
 | ProductAddon | `product_addons` | /api/products/[id] (nested) | addon-selector | ✅ 4 per cake |
+| ProductVariation | `product_variations` | /api/products, /api/products/[id] (nested) | variation-selector | ✅ 49 variations (30 cake + 4 photo + 15 sweet) |
 | VendorProduct | `vendor_products` | /api/products (city filter) | — | ✅ 8 items |
 | Order | `orders` | /api/orders, /api/orders/[id] | orders pages, admin orders | No (runtime) |
 | OrderItem | `order_items` | /api/orders (nested) | order detail page | No (runtime) |
@@ -449,3 +453,106 @@ All TypeScript errors are caused by missing `node_modules/` (dependencies not in
 | GBP | 0.0095 | 3% | GB |
 | AED | 0.044 | 2% | AE |
 | EUR | 0.011 | 3% | DE, FR, IT, ES, NL, etc. |
+
+---
+
+## 1L — Product Variation System (Weight/Size)
+
+### Research Summary
+
+**Source: Sahni Bakery (sahnibakery.com)** — Oldest bakery since 1947, Patiala, Punjab
+- Categories: Biscuits, Cakes (12+ subcategories), Pastries, Dry Cakes, Rusks, Namkeens, Flowers, Gifts, Sweets, Festive Packagings, Decoration Items
+- Cake prices range from ₹499 to ₹6,499 depending on weight variant
+- Weight variants displayed as selectable buttons on product page
+
+**Source: WooCommerce Pattern**
+- **Variations** = attributes that change base price (weight, size, color) — each gets its own price, SKU, weight
+- **Addons** = optional extras layered on top (candles, message, greeting card) — don't create new product versions
+- Industry best practice: Use variations for weight/size, addons for customizations
+
+**Source: Indian Bakery Standards (Winni, FNP, IGP)**
+- Standard weight tiers: 500g, 1 Kg, 1.5 Kg, 2 Kg, 3 Kg, 5 Kg
+- Price displayed dynamically based on selected weight
+- Weight selector = clickable buttons (not dropdown)
+- Avg price per kg: ₹1,000-1,500 (standard), ₹1,500-3,500 (premium/designer)
+
+### Implementation
+
+**New Prisma Model: `ProductVariation`**
+| Field | Type | Description |
+|-------|------|-------------|
+| id | String | cuid |
+| productId | String | FK to Product |
+| type | String | "weight", "size", "pack", "tier" |
+| label | String | Display: "500g", "1 Kg", "2 Kg" |
+| value | String | Sortable: "500", "1000", "2000" |
+| price | Decimal | Absolute price for this variation |
+| sku | String? | Optional SKU suffix |
+| sortOrder | Int | Display order |
+| isDefault | Boolean | Auto-selected on page load |
+| isActive | Boolean | Whether variation is available |
+
+**Unique constraint:** `(productId, type, value)` — prevents duplicate variations
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `prisma/schema.prisma` | Added `ProductVariation` model, `variationId`/`variationLabel` on OrderItem, `variationId` on CartItem |
+| `src/types/index.ts` | Added `ProductVariation`, `VariationSelection` interfaces; updated `Product`, `OrderItem`, `CartItem` |
+| `src/hooks/use-cart.ts` | Added `variation` to `CartItemState`, `updateVariation` method, variation-aware `getSubtotal` |
+| `src/components/product/variation-selector.tsx` | **NEW** — Renders weight/size buttons grouped by type |
+| `src/app/(shop)/product/[slug]/page.tsx` | Added `VariationSelector`, auto-select default, variation-aware pricing |
+| `src/components/cart/cart-item.tsx` | Shows variation label, uses variation price for totals |
+| `src/app/api/products/route.ts` | Added `variations` to Prisma include |
+| `src/app/api/products/[id]/route.ts` | Added `variations` to Prisma include |
+| `prisma/seed.ts` | Added 8 new top-level categories, 6 new cake subcategories, 20+ new products, weight variations for all cakes and sweets |
+| `CLAUDE.md` | Added ProductVariation model to schema, variation system docs, expanded categories list |
+
+### Seeded Variations
+**Cake weight variations (6 products x 5 weights = 30 variations):**
+| Weight | Multiplier | Example (Chocolate Truffle, base ₹599) |
+|--------|------------|----------------------------------------|
+| 500g (Half Kg) | 1x | ₹599 |
+| 1 Kg | 1.85x | ₹1,108 |
+| 1.5 Kg | 2.7x | ₹1,617 |
+| 2 Kg | 3.5x | ₹2,097 |
+| 3 Kg | 5x | ₹2,995 |
+
+**Photo Cake variations (1 product x 4 weights = 4 variations, starts at 1 Kg):**
+| Weight | Price |
+|--------|-------|
+| 1 Kg | ₹899 |
+| 1.5 Kg | ₹1,349 |
+| 2 Kg | ₹1,749 |
+| 3 Kg | ₹2,499 |
+
+**Sweet weight variations (5 products x 3 weights = 15 variations):**
+| Weight | Multiplier | Example (Kaju Katli, base ₹599) |
+|--------|------------|--------------------------------|
+| 250g | 0.55x | ₹329 |
+| 500g | 1x | ₹599 |
+| 1 Kg | 1.9x | ₹1,138 |
+
+### New Categories Added (Sahni Bakery inspired)
+| Category | Type | Products |
+|----------|------|----------|
+| Pastries | Top-level | Chocolate Pastry, Black Forest Pastry, Red Velvet Pastry, Butterscotch Pastry, Pineapple Pastry |
+| Sweets | Top-level | Milk Cake, Kalakand, Kaju Katli, Gulab Jamun, Rasmalai |
+| Dry Cakes | Top-level | Fruit Dry Cake, Chocolate Dry Cake |
+| Biscuits & Rusks | Top-level | Fruit Cake Rusk, Atta Biscuits |
+| Namkeen & Snacks | Top-level | Mathri, Mix Namkeen |
+| Decoration Items | Top-level | Sparkling Birthday Candle, Happy Birthday Banner |
+| Festive Hampers | Top-level | Diwali Dry Fruit Hamper, Festive Sweet Box |
+| Chocolates | Top-level | Assorted Chocolate Box, Dark Chocolate Truffles |
+| Premium Cakes | Sub (Cakes) | — |
+| Fondant Cakes | Sub (Cakes) | — |
+| Wedding Cakes | Sub (Cakes) | — |
+| Anniversary Cakes | Sub (Cakes) | — |
+| Customized Cakes | Sub (Cakes) | — |
+| Valentine's Cakes | Sub (Cakes) | — |
+
+### Next Steps
+1. Run `prisma db push` to deploy the `product_variations` table
+2. Run `npx prisma db seed` to populate variations and new categories/products
+3. Add admin CRUD for managing product variations
+4. Add variation support to vendor product pricing (vendor-specific variation prices)

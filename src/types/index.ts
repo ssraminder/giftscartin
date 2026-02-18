@@ -150,7 +150,28 @@ export interface Product {
   createdAt: string
   updatedAt: string
   category?: Category
+  variations?: ProductVariation[]
   addons?: ProductAddon[]
+}
+
+export interface ProductVariation {
+  id: string
+  productId: string
+  type: string // "weight", "size", "pack", "tier"
+  label: string // "500g", "1 Kg", "2 Kg"
+  value: string // Sortable: "500", "1000", "2000"
+  price: number
+  sku: string | null
+  sortOrder: number
+  isDefault: boolean
+  isActive: boolean
+}
+
+export interface VariationSelection {
+  variationId: string
+  type: string
+  label: string
+  price: number
 }
 
 export interface ProductAddon {
@@ -214,6 +235,8 @@ export interface OrderItem {
   quantity: number
   price: number
   addons: AddonSelection[] | null
+  variationId: string | null
+  variationLabel: string | null
   product?: Product
 }
 
@@ -256,6 +279,7 @@ export interface CartItem {
   productId: string
   quantity: number
   addons: AddonSelection[] | null
+  variation: VariationSelection | null
   deliveryDate: string | null
   deliverySlot: string | null
   product?: Product

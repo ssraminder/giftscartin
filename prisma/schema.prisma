@@ -339,6 +339,7 @@ model Product {
   updatedAt       DateTime @updatedAt
 
   category        Category       @relation(fields: [categoryId], references: [id])
+  variations      ProductVariation[]
   vendorProducts  VendorProduct[]
   orderItems      OrderItem[]
   cartItems       CartItem[]
@@ -346,6 +347,24 @@ model Product {
   addons          ProductAddon[]
 
   @@map("products")
+}
+
+model ProductVariation {
+  id        String  @id @default(cuid())
+  productId String
+  type      String  // "weight", "size", "pack", "tier"
+  label     String  // Display label: "500g", "1 Kg", "2 Kg"
+  value     String  // Sortable value: "500", "1000", "2000" (grams for weight)
+  price     Decimal @db.Decimal(10, 2) // Absolute price for this variation
+  sku       String? // Optional SKU suffix
+  sortOrder Int     @default(0)
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, type, value])
+  @@map("product_variations")
 }
 
 model ProductAddon {
@@ -449,13 +468,15 @@ enum BusinessModel {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  productId String
-  name      String
-  quantity  Int
-  price     Decimal @db.Decimal(10, 2)
-  addons    Json?
+  id             String  @id @default(cuid())
+  orderId        String
+  productId      String
+  name           String
+  quantity       Int
+  price          Decimal @db.Decimal(10, 2)
+  addons         Json?
+  variationId    String? // ID of selected ProductVariation
+  variationLabel String? // Snapshot: "1 Kg", "2 Kg" etc.
 
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
@@ -578,6 +599,7 @@ model CartItem {
   productId    String
   quantity     Int      @default(1)
   addons       Json?
+  variationId  String?  // ID of selected ProductVariation
   deliveryDate DateTime? @db.Date
   deliverySlot String?
   createdAt    DateTime @default(now())

@@ -13,11 +13,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ProductGallery } from "@/components/product/product-gallery"
 import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
 import { AddonSelector } from "@/components/product/addon-selector"
+import { VariationSelector } from "@/components/product/variation-selector"
 import { ReviewList } from "@/components/product/review-list"
 import { ProductCard } from "@/components/product/product-card"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
-import type { Product, ProductAddon, Review, AddonSelection, ApiResponse, PaginatedData } from "@/types"
+import type { Product, ProductAddon, ProductVariation, Review, AddonSelection, VariationSelection, ApiResponse, PaginatedData } from "@/types"
 
 // ── Helper: render star rating ────────────────────────────────────
 
@@ -74,8 +75,9 @@ function ProductDetailSkeleton() {
 
 // ── Component ─────────────────────────────────────────────────────
 
-interface ProductWithDetails extends Omit<Product, 'category' | 'addons'> {
+interface ProductWithDetails extends Omit<Product, 'category' | 'addons' | 'variations'> {
   category?: { id: string; name: string; slug: string }
+  variations?: ProductVariation[]
   addons?: ProductAddon[]
   reviews?: Review[]
 }
@@ -96,6 +98,7 @@ export default function ProductDetailPage() {
 
   // UI state
   const [quantity, setQuantity] = useState(1)
+  const [selectedVariation, setSelectedVariation] = useState<VariationSelection | null>(null)
   const [selectedAddons, setSelectedAddons] = useState<AddonSelection[]>([])
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null)
   const [deliverySlot, setDeliverySlot] = useState<string | null>(null)
@@ -133,6 +136,21 @@ export default function ProductDetailPage() {
     fetchProduct()
   }, [slug])
 
+  // Auto-select default variation when product loads
+  useEffect(() => {
+    if (product?.variations && product.variations.length > 0 && !selectedVariation) {
+      const defaultVar = product.variations.find((v) => v.isDefault) || product.variations[0]
+      if (defaultVar) {
+        setSelectedVariation({
+          variationId: defaultVar.id,
+          type: defaultVar.type,
+          label: defaultVar.label,
+          price: Number(defaultVar.price),
+        })
+      }
+    }
+  }, [product, selectedVariation])
+
   if (loading) {
     return <ProductDetailSkeleton />
   }
@@ -161,18 +179,21 @@ export default function ProductDetailPage() {
 
   const categorySlug = product.category?.slug || ""
   const categoryName = product.category?.name || ""
+  const variations = product.variations || []
   const addons = product.addons || []
   const reviews = product.reviews || []
+  const hasVariations = variations.length > 0
 
+  const unitPrice = selectedVariation ? selectedVariation.price : Number(product.basePrice)
   const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
-  const totalPrice = (Number(product.basePrice) + addonTotal) * quantity
+  const totalPrice = (unitPrice + addonTotal) * quantity
 
   const handleAddToCart = () => {
-    addItem(product as Product, quantity, selectedAddons)
+    addItem(product as Product, quantity, selectedAddons, selectedVariation)
   }
 
   const handleBuyNow = () => {
-    addItem(product as Product, quantity, selectedAddons)
+    addItem(product as Product, quantity, selectedAddons, selectedVariation)
     router.push("/cart")
   }
 
@@ -257,8 +278,13 @@ export default function ProductDetailPage() {
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-bold text-[#E91E63]">
-                  {formatPrice(Number(product.basePrice))}
+                  {formatPrice(unitPrice)}
                 </span>
+                {hasVariations && selectedVariation && (
+                  <span className="text-sm text-muted-foreground">
+                    for {selectedVariation.label}
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">Inclusive of all taxes</p>
             </div>
@@ -280,7 +306,17 @@ export default function ProductDetailPage() {
               </p>
             )}
 
-            <Separator />
+            {/* ── Weight / Size variations ────────────────────── */}
+            {hasVariations && (
+              <>
+                <VariationSelector
+                  variations={variations}
+                  selected={selectedVariation}
+                  onChange={setSelectedVariation}
+                />
+                <Separator />
+              </>
+            )}
 
             {/* ── Delivery section card ────────────────────────── */}
             <div className="card-premium border border-gray-100 overflow-hidden">
@@ -373,12 +409,16 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Price summary if addons or qty > 1 */}
-            {(selectedAddons.length > 0 || quantity > 1) && (
+            {/* Price summary if addons or qty > 1 or variation selected */}
+            {(selectedAddons.length > 0 || quantity > 1 || selectedVariation) && (
               <div className="rounded-xl bg-[#FFF9F5] border border-[#E91E63]/10 p-4 space-y-2 text-sm">
                 <div className="flex justify-between text-[#1A1A2E]/70">
-                  <span>{product.name} x {quantity}</span>
-                  <span className="font-medium">{formatPrice(Number(product.basePrice) * quantity)}</span>
+                  <span>
+                    {product.name}
+                    {selectedVariation && ` (${selectedVariation.label})`}
+                    {" "}x {quantity}
+                  </span>
+                  <span className="font-medium">{formatPrice(unitPrice * quantity)}</span>
                 </div>
                 {selectedAddons.map((addon) => (
                   <div key={addon.addonId} className="flex justify-between text-[#1A1A2E]/70">
