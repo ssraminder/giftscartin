@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -9,6 +9,7 @@ import {
   Circle,
   Clock,
   FileText,
+  Loader2,
   MapPin,
   MessageSquare,
   Package,
@@ -20,6 +21,14 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -89,8 +98,7 @@ function formatDateTime(dateStr: string): string {
 }
 
 function generateQuoteNumber(orderNumber: string): string {
-  const parts = orderNumber.replace("GI-", "QT26-")
-  return parts
+  return orderNumber.replace("GC-", "QT26-")
 }
 
 // ==================== Skeleton ====================
@@ -121,12 +129,16 @@ function OrderDetailSkeleton() {
 
 export default function AdminOrderDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const orderId = params.id as string
 
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [workStatus, setWorkStatus] = useState("NEW")
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -148,6 +160,51 @@ export default function AdminOrderDetailPage() {
     fetchOrder()
   }, [fetchOrder])
 
+  const handleCancelOrder = async () => {
+    setCancelling(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "CANCELLED",
+          note: "Cancelled by admin",
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setCancelDialogOpen(false)
+        fetchOrder()
+      } else {
+        setActionError(json.error || "Failed to cancel order")
+      }
+    } catch {
+      setActionError("Network error. Please try again.")
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  const handleUpdateStatus = async (newStatus: OrderStatus) => {
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        fetchOrder()
+      } else {
+        setActionError(json.error || "Failed to update status")
+      }
+    } catch {
+      setActionError("Network error. Please try again.")
+    }
+  }
+
   if (loading) {
     return <OrderDetailSkeleton />
   }
@@ -164,9 +221,19 @@ export default function AdminOrderDetailPage() {
   }
 
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED"
+  const isDelivered = order.status === "DELIVERED"
   const currentStepIndex = STATUS_ORDER[order.status] ?? -1
   const statusBadge = STATUS_BADGE[order.status] || STATUS_BADGE.PENDING
   const quoteNumber = generateQuoteNumber(order.orderNumber)
+
+  // Determine next status for quick advance button
+  const nextStatusMap: Record<string, OrderStatus> = {
+    PENDING: "CONFIRMED",
+    CONFIRMED: "PREPARING",
+    PREPARING: "OUT_FOR_DELIVERY",
+    OUT_FOR_DELIVERY: "DELIVERED",
+  }
+  const nextStatus = nextStatusMap[order.status] || null
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -180,8 +247,6 @@ export default function AdminOrderDetailPage() {
       </Link>
 
       {/* ==================== HEADER SECTION ==================== */}
-      {/* Desktop: single row with order info left, buttons right */}
-      {/* Mobile: stacked — order info on top, buttons below in grid */}
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
         {/* Left: Order number + status badge + work status dropdown */}
         <div className="flex flex-col gap-2 min-w-0">
@@ -209,15 +274,37 @@ export default function AdminOrderDetailPage() {
         </div>
 
         {/* Right: Action buttons */}
-        {/* Mobile: 2-col grid with View Quote spanning full width */}
-        {/* Desktop: horizontal flex row */}
         <div className="grid grid-cols-2 gap-2 md:flex md:flex-row md:gap-2 md:shrink-0">
           <Button
             variant="outline"
             size="sm"
             className="col-span-2 justify-center"
             onClick={() => {
-              // TODO: Navigate to quote view
+              const printContent = [
+                `Quote: ${quoteNumber}`,
+                `Order: ${order.orderNumber}`,
+                `Date: ${formatDateTime(order.createdAt)}`,
+                ``,
+                `Items:`,
+                ...(order.items?.map((item) =>
+                  `  ${item.name}${item.variationLabel ? ` (${item.variationLabel})` : ""} x${item.quantity} — ${formatPrice(item.price * item.quantity)}`
+                ) || []),
+                ``,
+                `Subtotal: ${formatPrice(order.subtotal)}`,
+                order.deliveryCharge > 0 ? `Delivery: ${formatPrice(order.deliveryCharge)}` : null,
+                order.discount > 0 ? `Discount: -${formatPrice(order.discount)}` : null,
+                `Total: ${formatPrice(order.total)}`,
+                ``,
+                `Delivery: ${formatDate(order.deliveryDate)} — ${order.deliverySlot}`,
+                order.address ? `Address: ${order.address.name}, ${order.address.address}, ${order.address.city} - ${order.address.pincode}` : null,
+                order.giftMessage ? `Gift Message: ${order.giftMessage}` : null,
+              ].filter(Boolean).join("\n")
+
+              const win = window.open("", "_blank")
+              if (win) {
+                win.document.write(`<html><head><title>${quoteNumber}</title></head><body><pre style="font-family:monospace;font-size:14px;padding:2rem;">${printContent}</pre></body></html>`)
+                win.document.close()
+              }
             }}
           >
             <FileText className="mr-1.5 h-4 w-4" />
@@ -230,9 +317,8 @@ export default function AdminOrderDetailPage() {
             variant="outline"
             size="sm"
             className="justify-center"
-            onClick={() => {
-              // TODO: Navigate to edit order
-            }}
+            disabled={isCancelled || isDelivered}
+            onClick={() => router.push(`/admin/orders/${orderId}/edit`)}
           >
             <Pencil className="mr-1.5 h-4 w-4" />
             Edit Order
@@ -241,15 +327,41 @@ export default function AdminOrderDetailPage() {
             variant="destructive"
             size="sm"
             className="justify-center"
-            onClick={() => {
-              // TODO: Cancel order confirmation
-            }}
+            disabled={isCancelled || isDelivered}
+            onClick={() => setCancelDialogOpen(true)}
           >
             <XCircle className="mr-1.5 h-4 w-4" />
             Cancel Order
           </Button>
         </div>
       </div>
+
+      {/* Action error */}
+      {actionError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
+
+      {/* Quick status advance */}
+      {nextStatus && !isCancelled && (
+        <Card className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Advance Order Status</p>
+            <p className="text-xs text-muted-foreground">
+              Move to next step: {STATUS_BADGE[nextStatus]?.label}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="btn-gradient"
+            onClick={() => handleUpdateStatus(nextStatus)}
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" />
+            Mark as {STATUS_BADGE[nextStatus]?.label}
+          </Button>
+        </Card>
+      )}
 
       {/* Order meta info */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
@@ -344,6 +456,9 @@ export default function AdminOrderDetailPage() {
             <div key={item.id} className="flex justify-between gap-2 text-sm">
               <div className="min-w-0">
                 <span className="font-medium">{item.name}</span>
+                {item.variationLabel && (
+                  <span className="text-muted-foreground"> ({item.variationLabel})</span>
+                )}
                 <span className="text-muted-foreground"> x{item.quantity}</span>
               </div>
               <span className="shrink-0">{formatPrice(item.price * item.quantity)}</span>
@@ -486,6 +601,46 @@ export default function AdminOrderDetailPage() {
           </div>
         </Card>
       )}
+
+      {/* ==================== CANCEL ORDER DIALOG ==================== */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Order</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel order {order.orderNumber}?
+              {order.paymentStatus === "PAID" && " The payment will be marked for refund."}
+              {" "}This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {actionError && (
+            <p className="text-sm text-destructive">{actionError}</p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+              disabled={cancelling}
+            >
+              Keep Order
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelOrder}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Yes, Cancel Order"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
