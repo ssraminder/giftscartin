@@ -149,6 +149,7 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
   const [showTypeConfirm, setShowTypeConfirm] = useState(false)
   const [pendingType, setPendingType] = useState<'SIMPLE' | 'VARIABLE'>('SIMPLE')
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
+  const [pendingImageDataUrl, setPendingImageDataUrl] = useState<string | null>(null)
 
   const updateForm = useCallback((updates: Partial<ProductFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
@@ -190,9 +191,11 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
       metaKeywords: result.metaKeywords,
       tags: result.tags,
     }
-    if (result.imageUrl) {
-      const galleryImages = formData.images.slice(1)
-      updates.images = [result.imageUrl, ...galleryImages]
+    if (result.pendingImageDataUrl) {
+      // Store data URL for preview; actual upload happens on save
+      setPendingImageDataUrl(result.pendingImageDataUrl)
+      const galleryImages = formData.images.filter((img) => !img.startsWith('data:'))
+      updates.images = [result.pendingImageDataUrl, ...galleryImages]
     }
     updateForm(updates)
     setToast({ type: 'success', message: 'AI content applied — review and edit as needed' })
@@ -222,7 +225,11 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
     setIsSaving(true)
     setToast(null)
     try {
-      await onSave(formData)
+      const saveData = pendingImageDataUrl
+        ? { ...formData, pendingImageDataUrl }
+        : formData
+      await onSave(saveData as ProductFormData)
+      setPendingImageDataUrl(null)
       setToast({ type: 'success', message: mode === 'create' ? 'Product created.' : 'Product saved.' })
       setTimeout(() => setToast(null), 4000)
     } catch (err) {
