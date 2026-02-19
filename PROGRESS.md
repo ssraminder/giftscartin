@@ -13,7 +13,7 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A + B + C + D + E complete. Phase 3 ongoing.|
+|Current Phase  |Phase A + B + C + D + E + F complete. Phase 3 ongoing.|
 |Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
@@ -34,24 +34,27 @@
 - Phase C: Admin product form — WooCommerce-style tabbed create/edit form (General, Pricing, Inventory, Images, Attributes, Variations, Add-ons, SEO, Advanced), product list with filters/pagination/bulk actions, admin product CRUD API routes, category addon template sync
 - Phase D: Customer-facing variations & add-ons — attribute-based variation selector, addon group display (all 6 types), file upload addon with Supabase Storage, upsell products section, cart with variationId + addonSelections, variation-level vendor matching in order creation
 - Phase E: AI content & image generation — Claude API for SEO content, GPT-image-1 for product images, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload
+- Phase F: Category management & addon templates — Admin category CRUD API (tree structure), category form (Sheet with General/SEO/Addon Templates tabs), hierarchical category list page, bulk template propagation, per-product addon group re-sync API, detach/re-sync controls in product form
 
 ### What's NOT Done (Priority Order)
 
 #### Customer-Facing Fixes (needed before launch)
 
-- Category listing page — hardcoded data, API exists but not connected
-- Checkout — setTimeout placeholder, no real order creation or Razorpay flow
-- No city landing page ([city]/page.tsx)
-- No real product images (all use /placeholder-product.svg)
+- Checkout — connect to real order creation API + Razorpay payment integration
+- Connect category listing page to real API (currently hardcoded CATEGORIES object)
+- Connect trending products to real API (currently hardcoded array)
 
-#### Product System (Phase E — COMPLETE)
+#### Product System (Phases A–F — COMPLETE)
 
+- ~~Schema foundation (Phase A)~~ — **DONE**
+- ~~SEO infrastructure (Phase B)~~ — **DONE**
+- ~~Admin product form (Phase C)~~ — **DONE**
+- ~~Customer-facing variations & addons (Phase D)~~ — **DONE**
 - ~~AI content + image generation (Phase E)~~ — **DONE**
+- ~~Category management & addon templates (Phase F)~~ — **DONE**
 
 #### Management Features (Phase 3 continuation)
 
-- Admin product management (CRUD)
-- Admin category management
 - Admin delivery configuration UI
 - Vendor delivery config (pincodes, slots, capacity)
 - Coupon management
@@ -111,6 +114,7 @@
 | `src/app/admin/products/page.tsx` | Yes (Phase C) | Yes | ✅ Product list with filters/pagination |
 | `src/app/admin/products/new/page.tsx` | Yes (Phase C) | Yes | ✅ Create product form |
 | `src/app/admin/products/[id]/edit/page.tsx` | Yes (Phase C) | Yes | ✅ Edit product form |
+| `src/app/admin/categories/page.tsx` | Yes (Phase F) | Yes | ✅ Category tree list page |
 | `src/app/admin/seo/page.tsx` | Yes (Phase B) | Yes | ✅ Admin SEO settings form |
 | `src/app/sitemap.ts` | Yes (Phase B) | Yes | ✅ Dynamic sitemap from DB |
 | `src/app/robots.ts` | Yes (Phase B) | Yes | ✅ Configurable robots.txt |
@@ -304,7 +308,10 @@
 | `/api/admin/seo` | ✅ | Yes | GET, PUT | SEO settings CRUD (Phase B) |
 | `/api/admin/products` | ✅ | Yes | GET, POST | Product list with filters + create (Phase C) |
 | `/api/admin/products/[id]` | ✅ | Yes | GET, PUT, DELETE | Product detail, update, soft delete (Phase C) |
-| `/api/admin/categories` | ✅ | Yes | GET | Categories with addon templates for form dropdowns (Phase C) |
+| `/api/admin/categories` | ✅ | Yes | GET, POST | Full CRUD: tree list + create with templates (Phase F) |
+| `/api/admin/categories/[id]` | ✅ | Yes | GET, PUT, DELETE | Single category, update with propagation, soft delete (Phase F) |
+| `/api/admin/categories/[id]/sync-templates` | ✅ | Yes | POST | Bulk template propagation to linked products (Phase F) |
+| `/api/admin/products/[id]/sync-addon-group` | ✅ | Yes | POST | Re-sync one addon group to category template (Phase F) |
 | `/api/admin/products/generate-content` | ✅ | Claude + OpenAI + Supabase Storage | POST | AI content generation + image generation (Phase E) |
 
 **All 24+ API routes are fully implemented with real database queries.**
@@ -425,7 +432,9 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 4. ~~**Phase E: AI Content & Image Generation**~~ — **COMPLETE.** Claude API content generation, GPT-image-1 product image generation, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload.
 
-5. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
+5. ~~**Phase F: Category Management & Addon Templates**~~ — **COMPLETE.** Admin category CRUD API (tree structure, propagation), category form Sheet, hierarchical list page, bulk template sync, per-product addon group re-sync/detach.
+
+6. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
 3. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
