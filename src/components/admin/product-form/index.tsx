@@ -310,7 +310,7 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
           <TabVariations formData={formData} onChange={updateForm} />
         )}
         {activeTab === 'addons' && (
-          <TabAddons formData={formData} categories={categories} onChange={updateForm} />
+          <TabAddons formData={formData} categories={categories} productId={initialData?.id} onChange={updateForm} />
         )}
         {activeTab === 'seo' && (
           <TabSeo formData={formData} onChange={updateForm} onOpenAiPanel={() => setAiPanelOpen(true)} />

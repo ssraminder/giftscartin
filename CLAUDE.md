@@ -251,55 +251,44 @@ URL strategy: flat structure (not city-prefixed).
 
 See PROGRESS.md section 1I for current task list.
 
+### Phase A — Schema Foundation (Complete as of Feb 19, 2026)
+
+- New tables: product_attributes, product_attribute_options, product_variations, product_addon_groups, product_addon_options, product_upsells, vendor_product_variations, category_addon_templates, category_addon_template_options, seo_settings
+- New enums: ProductType, AddonType
+- ProductVariation migrated to JSONB attributes
+- Cakes category addon templates seeded
+
+### Phase B — SEO Infrastructure (Complete as of Feb 19, 2026)
+
+- generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings
+
+### Phase C — Product Form Admin (Complete as of Feb 19, 2026)
+
+- WooCommerce-style tabbed product form (create + edit), admin product CRUD API, product list with filters/pagination, category addon template sync
+
+### Phase D — Customer-Facing Variations & Add-ons (Complete as of Feb 19, 2026)
+
+- Variation selector, addon group display (all 6 types), file upload addon, upsell products, cart with variationId + addonSelections, variation-level vendor matching
+
+### Phase E — AI Content & Image Generation (Complete as of Feb 19, 2026)
+
+- Claude API content generation, GPT-image-1 product images, AI generator panel in product form
+
+### Phase F — Category Management & Addon Templates (Complete as of Feb 19, 2026)
+
+- Admin category CRUD API with tree structure (GET list, POST create, PUT update with propagation, DELETE with guard)
+- Category form component (Sheet) with General, SEO, and Addon Templates tabs
+- Hierarchical category tree list page with expand/collapse, product counts, template badges
+- Bulk template propagation endpoint (sync all linked non-overridden product addon groups)
+- Per-product addon group re-sync API (POST /api/admin/products/[id]/sync-addon-group)
+- Detach/re-sync controls in product form Add-ons tab
+
 -----
 
-### Phase A — Schema Foundation ✅ COMPLETE (2026-02-19)
-
-New tables: product_attributes, product_attribute_options, product_variations,
-product_addon_groups, product_addon_options, product_upsells,
-vendor_product_variations, category_addon_templates,
-category_addon_template_options, seo_settings.
-New columns on products and categories: SEO fields.
-New enums: ProductType (SIMPLE, VARIABLE), AddonType (CHECKBOX, RADIO, SELECT, TEXT_INPUT, TEXTAREA, FILE_UPLOAD).
-ProductVariation model migrated from simple type/label/value to JSONB attributes.
-Existing product_addons migrated to product_addon_groups structure.
-Cakes category addon templates seeded (Name on Cake, Message Card).
-SQL migration: prisma/migrations/phase-a-schema-foundation.sql
-
-## Planned Phases (Not Yet Built)
-
-### Phase B — SEO Infrastructure ✅ COMPLETE (2026-02-19)
-
-generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt,
-breadcrumb component, admin SEO settings page.
-
-### Phase C — Product Form (Admin) ✅ COMPLETE (2026-02-19)
-
-WooCommerce-style tabbed product form. Tabs: General, Pricing, Inventory,
-Images, Attributes, Variations, Add-ons, SEO, Advanced.
-Handles both create and edit. AI generation integrated (Phase E).
-Category addon template system with sync status UI.
-Upsell product picker.
-
-### Phase D — Customer-Facing Variations & Add-ons ✅ COMPLETE (2026-02-19)
-
-Product detail page updated with real API data.
-Variation selector (attribute swatches/buttons).
-Addon group display by type (checkbox, radio, file upload widget, text inputs).
-Cart updated to store variationId + addonSelections.
-Order assignment updated to match at variation level.
-File upload addon with Supabase Storage integration.
-Upsell products ("Complete Your Gift") section.
-
-### Phase E — AI Content & Image Generation ✅ COMPLETE (2026-02-19)
-
-Claude (claude-opus-4-5) generates: description, shortDesc, metaTitle,
-metaDescription, metaKeywords, tags, and a GPT image prompt.
-GPT-image-1 generates product image from prompt + optional reference photo.
-Images proxied through server and uploaded to products bucket.
-Integrated into product form as "Generate with AI" button on Images and SEO tabs.
-AI generator slide-out panel with reference image upload, two-phase progress,
-result preview with copy buttons, and "Apply All to Form" action.
+## All Planned Product System Phases Complete
+Phases A–F (schema, SEO, product form, customer variations, AI generation,
+category management) are all complete as of 2026-02-19.
+Next focus: complete Phase 3 items (checkout flow, Razorpay integration).
 
 -----
 
@@ -326,6 +315,12 @@ result preview with copy buttons, and "Apply All to Form" action.
 |src/app/api/admin/products/generate-content/route.ts|AI content + image generation API     |
 |src/components/admin/ai-generator-panel.tsx|AI generator slide-out panel for product form|
 |src/app/api/customer/upload-addon-file/route.ts|Addon file upload to order-uploads bucket  |
+|src/app/api/admin/categories/route.ts   |Category CRUD: GET list (tree), POST create        |
+|src/app/api/admin/categories/[id]/route.ts|Category GET, PUT (with propagation), DELETE      |
+|src/app/api/admin/categories/[id]/sync-templates/route.ts|Bulk template propagation       |
+|src/app/api/admin/products/[id]/sync-addon-group/route.ts|Re-sync one addon group to template|
+|src/components/admin/category-form.tsx  |Category create/edit form (Sheet)                  |
+|src/app/admin/categories/page.tsx       |Admin category tree list page                      |
 |netlify/functions/sync-exchange-rates.ts|DO NOT MODIFY — production scheduled job           |
 
 -----

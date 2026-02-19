@@ -12,7 +12,9 @@ import {
   X,
   GripVertical,
   RefreshCw,
+  Unlink,
   ClipboardList,
+  Loader2,
 } from "lucide-react"
 import type {
   ProductFormData,
@@ -25,6 +27,7 @@ import type {
 interface TabAddonsProps {
   formData: ProductFormData
   categories: CategoryOption[]
+  productId?: string
   onChange: (updates: Partial<ProductFormData>) => void
 }
 
@@ -48,8 +51,9 @@ const ADDON_TYPE_COLORS: Record<AddonType, string> = {
 
 const HAS_OPTIONS: AddonType[] = ['CHECKBOX', 'RADIO', 'SELECT']
 
-export function TabAddons({ formData, categories, onChange }: TabAddonsProps) {
+export function TabAddons({ formData, categories, productId, onChange }: TabAddonsProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [syncingIndex, setSyncingIndex] = useState<number | null>(null)
   const [editGroup, setEditGroup] = useState<AddonGroupData>({
     name: '',
     description: null,
@@ -140,7 +144,60 @@ export function TabAddons({ formData, categories, onChange }: TabAddonsProps) {
     onChange({ addonGroups: formData.addonGroups.filter((_, i) => i !== index) })
   }
 
-  const resyncGroup = (index: number) => {
+  const resyncGroup = async (index: number) => {
+    const group = formData.addonGroups[index]
+    if (!group.templateGroupId) return
+
+    // If we have a productId and the group has a persisted id, use the API
+    if (productId && group.id) {
+      setSyncingIndex(index)
+      try {
+        const res = await fetch(`/api/admin/products/${productId}/sync-addon-group`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addonGroupId: group.id }),
+        })
+        const json = await res.json()
+        if (json.success && json.data) {
+          const synced: AddonGroupData = {
+            id: json.data.id,
+            name: json.data.name,
+            description: json.data.description,
+            type: json.data.type,
+            required: json.data.required,
+            maxLength: json.data.maxLength,
+            placeholder: json.data.placeholder,
+            acceptedFileTypes: json.data.acceptedFileTypes,
+            maxFileSizeMb: json.data.maxFileSizeMb,
+            templateGroupId: json.data.templateGroupId,
+            isOverridden: false,
+            sortOrder: json.data.sortOrder,
+            options: json.data.options.map((o: { id: string; label: string; price: number | string; image: string | null; isDefault: boolean; sortOrder: number }) => ({
+              id: o.id,
+              label: o.label,
+              price: Number(o.price),
+              image: o.image,
+              isDefault: o.isDefault,
+              sortOrder: o.sortOrder,
+            })),
+          }
+          const newGroups = [...formData.addonGroups]
+          newGroups[index] = synced
+          onChange({ addonGroups: newGroups })
+        }
+      } catch {
+        // Fallback to local resync
+        localResyncGroup(index)
+      } finally {
+        setSyncingIndex(null)
+      }
+    } else {
+      // Local resync from category templates
+      localResyncGroup(index)
+    }
+  }
+
+  const localResyncGroup = (index: number) => {
     const group = formData.addonGroups[index]
     if (!group.templateGroupId) return
     const template = templates.find((t) => t.id === group.templateGroupId)
@@ -167,6 +224,12 @@ export function TabAddons({ formData, categories, onChange }: TabAddonsProps) {
     }
     const newGroups = [...formData.addonGroups]
     newGroups[index] = synced
+    onChange({ addonGroups: newGroups })
+  }
+
+  const handleDetach = (index: number) => {
+    const newGroups = [...formData.addonGroups]
+    newGroups[index] = { ...newGroups[index], isOverridden: true }
     onChange({ addonGroups: newGroups })
   }
 
@@ -284,9 +347,19 @@ export function TabAddons({ formData, categories, onChange }: TabAddonsProps) {
                 </Badge>
               )}
               {group.templateGroupId && !group.isOverridden && (
-                <Badge variant="outline" className="text-xs border-emerald-200 bg-emerald-50 text-emerald-700">
-                  Synced with template
-                </Badge>
+                <>
+                  <Badge variant="outline" className="text-xs border-emerald-200 bg-emerald-50 text-emerald-700">
+                    Synced with template
+                  </Badge>
+                  <button
+                    type="button"
+                    onClick={() => handleDetach(index)}
+                    className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                  >
+                    <Unlink className="h-3 w-3" />
+                    Detach from template
+                  </button>
+                </>
               )}
               {group.templateGroupId && group.isOverridden && (
                 <>
@@ -296,10 +369,15 @@ export function TabAddons({ formData, categories, onChange }: TabAddonsProps) {
                   <button
                     type="button"
                     onClick={() => resyncGroup(index)}
-                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                    disabled={syncingIndex === index}
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
                   >
-                    <RefreshCw className="h-3 w-3" />
-                    Re-sync
+                    {syncingIndex === index ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Re-sync with template
                   </button>
                 </>
               )}
