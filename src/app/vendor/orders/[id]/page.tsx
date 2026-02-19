@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState, use } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import {
   Card,
@@ -158,12 +159,9 @@ function getAvailableActions(status: string): ActionButton[] {
   }
 }
 
-export default function VendorOrderDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
+export default function VendorOrderDetailPage() {
+  const params = useParams()
+  const id = params.id as string
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
