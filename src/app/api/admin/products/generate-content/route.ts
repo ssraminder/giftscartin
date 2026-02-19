@@ -130,7 +130,7 @@ Write the following for this product. Return ONLY valid JSON, no markdown:
       generated = JSON.parse(cleanJson)
     }
 
-    // Step 3: Call GPT-image-1.5 for image generation
+    // Step 3: Call gpt-image-1 for image generation
     let generatedImageUrl: string | null = null
 
     try {
