@@ -14,7 +14,7 @@
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
 |Current Phase  |Phase A + B + C + D + E + F complete. Phase 3 ongoing.|
-|Last Updated   |2026-02-20                                                                        |
+|Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
 
@@ -36,13 +36,14 @@
 - Phase E: AI content & image generation — Claude API for SEO content, GPT-image-1 for product images, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload
 - Phase F: Category management & addon templates — Admin category CRUD API (tree structure), category form (Sheet with General/SEO/Addon Templates tabs), hierarchical category list page, bulk template propagation, per-product addon group re-sync API, detach/re-sync controls in product form
 - Fixed products API 500 — updated stale `addons` includes to use `addonGroups` relation in products list, product detail, and cart API routes
+- Product detail API: added `isVerified` filter to reviews query, verified all Prisma includes use `addonGroups` not `addons`
 
 ### What's NOT Done (Priority Order)
 
 #### Customer-Facing Fixes (needed before launch)
 
 - Checkout — connect to real order creation API + Razorpay payment integration
-- Connect category listing page to real API (currently hardcoded CATEGORIES object)
+- ~~Connect category listing page to real API (currently hardcoded CATEGORIES object)~~ — **DONE** (client component fetches from /api/categories + /api/products)
 - Connect trending products to real API (currently hardcoded array)
 
 #### Product System (Phases A–F — COMPLETE)
@@ -101,7 +102,7 @@
 | `src/app/(shop)/page.tsx` | Yes | Yes | ✅ Exists & Working |
 | `src/app/(shop)/[city]/page.tsx` | Yes | Yes | ✅ Exists & Working (dynamic city data from API) |
 | `src/app/(shop)/category/[slug]/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data) |
-| `src/app/(shop)/product/[slug]/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data with variations) |
+| `src/app/(shop)/product/[slug]/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data: variations, addonGroups, reviews) |
 | `src/app/(shop)/cart/page.tsx` | Yes | Yes | ✅ Exists & Working (Zustand) |
 | `src/app/(shop)/checkout/page.tsx` | Yes | Yes | ✅ Exists & Working (multi-gateway checkout) |
 | `src/app/(shop)/orders/page.tsx` | Yes | Yes | ✅ Exists & Working |

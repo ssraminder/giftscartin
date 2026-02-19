@@ -56,12 +56,13 @@ export async function GET(
             },
           },
         },
-        // Reviews
+        // Reviews (verified only)
         reviews: {
+          where: { isVerified: true },
           orderBy: { createdAt: 'desc' },
           take: 10,
           include: {
-            user: { select: { id: true, name: true } },
+            user: { select: { name: true } },
           },
         },
         vendorProducts: {
