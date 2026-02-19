@@ -80,20 +80,20 @@ function initFormData(data?: ProductWithRelations): ProductFormData {
     sku: '',
     stockQty: null,
     dailyLimit: null,
-    images: data.images,
-    attributes: data.attributes.map((a) => ({
+    images: data.images ?? [],
+    attributes: (data.attributes ?? []).map((a) => ({
       id: a.id,
       name: a.name,
       slug: a.slug,
       isForVariations: a.isForVariations,
       sortOrder: a.sortOrder,
-      options: a.options.map((o) => ({
+      options: (a.options ?? []).map((o) => ({
         id: o.id,
         value: o.value,
         sortOrder: o.sortOrder,
       })),
     })),
-    variations: data.variations.map((v) => ({
+    variations: (data.variations ?? []).map((v) => ({
       id: v.id,
       attributes: v.attributes as Record<string, string>,
       price: Number(v.price),
@@ -104,7 +104,7 @@ function initFormData(data?: ProductWithRelations): ProductFormData {
       isActive: v.isActive,
       sortOrder: v.sortOrder,
     })),
-    addonGroups: data.addonGroups.map((g) => ({
+    addonGroups: (data.addonGroups ?? []).map((g) => ({
       id: g.id,
       name: g.name,
       description: g.description,
@@ -112,12 +112,12 @@ function initFormData(data?: ProductWithRelations): ProductFormData {
       required: g.required,
       maxLength: g.maxLength,
       placeholder: g.placeholder,
-      acceptedFileTypes: g.acceptedFileTypes,
+      acceptedFileTypes: g.acceptedFileTypes ?? [],
       maxFileSizeMb: g.maxFileSizeMb,
       templateGroupId: g.templateGroupId,
       isOverridden: g.isOverridden,
       sortOrder: g.sortOrder,
-      options: g.options.map((o) => ({
+      options: (g.options ?? []).map((o) => ({
         id: o.id,
         label: o.label,
         price: Number(o.price),
@@ -128,15 +128,15 @@ function initFormData(data?: ProductWithRelations): ProductFormData {
     })),
     metaTitle: data.metaTitle || '',
     metaDescription: data.metaDescription || '',
-    metaKeywords: data.metaKeywords || [],
+    metaKeywords: data.metaKeywords ?? [],
     ogImage: data.ogImage || '',
     canonicalUrl: data.canonicalUrl || '',
-    occasion: data.occasion || [],
-    tags: data.tags || [],
+    occasion: data.occasion ?? [],
+    tags: data.tags ?? [],
     weight: data.weight || '',
     sortOrder: 0,
-    upsellIds: data.upsells.map((u) => u.upsellProduct.id),
-    upsellProducts: data.upsells.map((u) => u.upsellProduct),
+    upsellIds: (data.upsells ?? []).map((u) => u.upsellProduct.id),
+    upsellProducts: (data.upsells ?? []).map((u) => u.upsellProduct),
   }
 }
 

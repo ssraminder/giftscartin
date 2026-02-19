@@ -18,7 +18,7 @@ export default function AdminProductNewPage() {
       try {
         const res = await fetch("/api/admin/categories")
         const json = await res.json()
-        if (json.success) setCategories(json.data)
+        if (json.success) setCategories(json.data ?? [])
       } catch {
         // ignore
       } finally {

@@ -167,12 +167,12 @@ export function TabAddons({ formData, categories, productId, onChange }: TabAddo
             required: json.data.required,
             maxLength: json.data.maxLength,
             placeholder: json.data.placeholder,
-            acceptedFileTypes: json.data.acceptedFileTypes,
+            acceptedFileTypes: json.data.acceptedFileTypes ?? [],
             maxFileSizeMb: json.data.maxFileSizeMb,
             templateGroupId: json.data.templateGroupId,
             isOverridden: false,
             sortOrder: json.data.sortOrder,
-            options: json.data.options.map((o: { id: string; label: string; price: number | string; image: string | null; isDefault: boolean; sortOrder: number }) => ({
+            options: (json.data.options ?? []).map((o: { id: string; label: string; price: number | string; image: string | null; isDefault: boolean; sortOrder: number }) => ({
               id: o.id,
               label: o.label,
               price: Number(o.price),

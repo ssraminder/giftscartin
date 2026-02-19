@@ -34,7 +34,7 @@ export default function AdminProductEditPage() {
           setError(productJson.error || "Product not found")
         }
         if (categoriesJson.success) {
-          setCategories(categoriesJson.data)
+          setCategories(categoriesJson.data ?? [])
         }
       } catch {
         setError("Failed to load product")
