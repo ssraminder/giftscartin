@@ -13,6 +13,7 @@ import { TabVariations } from "./tab-variations"
 import { TabAddons } from "./tab-addons"
 import { TabSeo } from "./tab-seo"
 import { TabAdvanced } from "./tab-advanced"
+import { AIGeneratorPanel, type GeneratedContent } from "@/components/admin/ai-generator-panel"
 import type {
   ProductFormProps,
   ProductFormData,
@@ -147,6 +148,7 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [showTypeConfirm, setShowTypeConfirm] = useState(false)
   const [pendingType, setPendingType] = useState<'SIMPLE' | 'VARIABLE'>('SIMPLE')
+  const [aiPanelOpen, setAiPanelOpen] = useState(false)
 
   const updateForm = useCallback((updates: Partial<ProductFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
@@ -174,6 +176,27 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
       updateForm({ productType: 'SIMPLE', variations: [], attributes: [] })
     }
     setShowTypeConfirm(false)
+  }
+
+  const selectedCategory = categories.find((c) => c.id === formData.categoryId)
+  const categoryName = selectedCategory?.name || ''
+
+  const handleAiApply = (result: GeneratedContent) => {
+    const updates: Partial<ProductFormData> = {
+      description: result.description,
+      shortDesc: result.shortDesc,
+      metaTitle: result.metaTitle,
+      metaDescription: result.metaDescription,
+      metaKeywords: result.metaKeywords,
+      tags: result.tags,
+    }
+    if (result.imageUrl) {
+      const galleryImages = formData.images.slice(1)
+      updates.images = [result.imageUrl, ...galleryImages]
+    }
+    updateForm(updates)
+    setToast({ type: 'success', message: 'AI content applied — review and edit as needed' })
+    setTimeout(() => setToast(null), 4000)
   }
 
   const validate = (): boolean => {
@@ -278,7 +301,7 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
           <TabInventory formData={formData} onChange={updateForm} />
         )}
         {activeTab === 'images' && (
-          <TabImages formData={formData} onChange={updateForm} />
+          <TabImages formData={formData} onChange={updateForm} onOpenAiPanel={() => setAiPanelOpen(true)} />
         )}
         {activeTab === 'attributes' && (
           <TabAttributes formData={formData} onChange={updateForm} />
@@ -290,7 +313,7 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
           <TabAddons formData={formData} categories={categories} onChange={updateForm} />
         )}
         {activeTab === 'seo' && (
-          <TabSeo formData={formData} onChange={updateForm} />
+          <TabSeo formData={formData} onChange={updateForm} onOpenAiPanel={() => setAiPanelOpen(true)} />
         )}
         {activeTab === 'advanced' && (
           <TabAdvanced formData={formData} onChange={updateForm} />
@@ -312,6 +335,18 @@ export function ProductForm({ mode, initialData, categories, onSave }: ProductFo
           {isSaving ? 'Saving...' : mode === 'create' ? 'Create Product' : 'Save Changes'}
         </Button>
       </div>
+
+      {/* AI Generator Panel */}
+      <AIGeneratorPanel
+        isOpen={aiPanelOpen}
+        onClose={() => setAiPanelOpen(false)}
+        productName={formData.name}
+        categoryName={categoryName}
+        price={String(formData.basePrice || '')}
+        weight={formData.weight || undefined}
+        occasion={formData.occasion.length > 0 ? formData.occasion.join(', ') : undefined}
+        onApply={handleAiApply}
+      />
 
       {/* Type change confirmation dialog */}
       {showTypeConfirm && (

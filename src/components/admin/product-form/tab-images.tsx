@@ -3,12 +3,13 @@
 import { useState } from "react"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Upload, X, ImageIcon } from "lucide-react"
+import { Upload, X, Sparkles } from "lucide-react"
 import type { ProductFormData } from "./types"
 
 interface TabImagesProps {
   formData: ProductFormData
   onChange: (updates: Partial<ProductFormData>) => void
+  onOpenAiPanel?: () => void
 }
 
 function ImageUploadSlot({
@@ -104,7 +105,7 @@ function ImageUploadSlot({
   )
 }
 
-export function TabImages({ formData, onChange }: TabImagesProps) {
+export function TabImages({ formData, onChange, onOpenAiPanel }: TabImagesProps) {
   const featuredImage = formData.images[0] || null
   const galleryImages = formData.images.slice(1)
 
@@ -158,11 +159,16 @@ export function TabImages({ formData, onChange }: TabImagesProps) {
         </div>
       </div>
 
-      {/* AI Generator Placeholder */}
+      {/* AI Generator */}
       <div className="pt-4 border-t">
-        <Button disabled variant="outline" className="gap-2 w-full">
-          <ImageIcon className="h-4 w-4" />
-          Generate with AI (coming soon)
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 w-full"
+          onClick={onOpenAiPanel}
+        >
+          <Sparkles className="h-4 w-4" />
+          Generate with AI
         </Button>
       </div>
     </div>

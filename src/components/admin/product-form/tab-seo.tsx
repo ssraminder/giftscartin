@@ -11,9 +11,10 @@ import type { ProductFormData } from "./types"
 interface TabSeoProps {
   formData: ProductFormData
   onChange: (updates: Partial<ProductFormData>) => void
+  onOpenAiPanel?: () => void
 }
 
-export function TabSeo({ formData, onChange }: TabSeoProps) {
+export function TabSeo({ formData, onChange, onOpenAiPanel }: TabSeoProps) {
   const [keywordInput, setKeywordInput] = useState('')
 
   const addKeyword = () => {
@@ -147,11 +148,16 @@ export function TabSeo({ formData, onChange }: TabSeoProps) {
         </div>
       )}
 
-      {/* AI generate placeholder */}
+      {/* AI Generator */}
       <div className="pt-4 border-t">
-        <Button disabled variant="outline" className="gap-2 w-full">
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 w-full"
+          onClick={onOpenAiPanel}
+        >
           <Sparkles className="h-4 w-4" />
-          Fill SEO fields with AI (coming soon)
+          Fill SEO fields with AI
         </Button>
       </div>
     </div>
