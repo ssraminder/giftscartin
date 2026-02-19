@@ -178,236 +178,206 @@ export async function PUT(
 
     const data = parsed.data
 
-    await prisma.$transaction(async (tx) => {
-      // Update product fields
-      const productUpdate: Record<string, unknown> = {}
-      if (data.name !== undefined) productUpdate.name = data.name
-      if (data.slug !== undefined) productUpdate.slug = data.slug
-      if (data.description !== undefined) productUpdate.description = data.description
-      if (data.shortDesc !== undefined) productUpdate.shortDesc = data.shortDesc
-      if (data.categoryId !== undefined) productUpdate.categoryId = data.categoryId
-      if (data.productType !== undefined) productUpdate.productType = data.productType
-      if (data.basePrice !== undefined) productUpdate.basePrice = data.basePrice
-      if (data.images !== undefined) productUpdate.images = data.images
-      if (data.tags !== undefined) productUpdate.tags = data.tags
-      if (data.occasion !== undefined) productUpdate.occasion = data.occasion
-      if (data.weight !== undefined) productUpdate.weight = data.weight
-      if (data.isVeg !== undefined) productUpdate.isVeg = data.isVeg
-      if (data.isActive !== undefined) productUpdate.isActive = data.isActive
-      if (data.metaTitle !== undefined) productUpdate.metaTitle = data.metaTitle
-      if (data.metaDescription !== undefined) productUpdate.metaDescription = data.metaDescription
-      if (data.metaKeywords !== undefined) productUpdate.metaKeywords = data.metaKeywords
-      if (data.ogImage !== undefined) productUpdate.ogImage = data.ogImage
-      if (data.canonicalUrl !== undefined) productUpdate.canonicalUrl = data.canonicalUrl
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
 
-      if (Object.keys(productUpdate).length > 0) {
-        await tx.product.update({
-          where: { id: params.id },
-          data: productUpdate,
-        })
-      }
+    // Update product fields
+    const productUpdate: Record<string, unknown> = {}
+    if (data.name !== undefined) productUpdate.name = data.name
+    if (data.slug !== undefined) productUpdate.slug = data.slug
+    if (data.description !== undefined) productUpdate.description = data.description
+    if (data.shortDesc !== undefined) productUpdate.shortDesc = data.shortDesc
+    if (data.categoryId !== undefined) productUpdate.categoryId = data.categoryId
+    if (data.productType !== undefined) productUpdate.productType = data.productType
+    if (data.basePrice !== undefined) productUpdate.basePrice = data.basePrice
+    if (data.images !== undefined) productUpdate.images = data.images
+    if (data.tags !== undefined) productUpdate.tags = data.tags
+    if (data.occasion !== undefined) productUpdate.occasion = data.occasion
+    if (data.weight !== undefined) productUpdate.weight = data.weight
+    if (data.isVeg !== undefined) productUpdate.isVeg = data.isVeg
+    if (data.isActive !== undefined) productUpdate.isActive = data.isActive
+    if (data.metaTitle !== undefined) productUpdate.metaTitle = data.metaTitle
+    if (data.metaDescription !== undefined) productUpdate.metaDescription = data.metaDescription
+    if (data.metaKeywords !== undefined) productUpdate.metaKeywords = data.metaKeywords
+    if (data.ogImage !== undefined) productUpdate.ogImage = data.ogImage
+    if (data.canonicalUrl !== undefined) productUpdate.canonicalUrl = data.canonicalUrl
 
-      // Handle attributes — delete removed, upsert existing
-      if (data.attributes !== undefined) {
-        const incomingIds = data.attributes.filter((a) => a.id).map((a) => a.id!)
-        // Delete removed attributes
-        await tx.productAttribute.deleteMany({
-          where: {
-            productId: params.id,
-            ...(incomingIds.length > 0 ? { id: { notIn: incomingIds } } : {}),
-          },
-        })
+    if (Object.keys(productUpdate).length > 0) {
+      await prisma.product.update({
+        where: { id: params.id },
+        data: productUpdate,
+      })
+    }
 
-        for (const attr of data.attributes) {
-          if (attr.id) {
-            // Update existing
-            await tx.productAttribute.update({
-              where: { id: attr.id },
-              data: {
-                name: attr.name,
-                slug: attr.slug,
-                isForVariations: attr.isForVariations,
-                sortOrder: attr.sortOrder,
-              },
-            })
-            // Handle options
-            const optIds = attr.options.filter((o) => o.id).map((o) => o.id!)
-            await tx.productAttributeOption.deleteMany({
-              where: {
-                attributeId: attr.id,
-                ...(optIds.length > 0 ? { id: { notIn: optIds } } : {}),
-              },
-            })
-            for (const opt of attr.options) {
-              if (opt.id) {
-                await tx.productAttributeOption.update({
-                  where: { id: opt.id },
-                  data: { value: opt.value, sortOrder: opt.sortOrder },
-                })
-              } else {
-                await tx.productAttributeOption.create({
-                  data: {
-                    attributeId: attr.id,
-                    value: opt.value,
-                    sortOrder: opt.sortOrder,
-                  },
-                })
-              }
-            }
-          } else {
-            // Create new
-            const created = await tx.productAttribute.create({
-              data: {
-                productId: params.id,
-                name: attr.name,
-                slug: attr.slug,
-                isForVariations: attr.isForVariations,
-                sortOrder: attr.sortOrder,
-              },
-            })
-            for (const opt of attr.options) {
-              await tx.productAttributeOption.create({
+    // Handle attributes — delete removed, upsert existing
+    if (data.attributes !== undefined) {
+      const incomingIds = data.attributes.filter((a) => a.id).map((a) => a.id!)
+      // Delete removed attributes
+      await prisma.productAttribute.deleteMany({
+        where: {
+          productId: params.id,
+          ...(incomingIds.length > 0 ? { id: { notIn: incomingIds } } : {}),
+        },
+      })
+
+      for (const attr of data.attributes) {
+        if (attr.id) {
+          // Update existing
+          await prisma.productAttribute.update({
+            where: { id: attr.id },
+            data: {
+              name: attr.name,
+              slug: attr.slug,
+              isForVariations: attr.isForVariations,
+              sortOrder: attr.sortOrder,
+            },
+          })
+          // Handle options
+          const optIds = attr.options.filter((o) => o.id).map((o) => o.id!)
+          await prisma.productAttributeOption.deleteMany({
+            where: {
+              attributeId: attr.id,
+              ...(optIds.length > 0 ? { id: { notIn: optIds } } : {}),
+            },
+          })
+          for (const opt of attr.options) {
+            if (opt.id) {
+              await prisma.productAttributeOption.update({
+                where: { id: opt.id },
+                data: { value: opt.value, sortOrder: opt.sortOrder },
+              })
+            } else {
+              await prisma.productAttributeOption.create({
                 data: {
-                  attributeId: created.id,
+                  attributeId: attr.id,
                   value: opt.value,
                   sortOrder: opt.sortOrder,
                 },
               })
             }
           }
-        }
-      }
-
-      // Handle variations — delete removed, upsert existing
-      if (data.variations !== undefined) {
-        const incomingVarIds = data.variations.filter((v) => v.id).map((v) => v.id!)
-        await tx.productVariation.deleteMany({
-          where: {
-            productId: params.id,
-            ...(incomingVarIds.length > 0 ? { id: { notIn: incomingVarIds } } : {}),
-          },
-        })
-
-        for (const v of data.variations) {
-          if (v.id) {
-            await tx.productVariation.update({
-              where: { id: v.id },
+        } else {
+          // Create new
+          const created = await prisma.productAttribute.create({
+            data: {
+              productId: params.id,
+              name: attr.name,
+              slug: attr.slug,
+              isForVariations: attr.isForVariations,
+              sortOrder: attr.sortOrder,
+            },
+          })
+          for (const opt of attr.options) {
+            await prisma.productAttributeOption.create({
               data: {
-                attributes: v.attributes,
-                price: v.price,
-                salePrice: v.salePrice ?? null,
-                saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
-                saleTo: v.saleTo ? new Date(v.saleTo) : null,
-                sku: v.sku ?? null,
-                stockQty: v.stockQty ?? null,
-                image: v.image ?? null,
-                isActive: v.isActive,
-                sortOrder: v.sortOrder,
-              },
-            })
-          } else {
-            await tx.productVariation.create({
-              data: {
-                productId: params.id,
-                attributes: v.attributes,
-                price: v.price,
-                salePrice: v.salePrice ?? null,
-                saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
-                saleTo: v.saleTo ? new Date(v.saleTo) : null,
-                sku: v.sku ?? null,
-                stockQty: v.stockQty ?? null,
-                image: v.image ?? null,
-                isActive: v.isActive,
-                sortOrder: v.sortOrder,
+                attributeId: created.id,
+                value: opt.value,
+                sortOrder: opt.sortOrder,
               },
             })
           }
         }
       }
+    }
 
-      // Handle addon groups — delete removed, upsert existing
-      if (data.addonGroups !== undefined) {
-        const incomingGroupIds = data.addonGroups.filter((g) => g.id).map((g) => g.id!)
-        await tx.productAddonGroup.deleteMany({
-          where: {
-            productId: params.id,
-            ...(incomingGroupIds.length > 0 ? { id: { notIn: incomingGroupIds } } : {}),
-          },
-        })
+    // Handle variations — delete removed, upsert existing
+    if (data.variations !== undefined) {
+      const incomingVarIds = data.variations.filter((v) => v.id).map((v) => v.id!)
+      await prisma.productVariation.deleteMany({
+        where: {
+          productId: params.id,
+          ...(incomingVarIds.length > 0 ? { id: { notIn: incomingVarIds } } : {}),
+        },
+      })
 
-        for (const group of data.addonGroups) {
-          if (group.id) {
-            await tx.productAddonGroup.update({
-              where: { id: group.id },
-              data: {
-                name: group.name,
-                description: group.description ?? null,
-                type: group.type,
-                required: group.required,
-                maxLength: group.maxLength ?? null,
-                placeholder: group.placeholder ?? null,
-                acceptedFileTypes: group.acceptedFileTypes,
-                maxFileSizeMb: group.maxFileSizeMb ?? 5,
-                templateGroupId: group.templateGroupId ?? null,
-                isOverridden: group.isOverridden,
-                sortOrder: group.sortOrder,
-              },
-            })
-            // Handle options
-            const optIds = group.options.filter((o) => o.id).map((o) => o.id!)
-            await tx.productAddonOption.deleteMany({
-              where: {
-                groupId: group.id,
-                ...(optIds.length > 0 ? { id: { notIn: optIds } } : {}),
-              },
-            })
-            for (const opt of group.options) {
-              if (opt.id) {
-                await tx.productAddonOption.update({
-                  where: { id: opt.id },
-                  data: {
-                    label: opt.label,
-                    price: opt.price,
-                    image: opt.image ?? null,
-                    isDefault: opt.isDefault,
-                    sortOrder: opt.sortOrder,
-                  },
-                })
-              } else {
-                await tx.productAddonOption.create({
-                  data: {
-                    groupId: group.id,
-                    label: opt.label,
-                    price: opt.price,
-                    image: opt.image ?? null,
-                    isDefault: opt.isDefault,
-                    sortOrder: opt.sortOrder,
-                  },
-                })
-              }
-            }
-          } else {
-            // Create new group
-            const created = await tx.productAddonGroup.create({
-              data: {
-                productId: params.id,
-                name: group.name,
-                description: group.description ?? null,
-                type: group.type,
-                required: group.required,
-                maxLength: group.maxLength ?? null,
-                placeholder: group.placeholder ?? null,
-                acceptedFileTypes: group.acceptedFileTypes,
-                maxFileSizeMb: group.maxFileSizeMb ?? 5,
-                templateGroupId: group.templateGroupId ?? null,
-                isOverridden: group.isOverridden,
-                sortOrder: group.sortOrder,
-              },
-            })
-            for (const opt of group.options) {
-              await tx.productAddonOption.create({
+      for (const v of data.variations) {
+        if (v.id) {
+          await prisma.productVariation.update({
+            where: { id: v.id },
+            data: {
+              attributes: v.attributes,
+              price: v.price,
+              salePrice: v.salePrice ?? null,
+              saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
+              saleTo: v.saleTo ? new Date(v.saleTo) : null,
+              sku: v.sku ?? null,
+              stockQty: v.stockQty ?? null,
+              image: v.image ?? null,
+              isActive: v.isActive,
+              sortOrder: v.sortOrder,
+            },
+          })
+        } else {
+          await prisma.productVariation.create({
+            data: {
+              productId: params.id,
+              attributes: v.attributes,
+              price: v.price,
+              salePrice: v.salePrice ?? null,
+              saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
+              saleTo: v.saleTo ? new Date(v.saleTo) : null,
+              sku: v.sku ?? null,
+              stockQty: v.stockQty ?? null,
+              image: v.image ?? null,
+              isActive: v.isActive,
+              sortOrder: v.sortOrder,
+            },
+          })
+        }
+      }
+    }
+
+    // Handle addon groups — delete removed, upsert existing
+    if (data.addonGroups !== undefined) {
+      const incomingGroupIds = data.addonGroups.filter((g) => g.id).map((g) => g.id!)
+      await prisma.productAddonGroup.deleteMany({
+        where: {
+          productId: params.id,
+          ...(incomingGroupIds.length > 0 ? { id: { notIn: incomingGroupIds } } : {}),
+        },
+      })
+
+      for (const group of data.addonGroups) {
+        if (group.id) {
+          await prisma.productAddonGroup.update({
+            where: { id: group.id },
+            data: {
+              name: group.name,
+              description: group.description ?? null,
+              type: group.type,
+              required: group.required,
+              maxLength: group.maxLength ?? null,
+              placeholder: group.placeholder ?? null,
+              acceptedFileTypes: group.acceptedFileTypes,
+              maxFileSizeMb: group.maxFileSizeMb ?? 5,
+              templateGroupId: group.templateGroupId ?? null,
+              isOverridden: group.isOverridden,
+              sortOrder: group.sortOrder,
+            },
+          })
+          // Handle options
+          const optIds = group.options.filter((o) => o.id).map((o) => o.id!)
+          await prisma.productAddonOption.deleteMany({
+            where: {
+              groupId: group.id,
+              ...(optIds.length > 0 ? { id: { notIn: optIds } } : {}),
+            },
+          })
+          for (const opt of group.options) {
+            if (opt.id) {
+              await prisma.productAddonOption.update({
+                where: { id: opt.id },
                 data: {
-                  groupId: created.id,
+                  label: opt.label,
+                  price: opt.price,
+                  image: opt.image ?? null,
+                  isDefault: opt.isDefault,
+                  sortOrder: opt.sortOrder,
+                },
+              })
+            } else {
+              await prisma.productAddonOption.create({
+                data: {
+                  groupId: group.id,
                   label: opt.label,
                   price: opt.price,
                   image: opt.image ?? null,
@@ -417,26 +387,53 @@ export async function PUT(
               })
             }
           }
-        }
-      }
-
-      // Handle upsells — replace entire list
-      if (data.upsellIds !== undefined) {
-        await tx.productUpsell.deleteMany({ where: { productId: params.id } })
-        for (let i = 0; i < data.upsellIds.length; i++) {
-          await tx.productUpsell.create({
+        } else {
+          // Create new group
+          const created = await prisma.productAddonGroup.create({
             data: {
               productId: params.id,
-              upsellProductId: data.upsellIds[i],
-              sortOrder: i,
+              name: group.name,
+              description: group.description ?? null,
+              type: group.type,
+              required: group.required,
+              maxLength: group.maxLength ?? null,
+              placeholder: group.placeholder ?? null,
+              acceptedFileTypes: group.acceptedFileTypes,
+              maxFileSizeMb: group.maxFileSizeMb ?? 5,
+              templateGroupId: group.templateGroupId ?? null,
+              isOverridden: group.isOverridden,
+              sortOrder: group.sortOrder,
             },
           })
+          for (const opt of group.options) {
+            await prisma.productAddonOption.create({
+              data: {
+                groupId: created.id,
+                label: opt.label,
+                price: opt.price,
+                image: opt.image ?? null,
+                isDefault: opt.isDefault,
+                sortOrder: opt.sortOrder,
+              },
+            })
+          }
         }
       }
-    }, {
-      timeout: 30000,  // 30s — prevents P2028 on cold starts
-      maxWait: 10000,  // wait up to 10s for a connection from the pool
-    })
+    }
+
+    // Handle upsells — replace entire list
+    if (data.upsellIds !== undefined) {
+      await prisma.productUpsell.deleteMany({ where: { productId: params.id } })
+      for (let i = 0; i < data.upsellIds.length; i++) {
+        await prisma.productUpsell.create({
+          data: {
+            productId: params.id,
+            upsellProductId: data.upsellIds[i],
+            sortOrder: i,
+          },
+        })
+      }
+    }
 
     // Fetch updated product
     const updated = await prisma.product.findUnique({

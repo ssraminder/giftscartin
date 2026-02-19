@@ -34,32 +34,30 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ received: true })
       }
 
-      // Update payment and order in transaction
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { orderId },
-          data: {
-            stripePaymentIntentId: (session.payment_intent as string) || undefined,
-            status: 'PAID',
-          },
-        })
+      // Sequential queries (no interactive transaction — pgbouncer compatible)
+      await prisma.payment.update({
+        where: { orderId },
+        data: {
+          stripePaymentIntentId: (session.payment_intent as string) || undefined,
+          status: 'PAID',
+        },
+      })
 
-        await tx.order.update({
-          where: { id: orderId },
-          data: {
-            paymentStatus: 'PAID',
-            paymentMethod: 'stripe',
-            status: 'CONFIRMED',
-          },
-        })
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus: 'PAID',
+          paymentMethod: 'stripe',
+          status: 'CONFIRMED',
+        },
+      })
 
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId,
-            status: 'CONFIRMED',
-            note: 'Payment verified via Stripe',
-          },
-        })
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId,
+          status: 'CONFIRMED',
+          note: 'Payment verified via Stripe',
+        },
       })
     }
 

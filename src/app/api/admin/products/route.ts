@@ -196,117 +196,115 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data
 
-    const product = await prisma.$transaction(async (tx) => {
-      // Create the product
-      const created = await tx.product.create({
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+
+    // Create the product
+    const product = await prisma.product.create({
+      data: {
+        name: data.name,
+        slug: data.slug,
+        description: data.description ?? null,
+        shortDesc: data.shortDesc ?? null,
+        categoryId: data.categoryId,
+        productType: data.productType,
+        basePrice: data.basePrice,
+        images: data.images,
+        tags: data.tags,
+        occasion: data.occasion,
+        weight: data.weight ?? null,
+        isVeg: data.isVeg,
+        isActive: data.isActive,
+        metaTitle: data.metaTitle ?? null,
+        metaDescription: data.metaDescription ?? null,
+        metaKeywords: data.metaKeywords,
+        ogImage: data.ogImage ?? null,
+        canonicalUrl: data.canonicalUrl ?? null,
+      },
+    })
+
+    // Create attributes and their options
+    for (const attr of data.attributes) {
+      const createdAttr = await prisma.productAttribute.create({
         data: {
-          name: data.name,
-          slug: data.slug,
-          description: data.description ?? null,
-          shortDesc: data.shortDesc ?? null,
-          categoryId: data.categoryId,
-          productType: data.productType,
-          basePrice: data.basePrice,
-          images: data.images,
-          tags: data.tags,
-          occasion: data.occasion,
-          weight: data.weight ?? null,
-          isVeg: data.isVeg,
-          isActive: data.isActive,
-          metaTitle: data.metaTitle ?? null,
-          metaDescription: data.metaDescription ?? null,
-          metaKeywords: data.metaKeywords,
-          ogImage: data.ogImage ?? null,
-          canonicalUrl: data.canonicalUrl ?? null,
+          productId: product.id,
+          name: attr.name,
+          slug: attr.slug,
+          isForVariations: attr.isForVariations,
+          sortOrder: attr.sortOrder,
         },
       })
-
-      // Create attributes and their options
-      for (const attr of data.attributes) {
-        const createdAttr = await tx.productAttribute.create({
+      for (const opt of attr.options) {
+        await prisma.productAttributeOption.create({
           data: {
-            productId: created.id,
-            name: attr.name,
-            slug: attr.slug,
-            isForVariations: attr.isForVariations,
-            sortOrder: attr.sortOrder,
-          },
-        })
-        for (const opt of attr.options) {
-          await tx.productAttributeOption.create({
-            data: {
-              attributeId: createdAttr.id,
-              value: opt.value,
-              sortOrder: opt.sortOrder,
-            },
-          })
-        }
-      }
-
-      // Create variations
-      for (const v of data.variations) {
-        await tx.productVariation.create({
-          data: {
-            productId: created.id,
-            attributes: v.attributes,
-            price: v.price,
-            salePrice: v.salePrice ?? null,
-            saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
-            saleTo: v.saleTo ? new Date(v.saleTo) : null,
-            sku: v.sku ?? null,
-            stockQty: v.stockQty ?? null,
-            image: v.image ?? null,
-            isActive: v.isActive,
-            sortOrder: v.sortOrder,
+            attributeId: createdAttr.id,
+            value: opt.value,
+            sortOrder: opt.sortOrder,
           },
         })
       }
+    }
 
-      // Create addon groups and their options
-      for (const group of data.addonGroups) {
-        const createdGroup = await tx.productAddonGroup.create({
+    // Create variations
+    for (const v of data.variations) {
+      await prisma.productVariation.create({
+        data: {
+          productId: product.id,
+          attributes: v.attributes,
+          price: v.price,
+          salePrice: v.salePrice ?? null,
+          saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
+          saleTo: v.saleTo ? new Date(v.saleTo) : null,
+          sku: v.sku ?? null,
+          stockQty: v.stockQty ?? null,
+          image: v.image ?? null,
+          isActive: v.isActive,
+          sortOrder: v.sortOrder,
+        },
+      })
+    }
+
+    // Create addon groups and their options
+    for (const group of data.addonGroups) {
+      const createdGroup = await prisma.productAddonGroup.create({
+        data: {
+          productId: product.id,
+          name: group.name,
+          description: group.description ?? null,
+          type: group.type,
+          required: group.required,
+          maxLength: group.maxLength ?? null,
+          placeholder: group.placeholder ?? null,
+          acceptedFileTypes: group.acceptedFileTypes,
+          maxFileSizeMb: group.maxFileSizeMb ?? 5,
+          templateGroupId: group.templateGroupId ?? null,
+          isOverridden: group.isOverridden,
+          sortOrder: group.sortOrder,
+        },
+      })
+      for (const opt of group.options) {
+        await prisma.productAddonOption.create({
           data: {
-            productId: created.id,
-            name: group.name,
-            description: group.description ?? null,
-            type: group.type,
-            required: group.required,
-            maxLength: group.maxLength ?? null,
-            placeholder: group.placeholder ?? null,
-            acceptedFileTypes: group.acceptedFileTypes,
-            maxFileSizeMb: group.maxFileSizeMb ?? 5,
-            templateGroupId: group.templateGroupId ?? null,
-            isOverridden: group.isOverridden,
-            sortOrder: group.sortOrder,
+            groupId: createdGroup.id,
+            label: opt.label,
+            price: opt.price,
+            image: opt.image ?? null,
+            isDefault: opt.isDefault,
+            sortOrder: opt.sortOrder,
           },
         })
-        for (const opt of group.options) {
-          await tx.productAddonOption.create({
-            data: {
-              groupId: createdGroup.id,
-              label: opt.label,
-              price: opt.price,
-              image: opt.image ?? null,
-              isDefault: opt.isDefault,
-              sortOrder: opt.sortOrder,
-            },
-          })
-        }
       }
+    }
 
-      // Create upsells
-      for (let i = 0; i < data.upsellIds.length; i++) {
-        await tx.productUpsell.create({
-          data: {
-            productId: created.id,
-            upsellProductId: data.upsellIds[i],
-            sortOrder: i,
-          },
-        })
-      }
-
-      return created
-    })
+    // Create upsells
+    for (let i = 0; i < data.upsellIds.length; i++) {
+      await prisma.productUpsell.create({
+        data: {
+          productId: product.id,
+          upsellProductId: data.upsellIds[i],
+          sortOrder: i,
+        },
+      })
+    }
 
     // Fetch the full product with relations
     const full = await prisma.product.findUnique({

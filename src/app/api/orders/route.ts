@@ -404,89 +404,86 @@ export async function POST(request: NextRequest) {
       bestVendorId = vendorPincode?.vendor.id ?? null
     }
 
-    // Create order in transaction
-    const order = await prisma.$transaction(async (tx) => {
-      const newOrder = await tx.order.create({
-        data: {
-          orderNumber: generateOrderNumber(cityCode),
-          userId: user.id,
-          vendorId: bestVendorId,
-          addressId: address.id,
-          deliveryDate: deliveryDateObj,
-          deliverySlot,
-          deliveryCharge,
-          subtotal,
-          discount,
-          surcharge,
-          total,
-          giftMessage: giftMessage || null,
-          specialInstructions: specialInstructions || null,
-          couponCode: couponCode || null,
-          items: {
-            create: itemsForOrder,
-          },
-          statusHistory: {
-            create: {
-              status: 'PENDING',
-              note: 'Order placed',
-            },
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+
+    const order = await prisma.order.create({
+      data: {
+        orderNumber: generateOrderNumber(cityCode),
+        userId: user.id,
+        vendorId: bestVendorId,
+        addressId: address.id,
+        deliveryDate: deliveryDateObj,
+        deliverySlot,
+        deliveryCharge,
+        subtotal,
+        discount,
+        surcharge,
+        total,
+        giftMessage: giftMessage || null,
+        specialInstructions: specialInstructions || null,
+        couponCode: couponCode || null,
+        items: {
+          create: itemsForOrder,
+        },
+        statusHistory: {
+          create: {
+            status: 'PENDING',
+            note: 'Order placed',
           },
         },
-        include: {
-          items: true,
-          address: true,
-          statusHistory: true,
-        },
-      })
+      },
+      include: {
+        items: true,
+        address: true,
+        statusHistory: true,
+      },
+    })
 
-      // Move FILE_UPLOAD addon files from pending/ to orders/{orderId}/
-      try {
-        const supabase = getSupabase()
-        for (const item of orderItems) {
-          if (!item.addons) continue
-          for (const addon of item.addons) {
-            if ('fileUrl' in addon && addon.fileUrl && typeof addon.fileUrl === 'string') {
-              // Extract the pending/ path from the signed URL
-              const urlObj = new URL(addon.fileUrl)
-              const pathMatch = urlObj.pathname.match(/pending\/([^?]+)/)
-              if (pathMatch) {
-                const pendingPath = `pending/${pathMatch[1]}`
-                const groupId = 'groupId' in addon ? addon.groupId : 'unknown'
-                const filename = pendingPath.split('/').pop() || 'file'
-                const newPath = `orders/${newOrder.id}/${groupId}/${filename}`
+    // Move FILE_UPLOAD addon files from pending/ to orders/{orderId}/
+    try {
+      const supabase = getSupabase()
+      for (const item of orderItems) {
+        if (!item.addons) continue
+        for (const addon of item.addons) {
+          if ('fileUrl' in addon && addon.fileUrl && typeof addon.fileUrl === 'string') {
+            // Extract the pending/ path from the signed URL
+            const urlObj = new URL(addon.fileUrl)
+            const pathMatch = urlObj.pathname.match(/pending\/([^?]+)/)
+            if (pathMatch) {
+              const pendingPath = `pending/${pathMatch[1]}`
+              const groupId = 'groupId' in addon ? addon.groupId : 'unknown'
+              const filename = pendingPath.split('/').pop() || 'file'
+              const newPath = `orders/${order.id}/${groupId}/${filename}`
 
-                // Move file: copy then delete
-                const { error: copyError } = await supabase.storage
+              // Move file: copy then delete
+              const { error: copyError } = await supabase.storage
+                .from('order-uploads')
+                .copy(pendingPath, newPath)
+
+              if (!copyError) {
+                await supabase.storage
                   .from('order-uploads')
-                  .copy(pendingPath, newPath)
-
-                if (!copyError) {
-                  await supabase.storage
-                    .from('order-uploads')
-                    .remove([pendingPath])
-                }
+                  .remove([pendingPath])
               }
             }
           }
         }
-      } catch (storageErr) {
-        // Non-critical: log but don't fail the order
-        console.error('File move error:', storageErr)
       }
+    } catch (storageErr) {
+      // Non-critical: log but don't fail the order
+      console.error('File move error:', storageErr)
+    }
 
-      // Increment coupon usage if applied
-      if (appliedCouponId) {
-        await tx.coupon.update({
-          where: { id: appliedCouponId },
-          data: { usedCount: { increment: 1 } },
-        })
-      }
+    // Increment coupon usage if applied
+    if (appliedCouponId) {
+      await prisma.coupon.update({
+        where: { id: appliedCouponId },
+        data: { usedCount: { increment: 1 } },
+      })
+    }
 
-      // Clear the user's cart
-      await tx.cartItem.deleteMany({ where: { userId: user.id } })
-
-      return newOrder
-    })
+    // Clear the user's cart
+    await prisma.cartItem.deleteMany({ where: { userId: user.id } })
 
     return NextResponse.json({ success: true, data: order }, { status: 201 })
   } catch (error) {
