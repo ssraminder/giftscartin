@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod/v4'
+import { createClient } from '@supabase/supabase-js'
 
 // ==================== GET — Single product with all relations ====================
 
@@ -23,10 +24,6 @@ export async function GET(
       where: { id: params.id },
       include: {
         category: true,
-        attributes: {
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
-          orderBy: { sortOrder: 'asc' },
-        },
         variations: { orderBy: { sortOrder: 'asc' } },
         addonGroups: {
           include: { options: { orderBy: { sortOrder: 'asc' } } },
@@ -139,6 +136,8 @@ const updateProductSchema = z.object({
   metaKeywords: z.array(z.string()).optional(),
   ogImage: z.string().nullable().optional(),
   canonicalUrl: z.string().nullable().optional(),
+  // AI-generated image pending upload
+  pendingImageDataUrl: z.string().nullable().optional(),
   // Nested
   attributes: z.array(attributeSchema).optional(),
   variations: z.array(variationSchema).optional(),
@@ -177,6 +176,32 @@ export async function PUT(
     }
 
     const data = parsed.data
+
+    // Handle pending AI-generated image upload to Supabase
+    let uploadedImageUrl: string | null = null
+    if (data.pendingImageDataUrl?.startsWith('data:image/')) {
+      try {
+        const base64 = data.pendingImageDataUrl.split(',')[1]
+        const imageBuffer = Buffer.from(base64, 'base64')
+        const supabaseAdmin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        )
+        const storagePath = `ai-generated/${Date.now()}-${(data.name || 'product').toLowerCase().replace(/[^a-z0-9]/g, '-')}.png`
+        await supabaseAdmin.storage.from('products').upload(storagePath, imageBuffer, { contentType: 'image/png' })
+        const { data: urlData } = supabaseAdmin.storage.from('products').getPublicUrl(storagePath)
+        uploadedImageUrl = urlData.publicUrl
+      } catch (err) {
+        console.error('Pending image upload failed (non-fatal):', err)
+      }
+    }
+
+    // If we uploaded an image, prepend it to images array and filter out data URLs
+    if (uploadedImageUrl && data.images !== undefined) {
+      data.images = [uploadedImageUrl, ...data.images.filter((img: string) => !img.startsWith('data:'))]
+    } else if (data.images !== undefined) {
+      data.images = data.images.filter((img: string) => !img.startsWith('data:'))
+    }
 
     // Sequential queries (no interactive transaction — pgbouncer compatible)
 

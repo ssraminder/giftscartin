@@ -31,6 +31,7 @@ export interface GeneratedContent {
   tags: string[]
   imagePrompt: string
   imageUrl: string | null
+  pendingImageDataUrl?: string | null
 }
 
 interface AIGeneratorPanelProps {
@@ -44,7 +45,7 @@ interface AIGeneratorPanelProps {
   onApply: (result: GeneratedContent) => void
 }
 
-type GenerationPhase = 'idle' | 'content' | 'image' | 'done' | 'error'
+type GenerationPhase = 'idle' | 'content' | 'done-content' | 'image' | 'done' | 'error'
 
 export function AIGeneratorPanel({
   isOpen,
@@ -62,7 +63,7 @@ export function AIGeneratorPanel({
   const [referenceFile, setReferenceFile] = useState<File | null>(null)
   const [referencePreview, setReferencePreview] = useState<string | null>(null)
   const [copiedField, setCopiedField] = useState<string | null>(null)
-  const [regeneratingImage, setRegeneratingImage] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,10 +81,12 @@ export function AIGeneratorPanel({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleGenerate = async () => {
+  // Step 1: Generate text content only (~4s)
+  const handleGenerateContent = async () => {
     setPhase('content')
     setError(null)
     setResult(null)
+    setImageError(null)
 
     try {
       const formData = new FormData()
@@ -94,21 +97,16 @@ export function AIGeneratorPanel({
       if (occasion) formData.append('occasion', occasion)
       if (referenceFile) formData.append('referenceImage', referenceFile)
 
-      // Show image phase after a delay (both run server-side in sequence)
-      const phaseTimer = setTimeout(() => setPhase('image'), 4000)
-
       const res = await fetch('/api/admin/products/generate-content', {
         method: 'POST',
         body: formData,
       })
 
-      clearTimeout(phaseTimer)
-
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'Generation failed')
 
-      setResult(json.data)
-      setPhase('done')
+      setResult({ ...json.data, imageUrl: null, pendingImageDataUrl: null })
+      setPhase('done-content')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Generation failed'
       setError(msg)
@@ -116,33 +114,32 @@ export function AIGeneratorPanel({
     }
   }
 
-  const handleRegenerateImage = async () => {
-    if (!result) return
-    setRegeneratingImage(true)
+  // Step 2: Generate image separately (~20s)
+  const handleGenerateImage = async () => {
+    if (!result?.imagePrompt) return
+    setPhase('image')
+    setImageError(null)
 
     try {
-      const formData = new FormData()
-      formData.append('productName', productName)
-      formData.append('categoryName', categoryName)
-      formData.append('price', price)
-      if (weight) formData.append('weight', weight)
-      formData.append('regenerateImageOnly', 'true')
-      formData.append('imagePrompt', result.imagePrompt)
-      if (referenceFile) formData.append('referenceImage', referenceFile)
-
-      const res = await fetch('/api/admin/products/generate-content', {
+      const res = await fetch('/api/admin/products/generate-image', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePrompt: result.imagePrompt }),
       })
 
       const json = await res.json()
-      if (!json.success) throw new Error(json.error || 'Image regeneration failed')
+      if (!json.success) throw new Error(json.error || 'Image generation failed')
 
-      setResult({ ...result, imageUrl: json.data.imageUrl })
+      setResult({
+        ...result,
+        imageUrl: json.data.dataUrl,
+        pendingImageDataUrl: json.data.dataUrl,
+      })
+      setPhase('done')
     } catch (err) {
-      console.error('Image regeneration failed:', err)
-    } finally {
-      setRegeneratingImage(false)
+      const msg = err instanceof Error ? err.message : 'Image generation failed'
+      setImageError(msg)
+      setPhase('done-content')
     }
   }
 
@@ -216,54 +213,55 @@ export function AIGeneratorPanel({
             </p>
             <p className="text-sm font-semibold">{productName || 'Untitled Product'}</p>
             <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-              <span>Category: {categoryName || '—'}</span>
-              <span>Price: {price ? `₹${price}` : '—'}</span>
+              <span>Category: {categoryName || '\u2014'}</span>
+              <span>Price: {price ? `\u20B9${price}` : '\u2014'}</span>
               {weight && <span>Weight: {weight}</span>}
               {occasion && <span>Occasion: {occasion}</span>}
             </div>
           </div>
 
-          {/* Generate Button */}
+          {/* Generate Content Button */}
           {phase === 'idle' && (
             <Button
-              onClick={handleGenerate}
+              onClick={handleGenerateContent}
               disabled={!canGenerate}
               className="w-full gap-2"
             >
               <Sparkles className="h-4 w-4" />
-              Generate Content &amp; Image
+              Generate Content
             </Button>
           )}
 
-          {/* Loading State */}
-          {(phase === 'content' || phase === 'image') && (
+          {/* Content Loading State */}
+          {phase === 'content' && (
             <div className="flex flex-col items-center gap-3 py-8">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
               <div className="text-center">
-                <p className="text-sm font-medium">
-                  {phase === 'content'
-                    ? 'Writing product descriptions...'
-                    : 'Generating product image...'}
+                <p className="text-sm font-medium">Writing product descriptions...</p>
+                <p className="text-xs text-slate-500 mt-1">This usually completes quickly</p>
+              </div>
+            </div>
+          )}
+
+          {/* Image Loading State */}
+          {phase === 'image' && (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+              <div className="text-center">
+                <p className="text-sm font-medium">Generating product image...</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Generating image, this takes ~20 seconds...
                 </p>
-                <p className="text-xs text-slate-500 mt-1">This may take a moment</p>
               </div>
               {/* Progress steps */}
               <div className="flex items-center gap-3 mt-2">
-                <div className={`flex items-center gap-1.5 text-xs ${phase === 'content' ? 'text-amber-600 font-medium' : 'text-green-600'}`}>
-                  {phase === 'content' ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Check className="h-3 w-3" />
-                  )}
+                <div className="flex items-center gap-1.5 text-xs text-green-600">
+                  <Check className="h-3 w-3" />
                   Content
                 </div>
                 <div className="h-px w-4 bg-slate-300" />
-                <div className={`flex items-center gap-1.5 text-xs ${phase === 'image' ? 'text-amber-600 font-medium' : 'text-slate-400'}`}>
-                  {phase === 'image' ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <ImageIcon className="h-3 w-3" />
-                  )}
+                <div className="flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+                  <Loader2 className="h-3 w-3 animate-spin" />
                   Image
                 </div>
               </div>
@@ -280,19 +278,19 @@ export function AIGeneratorPanel({
                   <p className="text-xs text-red-600 mt-0.5">{error}</p>
                 </div>
               </div>
-              <Button onClick={handleGenerate} variant="outline" className="w-full gap-2">
+              <Button onClick={handleGenerateContent} variant="outline" className="w-full gap-2">
                 <RefreshCw className="h-4 w-4" />
                 Try Again
               </Button>
             </div>
           )}
 
-          {/* Results */}
-          {phase === 'done' && result && (
+          {/* Results (shown after content OR full generation) */}
+          {(phase === 'done-content' || phase === 'done') && result && (
             <div className="space-y-5">
-              {/* Generated Image */}
+              {/* Generated Image or Generate Image Button */}
               <div className="space-y-2">
-                <p className="text-sm font-medium">Generated Image</p>
+                <p className="text-sm font-medium">Product Image</p>
                 {result.imageUrl ? (
                   <div className="space-y-2">
                     <div className="relative rounded-lg border overflow-hidden bg-slate-50">
@@ -303,28 +301,36 @@ export function AIGeneratorPanel({
                         className="w-full h-48 object-contain"
                       />
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 flex-1"
-                        onClick={handleRegenerateImage}
-                        disabled={regeneratingImage}
-                      >
-                        {regeneratingImage ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Regenerate Image
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 w-full"
+                      onClick={handleGenerateImage}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Regenerate Image
+                    </Button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-                    <p className="text-xs text-amber-700">
-                      Image generation failed — you can upload one manually.
+                  <div className="space-y-2">
+                    {imageError && (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs text-amber-700">
+                          Image generation failed: {imageError}
+                        </p>
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      onClick={handleGenerateImage}
+                      className="w-full gap-2"
+                    >
+                      <ImageIcon className="h-4 w-4" />
+                      Generate Image
+                    </Button>
+                    <p className="text-xs text-slate-500 text-center">
+                      Image generation takes ~20 seconds
                     </p>
                   </div>
                 )}
