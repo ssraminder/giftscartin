@@ -8,6 +8,31 @@ const updateVendorSchema = z.object({
   status: z.enum(['PENDING', 'APPROVED', 'SUSPENDED', 'TERMINATED']).optional(),
   commissionRate: z.number().min(0).max(100).optional(),
   categories: z.array(z.string()).optional(),
+  isOnline: z.boolean().optional(),
+})
+
+const fullUpdateVendorSchema = z.object({
+  businessName: z.string().min(2).max(200).optional(),
+  ownerName: z.string().min(2).max(200).optional(),
+  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number').optional(),
+  email: z.string().email('Invalid email address').optional(),
+  cityId: z.string().optional(),
+  address: z.string().min(5).max(500).optional(),
+  categories: z.array(z.string()).optional(),
+  commissionRate: z.number().min(0).max(100).optional(),
+  autoAccept: z.boolean().optional(),
+  status: z.enum(['PENDING', 'APPROVED', 'SUSPENDED', 'TERMINATED']).optional(),
+  isOnline: z.boolean().optional(),
+  workingHours: z.array(z.object({
+    dayOfWeek: z.number().int().min(0).max(6),
+    openTime: z.string(),
+    closeTime: z.string(),
+    isClosed: z.boolean().default(false),
+  })).optional(),
+  pincodes: z.array(z.object({
+    pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode'),
+    deliveryCharge: z.number().min(0).default(0),
+  })).optional(),
 })
 
 async function getAdminUser() {
@@ -38,13 +63,11 @@ export async function GET(
       where: { id },
       include: {
         city: true,
-        products: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
-        },
         workingHours: { orderBy: { dayOfWeek: 'asc' } },
-        pincodes: true,
+        slots: { include: { slot: true } },
+        pincodes: { where: { isActive: true } },
         _count: {
-          select: { orders: true },
+          select: { orders: true, products: true },
         },
       },
     })
@@ -62,6 +85,10 @@ export async function GET(
         ...vendor,
         commissionRate: Number(vendor.commissionRate),
         rating: Number(vendor.rating),
+        pincodes: vendor.pincodes.map((p) => ({
+          ...p,
+          deliveryCharge: Number(p.deliveryCharge),
+        })),
       },
     })
   } catch (error) {
@@ -73,7 +100,7 @@ export async function GET(
   }
 }
 
-// PATCH: Update vendor (approve, suspend, change commission, etc.)
+// PATCH: Quick update vendor (status, commission, online toggle)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -108,13 +135,24 @@ export async function PATCH(
 
     const data = parsed.data
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
+    // If suspending, also go offline
+    const updateData: Record<string, unknown> = {}
+    if (data.status !== undefined) {
+      updateData.status = data.status
+      if (data.status === 'SUSPENDED' || data.status === 'TERMINATED') {
+        updateData.isOnline = false
+      }
+    }
+    if (data.commissionRate !== undefined) updateData.commissionRate = data.commissionRate
+    if (data.categories !== undefined) updateData.categories = data.categories
+    if (data.isOnline !== undefined) updateData.isOnline = data.isOnline
+
     const updated = await prisma.vendor.update({
       where: { id },
-      data: {
-        ...(data.status !== undefined ? { status: data.status } : {}),
-        ...(data.commissionRate !== undefined ? { commissionRate: data.commissionRate } : {}),
-        ...(data.categories !== undefined ? { categories: data.categories } : {}),
+      data: updateData,
+      include: {
+        city: { select: { id: true, name: true, slug: true } },
+        _count: { select: { orders: true, products: true } },
       },
     })
 
@@ -127,7 +165,7 @@ export async function PATCH(
         entityType: 'vendor',
         entityId: id,
         fieldChanged: Object.keys(data).join(', '),
-        oldValue: { status: vendor.status, commissionRate: Number(vendor.commissionRate) },
+        oldValue: { status: vendor.status, commissionRate: Number(vendor.commissionRate), isOnline: vendor.isOnline },
         newValue: data,
         reason: `Admin ${data.status ? data.status.toLowerCase() : 'updated'} vendor`,
       },
@@ -145,6 +183,209 @@ export async function PATCH(
     console.error('Admin vendor PATCH error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to update vendor' },
+      { status: 500 }
+    )
+  }
+}
+
+// PUT: Full vendor update (from edit form)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const admin = await getAdminUser()
+    if (!admin) {
+      return NextResponse.json(
+        { success: false, error: 'Admin access required' },
+        { status: 403 }
+      )
+    }
+
+    const { id } = await params
+    const body = await request.json()
+    const parsed = fullUpdateVendorSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: parsed.error.issues[0].message },
+        { status: 400 }
+      )
+    }
+
+    const vendor = await prisma.vendor.findUnique({ where: { id } })
+    if (!vendor) {
+      return NextResponse.json(
+        { success: false, error: 'Vendor not found' },
+        { status: 404 }
+      )
+    }
+
+    const data = parsed.data
+
+    // Build vendor update data (exclude working hours and pincodes)
+    const vendorUpdate: Record<string, unknown> = {}
+    if (data.businessName !== undefined) vendorUpdate.businessName = data.businessName
+    if (data.ownerName !== undefined) vendorUpdate.ownerName = data.ownerName
+    if (data.phone !== undefined) vendorUpdate.phone = data.phone
+    if (data.email !== undefined) vendorUpdate.email = data.email
+    if (data.cityId !== undefined) vendorUpdate.cityId = data.cityId
+    if (data.address !== undefined) vendorUpdate.address = data.address
+    if (data.categories !== undefined) vendorUpdate.categories = data.categories
+    if (data.commissionRate !== undefined) vendorUpdate.commissionRate = data.commissionRate
+    if (data.autoAccept !== undefined) vendorUpdate.autoAccept = data.autoAccept
+    if (data.status !== undefined) {
+      vendorUpdate.status = data.status
+      if (data.status === 'SUSPENDED' || data.status === 'TERMINATED') {
+        vendorUpdate.isOnline = false
+      }
+    }
+    if (data.isOnline !== undefined) vendorUpdate.isOnline = data.isOnline
+
+    // Update vendor
+    await prisma.vendor.update({
+      where: { id },
+      data: vendorUpdate,
+    })
+
+    // Update working hours (delete all then recreate)
+    if (data.workingHours && data.workingHours.length > 0) {
+      await prisma.vendorWorkingHours.deleteMany({ where: { vendorId: id } })
+      for (const wh of data.workingHours) {
+        await prisma.vendorWorkingHours.create({
+          data: {
+            vendorId: id,
+            dayOfWeek: wh.dayOfWeek,
+            openTime: wh.openTime,
+            closeTime: wh.closeTime,
+            isClosed: wh.isClosed,
+          },
+        })
+      }
+    }
+
+    // Update pincodes (delete all then recreate)
+    if (data.pincodes !== undefined) {
+      await prisma.vendorPincode.deleteMany({ where: { vendorId: id } })
+      if (data.pincodes.length > 0) {
+        for (const pc of data.pincodes) {
+          await prisma.vendorPincode.create({
+            data: {
+              vendorId: id,
+              pincode: pc.pincode,
+              deliveryCharge: pc.deliveryCharge,
+            },
+          })
+        }
+      }
+    }
+
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        adminId: admin.id,
+        adminRole: admin.role,
+        actionType: 'vendor_update',
+        entityType: 'vendor',
+        entityId: id,
+        fieldChanged: Object.keys(data).join(', '),
+        oldValue: { businessName: vendor.businessName, status: vendor.status },
+        newValue: data,
+        reason: 'Admin updated vendor',
+      },
+    })
+
+    // Fetch the updated vendor
+    const updated = await prisma.vendor.findUnique({
+      where: { id },
+      include: {
+        city: true,
+        workingHours: { orderBy: { dayOfWeek: 'asc' } },
+        pincodes: { where: { isActive: true } },
+        _count: { select: { orders: true, products: true } },
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: updated ? {
+        ...updated,
+        commissionRate: Number(updated.commissionRate),
+        rating: Number(updated.rating),
+        pincodes: updated.pincodes.map((p) => ({
+          ...p,
+          deliveryCharge: Number(p.deliveryCharge),
+        })),
+      } : null,
+    })
+  } catch (error) {
+    console.error('Admin vendor PUT error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to update vendor' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE: Soft delete — set status to TERMINATED (SUPER_ADMIN only)
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    const user = session.user as { id: string; role: string }
+    if (user.role !== 'SUPER_ADMIN') {
+      return NextResponse.json(
+        { success: false, error: 'Only Super Admins can terminate vendors' },
+        { status: 403 }
+      )
+    }
+
+    const { id } = await params
+
+    const vendor = await prisma.vendor.findUnique({ where: { id } })
+    if (!vendor) {
+      return NextResponse.json(
+        { success: false, error: 'Vendor not found' },
+        { status: 404 }
+      )
+    }
+
+    await prisma.vendor.update({
+      where: { id },
+      data: {
+        status: 'TERMINATED',
+        isOnline: false,
+      },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        adminId: user.id,
+        adminRole: user.role,
+        actionType: 'vendor_terminated',
+        entityType: 'vendor',
+        entityId: id,
+        fieldChanged: 'status, isOnline',
+        oldValue: { status: vendor.status, isOnline: vendor.isOnline },
+        newValue: { status: 'TERMINATED', isOnline: false },
+        reason: 'Super Admin terminated vendor',
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Admin vendor DELETE error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to terminate vendor' },
       { status: 500 }
     )
   }
