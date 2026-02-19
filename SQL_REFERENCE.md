@@ -17,16 +17,23 @@
 | `city_delivery_configs` | CityDeliveryConfig | id, cityId, slotId, isAvailable, chargeOverride | → cities, delivery_slots |
 | `delivery_holidays` | DeliveryHoliday | id, date, cityId, blockedSlots[], reason | → cities |
 | `delivery_surcharges` | DeliverySurcharge | id, name, startDate, endDate, amount, appliesTo | (standalone) |
-| `vendors` | Vendor | id, userId, businessName, cityId, status, commissionRate, rating | → cities, vendor_products, orders, vendor_working_hours, vendor_slots, vendor_holidays, vendor_pincodes, vendor_zones, vendor_capacity, vendor_payouts |
+| `vendors` | Vendor | id, userId, businessName, cityId, status, commissionRate, rating | → cities, vendor_products, orders, vendor_working_hours, vendor_slots, vendor_holidays, vendor_pincodes, vendor_zones, vendor_capacity, vendor_payouts, vendor_product_variations |
 | `vendor_working_hours` | VendorWorkingHours | id, vendorId, dayOfWeek, openTime, closeTime, isClosed | → vendors |
 | `vendor_slots` | VendorSlot | id, vendorId, slotId, isEnabled, customCharge | → vendors, delivery_slots |
 | `vendor_holidays` | VendorHoliday | id, vendorId, date, blockedSlots[], reason | → vendors |
 | `vendor_pincodes` | VendorPincode | id, vendorId, pincode, deliveryCharge, isActive | → vendors |
 | `vendor_zones` | VendorZone | id, vendorId, zoneId, deliveryCharge, minOrder | → vendors, city_zones |
 | `vendor_capacity` | VendorCapacity | id, vendorId, date, slotId, maxOrders, bookedOrders | → vendors |
-| `categories` | Category | id, name, slug, description, image, parentId, sortOrder | → self (parent/children), products |
-| `products` | Product | id, name, slug, categoryId, basePrice, images[], tags[], occasion[] | → categories, vendor_products, order_items, cart_items, reviews, product_addons |
-| `product_addons` | ProductAddon | id, productId, name, price, image | → products |
+| `categories` | Category | id, name, slug, description, image, parentId, sortOrder, metaTitle, metaDescription | → self (parent/children), products, category_addon_templates |
+| `products` | Product | id, name, slug, categoryId, basePrice, productType, metaTitle, metaDescription, images[], tags[], occasion[] | → categories, vendor_products, order_items, cart_items, reviews, product_addons, product_attributes, product_variations, product_addon_groups, product_upsells |
+| `product_addons` | ProductAddon | id, productId, name, price, image | → products (legacy — being replaced by product_addon_groups) |
+| `product_attributes` | ProductAttribute | id, productId, name, slug, isForVariations | → products, product_attribute_options |
+| `product_attribute_options` | ProductAttributeOption | id, attributeId, value, sortOrder | → product_attributes |
+| `product_variations` | ProductVariation | id, productId, attributes (JSONB), price, salePrice, isActive | → products, vendor_product_variations |
+| `product_addon_groups` | ProductAddonGroup | id, productId, name, type, required, templateGroupId, isOverridden | → products, product_addon_options |
+| `product_addon_options` | ProductAddonOption | id, groupId, label, price, isDefault | → product_addon_groups |
+| `product_upsells` | ProductUpsell | id, productId, upsellProductId, sortOrder | → products (×2) |
+| `vendor_product_variations` | VendorProductVariation | id, vendorId, productId, variationId, costPrice, isAvailable | → vendors, product_variations |
 | `vendor_products` | VendorProduct | id, vendorId, productId, costPrice, sellingPrice, isAvailable | → vendors, products |
 | `orders` | Order | id, orderNumber, userId, vendorId, partnerId, addressId, deliveryDate, status, total | → users, vendors, partners, addresses, order_items, payments, order_status_history |
 | `order_items` | OrderItem | id, orderId, productId, name, quantity, price, addons | → orders, products |
@@ -38,9 +45,12 @@
 | `cart_items` | CartItem | id, userId, productId, quantity, addons, deliveryDate, deliverySlot | → users, products |
 | `coupons` | Coupon | id, code, discountType, discountValue, minOrderAmount, validFrom, validUntil | (standalone) |
 | `reviews` | Review | id, userId, productId, orderId, rating, comment, images[] | → users, products |
+| `category_addon_templates` | CategoryAddonTemplate | id, categoryId, name, type, required | → categories, category_addon_template_options |
+| `category_addon_template_options` | CategoryAddonTemplateOption | id, templateId, label, price, isDefault | → category_addon_templates |
+| `seo_settings` | SeoSettings | id, siteName, siteDescription, defaultOgImage, robotsTxt | singleton — always 1 row |
 | `audit_logs` | AuditLog | id, adminId, adminRole, actionType, entityType, entityId, reason | (standalone) |
 
-**Total: 31 tables**
+**Total: 41 tables** (31 original + 10 Phase A)
 
 ---
 
@@ -50,8 +60,9 @@
 |--------|---------|--------|
 | Prisma `db push` | Phase 1 schema creation (all 31 tables) | ✅ Executed |
 | `prisma/seed.ts` | Phase 1 seed data (cities, categories, products, vendor) | ✅ Executed |
+| Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ⏳ Pending execution |
 
-> Future SQL migration scripts should be logged here as they are created and run.
+> Run `prisma/migrations/phase-a-schema-foundation.sql` in Supabase SQL Editor block-by-block.
 
 ---
 
@@ -222,6 +233,8 @@ CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'PREPARING', 'OUT_FOR
 CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED');
 CREATE TYPE "BusinessModel" AS ENUM ('MODEL_A', 'MODEL_B');
 CREATE TYPE "PayoutStatus" AS ENUM ('PENDING', 'PROCESSING', 'PAID', 'FAILED');
+CREATE TYPE "ProductType" AS ENUM ('SIMPLE', 'VARIABLE');
+CREATE TYPE "AddonType" AS ENUM ('CHECKBOX', 'RADIO', 'SELECT', 'TEXT_INPUT', 'TEXTAREA', 'FILE_UPLOAD');
 ```
 
 ### Users & Auth
@@ -438,7 +451,11 @@ CREATE TABLE categories (
     parent_id TEXT REFERENCES categories(id),
     sort_order INTEGER NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    meta_title TEXT,
+    meta_description TEXT,
+    meta_keywords TEXT[] NOT NULL DEFAULT '{}',
+    og_image TEXT
 );
 
 CREATE TABLE products (
@@ -458,7 +475,14 @@ CREATE TABLE products (
     avg_rating DECIMAL(3,2) NOT NULL DEFAULT 0,
     total_reviews INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    updated_at TIMESTAMP(3) NOT NULL,
+    product_type "ProductType" NOT NULL DEFAULT 'SIMPLE',
+    meta_title TEXT,
+    meta_description TEXT,
+    meta_keywords TEXT[] NOT NULL DEFAULT '{}',
+    og_image TEXT,
+    canonical_url TEXT,
+    ai_image_prompt TEXT
 );
 
 CREATE TABLE product_addons (
@@ -469,6 +493,97 @@ CREATE TABLE product_addons (
     image TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true
 );
+
+CREATE TABLE product_attributes (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    is_visible BOOLEAN NOT NULL DEFAULT true,
+    is_for_variations BOOLEAN NOT NULL DEFAULT true,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(product_id, slug)
+);
+
+CREATE TABLE product_attribute_options (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    attribute_id TEXT NOT NULL REFERENCES product_attributes(id) ON DELETE CASCADE,
+    value TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE product_variations (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    attributes JSONB NOT NULL,
+    sku TEXT,
+    price DECIMAL(10,2) NOT NULL,
+    sale_price DECIMAL(10,2),
+    sale_from TIMESTAMP(3),
+    sale_to TIMESTAMP(3),
+    image TEXT,
+    stock_qty INTEGER,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX product_variations_product_id_idx ON product_variations(product_id);
+
+CREATE TABLE product_addon_groups (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    type "AddonType" NOT NULL,
+    required BOOLEAN NOT NULL DEFAULT false,
+    max_length INTEGER,
+    placeholder TEXT,
+    accepted_file_types TEXT[] NOT NULL DEFAULT '{}',
+    max_file_size_mb INTEGER DEFAULT 5,
+    template_group_id TEXT,
+    is_overridden BOOLEAN NOT NULL DEFAULT false,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX product_addon_groups_product_id_idx ON product_addon_groups(product_id);
+
+CREATE TABLE product_addon_options (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    group_id TEXT NOT NULL REFERENCES product_addon_groups(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0,
+    image TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+CREATE TABLE product_upsells (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    upsell_product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(product_id, upsell_product_id)
+);
+
+CREATE TABLE vendor_product_variations (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    variation_id TEXT NOT NULL REFERENCES product_variations(id) ON DELETE CASCADE,
+    cost_price DECIMAL(10,2) NOT NULL,
+    selling_price DECIMAL(10,2),
+    is_available BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(vendor_id, variation_id)
+);
+CREATE INDEX vpv_vendor_id_idx ON vendor_product_variations(vendor_id);
+CREATE INDEX vpv_variation_id_idx ON vendor_product_variations(variation_id);
 
 CREATE TABLE vendor_products (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -650,6 +765,53 @@ CREATE TABLE reviews (
     images TEXT[] NOT NULL,
     is_verified BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Category Addon Templates
+
+```sql
+CREATE TABLE category_addon_templates (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    type "AddonType" NOT NULL,
+    required BOOLEAN NOT NULL DEFAULT false,
+    max_length INTEGER,
+    placeholder TEXT,
+    accepted_file_types TEXT[] NOT NULL DEFAULT '{}',
+    max_file_size_mb INTEGER DEFAULT 5,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE category_addon_template_options (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    template_id TEXT NOT NULL REFERENCES category_addon_templates(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0,
+    image TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT false,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true
+);
+```
+
+### SEO Settings
+
+```sql
+CREATE TABLE seo_settings (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    site_name TEXT NOT NULL DEFAULT 'Gifts Cart India',
+    site_description TEXT NOT NULL DEFAULT 'Fresh cakes, flowers and gifts delivered same day across India',
+    default_og_image TEXT,
+    google_verification TEXT,
+    robots_txt TEXT,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 

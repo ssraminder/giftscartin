@@ -37,6 +37,20 @@ enum UserRole {
   SUPER_ADMIN
 }
 
+enum ProductType {
+  SIMPLE
+  VARIABLE
+}
+
+enum AddonType {
+  CHECKBOX
+  RADIO
+  SELECT
+  TEXT_INPUT
+  TEXTAREA
+  FILE_UPLOAD
+}
+
 model OtpVerification {
   id        String   @id @default(cuid())
   email     String
@@ -207,6 +221,7 @@ model Vendor {
   zones           VendorZone[]
   capacity        VendorCapacity[]
   payouts         VendorPayout[]
+  productVariations VendorProductVariation[]
 
   @@map("vendors")
 }
@@ -312,9 +327,18 @@ model Category {
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
 
+  // SEO fields
+  metaTitle         String?
+  metaDescription   String?
+  metaKeywords      String[]         @default([])
+  ogImage           String?
+
   parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryTree")
   products    Product[]
+
+  // New relations
+  addonTemplates    CategoryAddonTemplate[]
 
   @@map("categories")
 }
@@ -338,6 +362,17 @@ model Product {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // Product type
+  productType       ProductType      @default(SIMPLE)
+
+  // SEO fields
+  metaTitle         String?
+  metaDescription   String?
+  metaKeywords      String[]         @default([])
+  ogImage           String?
+  canonicalUrl      String?
+  aiImagePrompt     String?
+
   category        Category       @relation(fields: [categoryId], references: [id])
   variations      ProductVariation[]
   vendorProducts  VendorProduct[]
@@ -346,24 +381,35 @@ model Product {
   reviews         Review[]
   addons          ProductAddon[]
 
+  // New relations
+  attributes        ProductAttribute[]
+  addonGroups       ProductAddonGroup[]
+  upsells           ProductUpsell[]   @relation("ProductUpsells")
+  upsellOf          ProductUpsell[]   @relation("UpsellProducts")
+
   @@map("products")
 }
 
 model ProductVariation {
-  id        String  @id @default(cuid())
-  productId String
-  type      String  // "weight", "size", "pack", "tier"
-  label     String  // Display label: "500g", "1 Kg", "2 Kg"
-  value     String  // Sortable value: "500", "1000", "2000" (grams for weight)
-  price     Decimal @db.Decimal(10, 2) // Absolute price for this variation
-  sku       String? // Optional SKU suffix
-  sortOrder Int     @default(0)
-  isDefault Boolean @default(false)
-  isActive  Boolean @default(true)
+  id           String   @id @default(cuid())
+  productId    String
+  // JSONB object: { "weight": "500g", "egg-preference": "Eggless" }
+  attributes   Json
+  sku          String?
+  price        Decimal  @db.Decimal(10, 2)
+  salePrice    Decimal? @db.Decimal(10, 2)
+  saleFrom     DateTime?
+  saleTo       DateTime?
+  image        String?
+  stockQty     Int?
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product          Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  vendorVariations VendorProductVariation[]
 
-  @@unique([productId, type, value])
   @@map("product_variations")
 }
 
@@ -378,6 +424,105 @@ model ProductAddon {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_addons")
+}
+
+model ProductAttribute {
+  id              String   @id @default(cuid())
+  productId       String
+  name            String
+  slug            String
+  isVisible       Boolean  @default(true)
+  isForVariations Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options         ProductAttributeOption[]
+
+  @@unique([productId, slug])
+  @@map("product_attributes")
+}
+
+model ProductAttributeOption {
+  id          String           @id @default(cuid())
+  attributeId String
+  value       String
+  sortOrder   Int              @default(0)
+
+  attribute   ProductAttribute @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@map("product_attribute_options")
+}
+
+model ProductAddonGroup {
+  id                String    @id @default(cuid())
+  productId         String
+  name              String
+  description       String?
+  type              AddonType
+  required          Boolean   @default(false)
+  maxLength         Int?
+  placeholder       String?
+  acceptedFileTypes String[]  @default([])
+  maxFileSizeMb     Int?      @default(5)
+  // Template sync fields
+  templateGroupId   String?
+  isOverridden      Boolean   @default(false)
+  sortOrder         Int       @default(0)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options           ProductAddonOption[]
+
+  @@map("product_addon_groups")
+}
+
+model ProductAddonOption {
+  id        String            @id @default(cuid())
+  groupId   String
+  label     String
+  price     Decimal           @default(0) @db.Decimal(10, 2)
+  image     String?
+  isDefault Boolean           @default(false)
+  sortOrder Int               @default(0)
+  isActive  Boolean           @default(true)
+
+  group     ProductAddonGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@map("product_addon_options")
+}
+
+model ProductUpsell {
+  id              String  @id @default(cuid())
+  productId       String
+  upsellProductId String
+  sortOrder       Int     @default(0)
+
+  product         Product @relation("ProductUpsells", fields: [productId], references: [id], onDelete: Cascade)
+  upsellProduct   Product @relation("UpsellProducts", fields: [upsellProductId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, upsellProductId])
+  @@map("product_upsells")
+}
+
+model VendorProductVariation {
+  id           String           @id @default(cuid())
+  vendorId     String
+  productId    String
+  variationId  String
+  costPrice    Decimal          @db.Decimal(10, 2)
+  sellingPrice Decimal?         @db.Decimal(10, 2)
+  isAvailable  Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  vendor       Vendor           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  variation    ProductVariation @relation(fields: [variationId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, variationId])
+  @@map("vendor_product_variations")
 }
 
 model VendorProduct {
@@ -673,6 +818,60 @@ model CurrencyConfig {
   updatedAt      DateTime @updatedAt
 
   @@map("currency_configs")
+}
+
+// ==================== CATEGORY ADDON TEMPLATES ====================
+
+model CategoryAddonTemplate {
+  id                String    @id @default(cuid())
+  categoryId        String
+  name              String
+  description       String?
+  type              AddonType
+  required          Boolean   @default(false)
+  maxLength         Int?
+  placeholder       String?
+  acceptedFileTypes String[]  @default([])
+  maxFileSizeMb     Int?      @default(5)
+  sortOrder         Int       @default(0)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  category          Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  options           CategoryAddonTemplateOption[]
+
+  @@map("category_addon_templates")
+}
+
+model CategoryAddonTemplateOption {
+  id         String                @id @default(cuid())
+  templateId String
+  label      String
+  price      Decimal               @default(0) @db.Decimal(10, 2)
+  image      String?
+  isDefault  Boolean               @default(false)
+  sortOrder  Int                   @default(0)
+  isActive   Boolean               @default(true)
+
+  template   CategoryAddonTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("category_addon_template_options")
+}
+
+// ==================== SEO SETTINGS ====================
+
+model SeoSettings {
+  id                 String   @id @default(cuid())
+  siteName           String   @default("Gifts Cart India")
+  siteDescription    String   @default("Fresh cakes, flowers and gifts delivered same day across India")
+  defaultOgImage     String?
+  googleVerification String?
+  robotsTxt          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("seo_settings")
 }
 
 // ==================== ADMIN AUDIT ====================

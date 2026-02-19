@@ -1754,12 +1754,13 @@ async function main() {
 
   // Standard cake weight tiers (Indian bakery standard)
   // basePrice in product = 500g price, variations provide 1kg, 1.5kg, 2kg, 3kg prices
+  // attributes JSONB stores: { weight: "500g" } etc.
   const cakeWeightVariations = [
-    { label: '500g (Half Kg)', value: '500', sortOrder: 0, isDefault: true, multiplier: 1 },
-    { label: '1 Kg', value: '1000', sortOrder: 1, isDefault: false, multiplier: 1.85 },
-    { label: '1.5 Kg', value: '1500', sortOrder: 2, isDefault: false, multiplier: 2.7 },
-    { label: '2 Kg', value: '2000', sortOrder: 3, isDefault: false, multiplier: 3.5 },
-    { label: '3 Kg', value: '3000', sortOrder: 4, isDefault: false, multiplier: 5.0 },
+    { weight: '500g (Half Kg)', sortOrder: 0, multiplier: 1 },
+    { weight: '1 Kg', sortOrder: 1, multiplier: 1.85 },
+    { weight: '1.5 Kg', sortOrder: 2, multiplier: 2.7 },
+    { weight: '2 Kg', sortOrder: 3, multiplier: 3.5 },
+    { weight: '3 Kg', sortOrder: 4, multiplier: 5.0 },
   ]
 
   const cakeProductsForVariations = [
@@ -1774,19 +1775,12 @@ async function main() {
   for (const product of cakeProductsForVariations) {
     for (const v of cakeWeightVariations) {
       const price = Math.round(Number(product.basePrice) * v.multiplier)
-      await prisma.productVariation.upsert({
-        where: {
-          productId_type_value: { productId: product.id, type: 'weight', value: v.value },
-        },
-        update: {},
-        create: {
+      await prisma.productVariation.create({
+        data: {
           productId: product.id,
-          type: 'weight',
-          label: v.label,
-          value: v.value,
+          attributes: { weight: v.weight },
           price,
           sortOrder: v.sortOrder,
-          isDefault: v.isDefault,
           isActive: true,
         },
       })
@@ -1795,26 +1789,19 @@ async function main() {
 
   // Photo cake variations (start at 1kg since photo print needs surface area)
   const photoCakeVariations = [
-    { label: '1 Kg', value: '1000', sortOrder: 0, isDefault: true, price: 899 },
-    { label: '1.5 Kg', value: '1500', sortOrder: 1, isDefault: false, price: 1349 },
-    { label: '2 Kg', value: '2000', sortOrder: 2, isDefault: false, price: 1749 },
-    { label: '3 Kg', value: '3000', sortOrder: 3, isDefault: false, price: 2499 },
+    { weight: '1 Kg', sortOrder: 0, price: 899 },
+    { weight: '1.5 Kg', sortOrder: 1, price: 1349 },
+    { weight: '2 Kg', sortOrder: 2, price: 1749 },
+    { weight: '3 Kg', sortOrder: 3, price: 2499 },
   ]
 
   for (const v of photoCakeVariations) {
-    await prisma.productVariation.upsert({
-      where: {
-        productId_type_value: { productId: photoCake.id, type: 'weight', value: v.value },
-      },
-      update: {},
-      create: {
+    await prisma.productVariation.create({
+      data: {
         productId: photoCake.id,
-        type: 'weight',
-        label: v.label,
-        value: v.value,
+        attributes: { weight: v.weight },
         price: v.price,
         sortOrder: v.sortOrder,
-        isDefault: v.isDefault,
         isActive: true,
       },
     })
@@ -1822,9 +1809,9 @@ async function main() {
 
   // Sweet weight variations (250g, 500g, 1kg)
   const sweetWeightVariations = [
-    { label: '250g', value: '250', sortOrder: 0, isDefault: false, multiplier: 0.55 },
-    { label: '500g', value: '500', sortOrder: 1, isDefault: true, multiplier: 1 },
-    { label: '1 Kg', value: '1000', sortOrder: 2, isDefault: false, multiplier: 1.9 },
+    { weight: '250g', sortOrder: 0, multiplier: 0.55 },
+    { weight: '500g', sortOrder: 1, multiplier: 1 },
+    { weight: '1 Kg', sortOrder: 2, multiplier: 1.9 },
   ]
 
   const sweetProducts = [milkCake, kalakandSweet, kajuKatli, gulabJamun, rasmalai]
@@ -1832,19 +1819,12 @@ async function main() {
   for (const product of sweetProducts) {
     for (const v of sweetWeightVariations) {
       const price = Math.round(Number(product.basePrice) * v.multiplier)
-      await prisma.productVariation.upsert({
-        where: {
-          productId_type_value: { productId: product.id, type: 'weight', value: v.value },
-        },
-        update: {},
-        create: {
+      await prisma.productVariation.create({
+        data: {
           productId: product.id,
-          type: 'weight',
-          label: v.label,
-          value: v.value,
+          attributes: { weight: v.weight },
           price,
           sortOrder: v.sortOrder,
-          isDefault: v.isDefault,
           isActive: true,
         },
       })

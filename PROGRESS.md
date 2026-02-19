@@ -13,8 +13,8 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase 3 (Vendor Ecosystem) — in progress. Phase A-E planned (product system + SEO)|
-|Last Updated   |2026-02-19                                                                        |
+|Current Phase  |Phase A complete (schema foundation). Phase B-E planned (SEO + product system). Phase 3 ongoing.|
+|Last Updated   |2026-02-18                                                                        |
 
 ### What's Done
 
@@ -29,6 +29,7 @@
 - Referral logo branding system (?ref=CODE)
 - Platform rebrand: Gifts Cart India by Cital Enterprises
 - Netlify auto-deploy from GitHub, build passing
+- Phase A: Schema foundation — variations (JSONB), addon groups, upsells, SEO fields, category templates, seo_settings, vendor variation availability
 
 ### What's NOT Done (Priority Order)
 
@@ -40,10 +41,9 @@
 - No city landing page ([city]/page.tsx)
 - No real product images (all use /placeholder-product.svg)
 
-#### Product System (Phases A-E — planned)
+#### Product System (Phases B-E — planned)
 
-- Schema: variations, addon groups, upsells, SEO fields (Phase A)
-- SEO infrastructure: metadata, sitemap, JSON-LD, breadcrumbs (Phase B)
+- SEO infrastructure: metadata, sitemap, JSON-LD, breadcrumbs (Phase B) — **NEXT PRIORITY**
 - Admin product form: WooCommerce-style create + edit (Phase C)
 - Customer-facing variations + addons display (Phase D)
 - AI content + image generation (Phase E)
@@ -232,7 +232,16 @@
 | Category | `categories` | /api/categories | category page, category-grid | ✅ 5 + 8 sub |
 | Product | `products` | /api/products, /api/products/[id] | product page, product-card | ✅ 25 products |
 | ProductAddon | `product_addons` | /api/products/[id] (nested) | addon-selector | ✅ 4 per cake |
-| ProductVariation | `product_variations` | /api/products, /api/products/[id] (nested) | variation-selector | ✅ 49 variations (30 cake + 4 photo + 15 sweet) |
+| ProductVariation | `product_variations` | /api/products, /api/products/[id] (nested) | variation-selector | ✅ 49 variations (JSONB attributes format) |
+| ProductAttribute | `product_attributes` | — | — | No |
+| ProductAttributeOption | `product_attribute_options` | — | — | No |
+| ProductAddonGroup | `product_addon_groups` | — | — | Migrated from product_addons |
+| ProductAddonOption | `product_addon_options` | — | — | Migrated from product_addons |
+| ProductUpsell | `product_upsells` | — | — | No |
+| VendorProductVariation | `vendor_product_variations` | — | — | No |
+| CategoryAddonTemplate | `category_addon_templates` | — | — | ✅ Cakes: Name on Cake, Message Card |
+| CategoryAddonTemplateOption | `category_addon_template_options` | — | — | ✅ 3 options (No Card, Printed, Premium) |
+| SeoSettings | `seo_settings` | — | — | ✅ 1 row (singleton) |
 | VendorProduct | `vendor_products` | /api/products (city filter) | — | ✅ 8 items |
 | Order | `orders` | /api/orders, /api/orders/[id] | orders pages, admin orders | No (runtime) |
 | OrderItem | `order_items` | /api/orders (nested) | order detail page | No (runtime) |
@@ -390,21 +399,25 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 ### Remaining Work
 
-1. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
+1. **Run Phase A SQL migration** — Execute `prisma/migrations/phase-a-schema-foundation.sql` in Supabase SQL Editor block-by-block. Creates 10 new tables, adds SEO columns, migrates product_variations to JSONB format, seeds Cakes addon templates.
 
-2. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
+2. **Phase B: SEO Infrastructure** — generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings page. **IMMEDIATE NEXT PRIORITY.**
 
-3. **Phase 3: Vendor dashboard** — Full vendor management UI (currently placeholder).
+3. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
-4. **Phase 3: Partner/referral system** — Partner branding, subdomain routing, and earnings tracking.
+4. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
-5. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
+5. **Phase 3: Vendor dashboard** — Full vendor management UI (currently placeholder).
 
-6. **Add coupon admin CRUD** — Admin UI for creating/managing coupons (no admin page exists yet).
+6. **Phase 3: Partner/referral system** — Partner branding, subdomain routing, and earnings tracking.
 
-7. **Add review submission** — Allow customers to submit reviews on delivered orders.
+7. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
 
-8. **Supabase Realtime** — Wire up real-time order notifications for vendors.
+8. **Add coupon admin CRUD** — Admin UI for creating/managing coupons (no admin page exists yet).
+
+9. **Add review submission** — Allow customers to submit reviews on delivered orders.
+
+10. **Supabase Realtime** — Wire up real-time order notifications for vendors.
 
 ---
 
