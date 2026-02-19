@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
-  Users,
+  Store,
   ShoppingBag,
   Package,
   FolderOpen,
@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator"
 
 const sidebarLinks = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/vendors", label: "Vendors", icon: Users },
+  { href: "/admin/vendors", label: "Vendors", icon: Store },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/categories", label: "Categories", icon: FolderOpen },
