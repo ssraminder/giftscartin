@@ -433,6 +433,9 @@ export async function PUT(
           })
         }
       }
+    }, {
+      timeout: 30000,  // 30s — prevents P2028 on cold starts
+      maxWait: 10000,  // wait up to 10s for a connection from the pool
     })
 
     // Fetch updated product
