@@ -171,7 +171,7 @@ export default function CartPage() {
             {/* Cart Items Card */}
             <div className="card-premium p-4 sm:p-5">
               {items.map((item, index) => (
-                <div key={item.productId}>
+                <div key={item.id || item.productId}>
                   <CartItem item={item} />
                   {index < items.length - 1 && (
                     <Separator className="my-1 bg-gray-100" />

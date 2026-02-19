@@ -2,13 +2,19 @@
 
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { AddonSelection, Product, VariationSelection } from "@/types"
+import type { Product, AddonSelectionRecord } from "@/types"
 
 export interface CartItemState {
+  id: string
   productId: string
+  productName: string
+  productSlug: string
+  image: string
   quantity: number
-  addons: AddonSelection[]
-  variation: VariationSelection | null
+  price: number // unit price (variation price or base price)
+  variationId: string | null
+  selectedAttributes: Record<string, string> | null
+  addonSelections: AddonSelectionRecord[]
   deliveryDate: string | null
   deliverySlot: string | null
   product: Product
@@ -18,16 +24,38 @@ interface CartStore {
   items: CartItemState[]
   couponCode: string | null
   couponDiscount: number
-  addItem: (product: Product, quantity?: number, addons?: AddonSelection[], variation?: VariationSelection | null) => void
-  removeItem: (productId: string) => void
-  updateQuantity: (productId: string, quantity: number) => void
-  updateAddons: (productId: string, addons: AddonSelection[]) => void
-  updateVariation: (productId: string, variation: VariationSelection | null) => void
-  updateDelivery: (productId: string, date: string | null, slot: string | null) => void
+  addItem: (product: Product, quantity?: number, legacyAddons?: { addonId: string; name: string; price: number }[], legacyVariation?: { variationId: string; type: string; label: string; price: number } | null) => void
+  addItemAdvanced: (params: {
+    product: Product
+    quantity: number
+    price: number
+    variationId: string | null
+    selectedAttributes: Record<string, string> | null
+    addonSelections: AddonSelectionRecord[]
+  }) => void
+  removeItem: (itemId: string) => void
+  updateQuantity: (itemId: string, quantity: number) => void
+  updateDelivery: (itemId: string, date: string | null, slot: string | null) => void
   setCoupon: (code: string | null, discount: number) => void
   clearCart: () => void
   getItemCount: () => number
   getSubtotal: () => number
+}
+
+function generateCartItemId(): string {
+  return `cart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function calculateAddonTotal(addonSelections: AddonSelectionRecord[]): number {
+  let total = 0
+  for (const addon of addonSelections) {
+    if (addon.totalAddonPrice !== undefined) {
+      total += addon.totalAddonPrice
+    } else if (addon.addonPrice !== undefined) {
+      total += addon.addonPrice
+    }
+  }
+  return total
 }
 
 export const useCart = create<CartStore>()(
@@ -37,21 +65,27 @@ export const useCart = create<CartStore>()(
       couponCode: null,
       couponDiscount: 0,
 
-      addItem: (product, quantity = 1, addons = [], variation = null) => {
-        // Normalize prices to numbers (Prisma Decimal serializes as strings in JSON)
+      // Legacy addItem for backward compatibility with old addon/variation model
+      addItem: (product, quantity = 1, legacyAddons = [], legacyVariation = null) => {
         const normalizedProduct = { ...product, basePrice: Number(product.basePrice) }
-        const normalizedAddons = addons.map((a) => ({ ...a, price: Number(a.price) }))
-        const normalizedVariation = variation
-          ? { ...variation, price: Number(variation.price) }
-          : null
+        const unitPrice = legacyVariation ? Number(legacyVariation.price) : normalizedProduct.basePrice
+
+        // Convert legacy addons to AddonSelectionRecord format
+        const addonSelections: AddonSelectionRecord[] = legacyAddons.map((a) => ({
+          groupId: a.addonId,
+          groupName: a.name,
+          type: "CHECKBOX" as const,
+          addonPrice: Number(a.price),
+        }))
 
         set((state) => {
+          // For legacy calls, match by productId (simple dedup)
           const existing = state.items.find((i) => i.productId === normalizedProduct.id)
           if (existing) {
             return {
               items: state.items.map((i) =>
-                i.productId === normalizedProduct.id
-                  ? { ...i, quantity: i.quantity + quantity, variation: normalizedVariation ?? i.variation }
+                i.id === existing.id
+                  ? { ...i, quantity: i.quantity + quantity }
                   : i
               ),
             }
@@ -60,10 +94,16 @@ export const useCart = create<CartStore>()(
             items: [
               ...state.items,
               {
+                id: generateCartItemId(),
                 productId: normalizedProduct.id,
+                productName: normalizedProduct.name,
+                productSlug: normalizedProduct.slug,
+                image: normalizedProduct.images?.[0] || "/placeholder-product.svg",
                 quantity,
-                addons: normalizedAddons,
-                variation: normalizedVariation,
+                price: unitPrice,
+                variationId: legacyVariation?.variationId || null,
+                selectedAttributes: null,
+                addonSelections,
                 deliveryDate: null,
                 deliverySlot: null,
                 product: normalizedProduct,
@@ -73,44 +113,54 @@ export const useCart = create<CartStore>()(
         })
       },
 
-      removeItem: (productId) => {
+      // New addItemAdvanced for Phase D with full variation + addon group support
+      addItemAdvanced: ({ product, quantity, price, variationId, selectedAttributes, addonSelections }) => {
+        const normalizedProduct = { ...product, basePrice: Number(product.basePrice) }
+
         set((state) => ({
-          items: state.items.filter((i) => i.productId !== productId),
+          items: [
+            ...state.items,
+            {
+              id: generateCartItemId(),
+              productId: normalizedProduct.id,
+              productName: normalizedProduct.name,
+              productSlug: normalizedProduct.slug,
+              image: normalizedProduct.images?.[0] || "/placeholder-product.svg",
+              quantity,
+              price: Number(price),
+              variationId,
+              selectedAttributes,
+              addonSelections,
+              deliveryDate: null,
+              deliverySlot: null,
+              product: normalizedProduct,
+            },
+          ],
         }))
       },
 
-      updateQuantity: (productId, quantity) => {
+      removeItem: (itemId) => {
+        set((state) => ({
+          items: state.items.filter((i) => i.id !== itemId),
+        }))
+      },
+
+      updateQuantity: (itemId, quantity) => {
         if (quantity <= 0) {
-          get().removeItem(productId)
+          get().removeItem(itemId)
           return
         }
         set((state) => ({
           items: state.items.map((i) =>
-            i.productId === productId ? { ...i, quantity } : i
+            i.id === itemId ? { ...i, quantity } : i
           ),
         }))
       },
 
-      updateAddons: (productId, addons) => {
+      updateDelivery: (itemId, date, slot) => {
         set((state) => ({
           items: state.items.map((i) =>
-            i.productId === productId ? { ...i, addons } : i
-          ),
-        }))
-      },
-
-      updateVariation: (productId, variation) => {
-        set((state) => ({
-          items: state.items.map((i) =>
-            i.productId === productId ? { ...i, variation } : i
-          ),
-        }))
-      },
-
-      updateDelivery: (productId, date, slot) => {
-        set((state) => ({
-          items: state.items.map((i) =>
-            i.productId === productId
+            i.id === itemId
               ? { ...i, deliveryDate: date, deliverySlot: slot }
               : i
           ),
@@ -127,8 +177,8 @@ export const useCart = create<CartStore>()(
 
       getSubtotal: () => {
         return get().items.reduce((sum, item) => {
-          const unitPrice = Number(item.variation ? item.variation.price : item.product.basePrice)
-          const addonTotal = item.addons.reduce((a, addon) => a + Number(addon.price), 0)
+          const unitPrice = Number(item.price)
+          const addonTotal = calculateAddonTotal(item.addonSelections)
           return sum + (unitPrice + addonTotal) * item.quantity
         }, 0)
       },

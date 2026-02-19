@@ -13,7 +13,7 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A + B + C complete. Phase D-E planned (product system). Phase 3 ongoing.|
+|Current Phase  |Phase A + B + C + D complete. Phase E planned (AI content). Phase 3 ongoing.|
 |Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
@@ -32,23 +32,20 @@
 - Phase A: Schema foundation — variations (JSONB), addon groups, upsells, SEO fields, category templates, seo_settings, vendor variation availability
 - Phase B: SEO infrastructure — generateMetadata on product/category/home pages, JSON-LD structured data (Product, BreadcrumbList, Organization, LocalBusiness), sitemap.xml, robots.txt, breadcrumb component, admin SEO settings page
 - Phase C: Admin product form — WooCommerce-style tabbed create/edit form (General, Pricing, Inventory, Images, Attributes, Variations, Add-ons, SEO, Advanced), product list with filters/pagination/bulk actions, admin product CRUD API routes, category addon template sync
+- Phase D: Customer-facing variations & add-ons — attribute-based variation selector, addon group display (all 6 types), file upload addon with Supabase Storage, upsell products section, cart with variationId + addonSelections, variation-level vendor matching in order creation
 
 ### What's NOT Done (Priority Order)
 
 #### Customer-Facing Fixes (needed before launch)
 
 - Category listing page — hardcoded data, API exists but not connected
-- Product detail page — hardcoded addons/reviews, needs real API data
 - Checkout — setTimeout placeholder, no real order creation or Razorpay flow
 - No city landing page ([city]/page.tsx)
 - No real product images (all use /placeholder-product.svg)
 
-#### Product System (Phases B-E — planned)
+#### Product System (Phase E — planned)
 
-- SEO infrastructure: metadata, sitemap, JSON-LD, breadcrumbs (Phase B) — **NEXT PRIORITY**
-- Admin product form: WooCommerce-style create + edit (Phase C)
-- Customer-facing variations + addons display (Phase D)
-- AI content + image generation (Phase E)
+- AI content + image generation (Phase E) — **NEXT PRIORITY**
 
 #### Management Features (Phase 3 continuation)
 
@@ -167,8 +164,11 @@
 | `src/components/product/product-card.tsx` | Yes | Yes | ✅ |
 | `src/components/product/product-gallery.tsx` | Yes | Yes | ✅ |
 | `src/components/product/delivery-slot-picker.tsx` | Yes | Yes | ✅ |
-| `src/components/product/variation-selector.tsx` | No (new) | Yes | ✅ Weight/size variation buttons |
-| `src/components/product/addon-selector.tsx` | Yes | Yes | ✅ |
+| `src/components/product/variation-selector.tsx` | Yes (Phase D) | Yes | ✅ Attribute-based variation picker |
+| `src/components/product/addon-selector.tsx` | Yes (legacy) | Yes | ✅ Legacy addon selector |
+| `src/components/product/addon-group.tsx` | Yes (Phase D) | Yes | ✅ Renders all 6 addon types |
+| `src/components/product/file-upload-addon.tsx` | Yes (Phase D) | Yes | ✅ FILE_UPLOAD addon widget |
+| `src/components/product/upsell-products.tsx` | Yes (Phase D) | Yes | ✅ "Complete Your Gift" section |
 | `src/components/product/review-list.tsx` | Yes | Yes | ✅ |
 | `src/components/cart/cart-item.tsx` | Yes | Yes | ✅ |
 | `src/components/cart/cart-summary.tsx` | Yes | Yes | ✅ |
@@ -244,12 +244,12 @@
 | Product | `products` | /api/products, /api/products/[id] | product page, product-card | ✅ 25 products |
 | ProductAddon | `product_addons` | /api/products/[id] (nested) | addon-selector | ✅ 4 per cake |
 | ProductVariation | `product_variations` | /api/products, /api/products/[id] (nested) | variation-selector | ✅ 49 variations (JSONB attributes format) |
-| ProductAttribute | `product_attributes` | — | — | No |
-| ProductAttributeOption | `product_attribute_options` | — | — | No |
-| ProductAddonGroup | `product_addon_groups` | — | — | Migrated from product_addons |
-| ProductAddonOption | `product_addon_options` | — | — | Migrated from product_addons |
-| ProductUpsell | `product_upsells` | — | — | No |
-| VendorProductVariation | `vendor_product_variations` | — | — | No |
+| ProductAttribute | `product_attributes` | /api/products/[id] (nested) | variation-selector | No |
+| ProductAttributeOption | `product_attribute_options` | /api/products/[id] (nested) | variation-selector | No |
+| ProductAddonGroup | `product_addon_groups` | /api/products/[id] (nested) | addon-group | Migrated from product_addons |
+| ProductAddonOption | `product_addon_options` | /api/products/[id] (nested) | addon-group | Migrated from product_addons |
+| ProductUpsell | `product_upsells` | /api/products/[id] (nested) | upsell-products | No |
+| VendorProductVariation | `vendor_product_variations` | /api/orders (vendor matching) | — | No |
 | CategoryAddonTemplate | `category_addon_templates` | — | — | ✅ Cakes: Name on Cake, Message Card |
 | CategoryAddonTemplateOption | `category_addon_template_options` | — | — | ✅ 3 options (No Card, Printed, Premium) |
 | SeoSettings | `seo_settings` | /api/admin/seo | admin/seo page | ✅ 1 row (singleton) |
@@ -284,7 +284,8 @@
 | `/api/auth/otp/verify` | ✅ | Yes | POST | Verifies OTP, creates/finds user |
 | `/api/auth/register` | ✅ | Yes | POST | Registers new user after OTP |
 | `/api/products` | ✅ | Yes | GET | Full filtering: category, price, veg, occasion, search, city |
-| `/api/products/[id]` | ✅ | Yes | GET | Product with category, addons, reviews, vendor products |
+| `/api/products/[id]` | ✅ | Yes | GET | Product with attributes, variations, addon groups, upsells, reviews |
+| `/api/customer/upload-addon-file` | ✅ | Supabase Storage | POST | Addon file upload to order-uploads bucket |
 | `/api/categories` | ✅ | Yes | GET | Active categories with hierarchy and product counts |
 | `/api/serviceability` | ✅ | Yes | POST | Zone/pincode check, vendor count, available slots |
 | `/api/cart` | ✅ | Yes | GET, POST, PUT, DELETE | Full CRUD with product includes |
@@ -418,7 +419,9 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 2. ~~**Phase C: Admin Product Form**~~ — **COMPLETE.** WooCommerce-style tabbed product form (create + edit), admin product CRUD API, product list with filters/pagination, category addon template sync.
 
-3. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
+3. ~~**Phase D: Customer-Facing Variations & Add-ons**~~ — **COMPLETE.** Attribute-based variation selector, addon group display (CHECKBOX, RADIO, SELECT, TEXT_INPUT, TEXTAREA, FILE_UPLOAD), file upload to Supabase Storage, upsell products section, cart with variationId + addonSelections, variation-level vendor matching.
+
+4. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
 3. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 

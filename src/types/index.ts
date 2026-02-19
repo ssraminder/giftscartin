@@ -131,6 +131,9 @@ export interface Category {
   parent?: Category
 }
 
+export type ProductType = "SIMPLE" | "VARIABLE"
+export type AddonType = "CHECKBOX" | "RADIO" | "SELECT" | "TEXT_INPUT" | "TEXTAREA" | "FILE_UPLOAD"
+
 export interface Product {
   id: string
   name: string
@@ -138,6 +141,7 @@ export interface Product {
   description: string | null
   shortDesc: string | null
   categoryId: string
+  productType: ProductType
   basePrice: number
   images: string[]
   tags: string[]
@@ -149,29 +153,50 @@ export interface Product {
   totalReviews: number
   createdAt: string
   updatedAt: string
-  category?: Category
+  category?: { id: string; name: string; slug: string }
+  attributes?: ProductAttribute[]
   variations?: ProductVariation[]
+  addonGroups?: ProductAddonGroup[]
+  upsells?: UpsellProduct[]
   addons?: ProductAddon[]
+  reviews?: Review[]
+}
+
+export interface ProductAttribute {
+  id: string
+  name: string
+  slug: string
+  isVisible: boolean
+  isForVariations: boolean
+  sortOrder: number
+  options: ProductAttributeOption[]
+}
+
+export interface ProductAttributeOption {
+  id: string
+  value: string
+  sortOrder: number
 }
 
 export interface ProductVariation {
   id: string
   productId: string
-  type: string // "weight", "size", "pack", "tier"
-  label: string // "500g", "1 Kg", "2 Kg"
-  value: string // Sortable: "500", "1000", "2000"
+  attributes: Record<string, string> // { "weight": "500g", "egg-preference": "Eggless" }
   price: number
-  sku: string | null
-  sortOrder: number
-  isDefault: boolean
+  salePrice: number | null
+  saleFrom: string | null
+  saleTo: string | null
+  image: string | null
+  stockQty: number | null
   isActive: boolean
+  sortOrder: number
 }
 
 export interface VariationSelection {
   variationId: string
-  type: string
-  label: string
+  attributes: Record<string, string>
   price: number
+  salePrice: number | null
 }
 
 export interface ProductAddon {
@@ -181,6 +206,67 @@ export interface ProductAddon {
   price: number
   image: string | null
   isActive: boolean
+}
+
+export interface ProductAddonGroup {
+  id: string
+  name: string
+  description: string | null
+  type: AddonType
+  required: boolean
+  maxLength: number | null
+  placeholder: string | null
+  acceptedFileTypes: string[]
+  maxFileSizeMb: number | null
+  sortOrder: number
+  options: ProductAddonOption[]
+}
+
+export interface ProductAddonOption {
+  id: string
+  label: string
+  price: number
+  image: string | null
+  isDefault: boolean
+  sortOrder: number
+}
+
+export interface UpsellProduct {
+  id: string
+  name: string
+  slug: string
+  images: string[]
+  basePrice: number
+  category: { name: string }
+}
+
+// Addon selection value for a single addon group (used in product detail page state)
+export type AddonGroupSelection =
+  | { type: "CHECKBOX"; selectedIds: string[] }
+  | { type: "RADIO"; selectedId: string | null }
+  | { type: "SELECT"; selectedId: string | null }
+  | { type: "TEXT_INPUT"; text: string }
+  | { type: "TEXTAREA"; text: string }
+  | { type: "FILE_UPLOAD"; fileUrl: string | null; fileName: string | null }
+
+// Flattened addon selection record stored in cart
+export interface AddonSelectionRecord {
+  groupId: string
+  groupName: string
+  type: AddonType
+  // CHECKBOX
+  selectedIds?: string[]
+  selectedLabels?: string[]
+  totalAddonPrice?: number
+  // RADIO / SELECT
+  selectedId?: string
+  selectedLabel?: string
+  addonPrice?: number
+  // TEXT_INPUT / TEXTAREA
+  text?: string
+  // FILE_UPLOAD
+  fileUrl?: string
+  fileName?: string
 }
 
 export interface VendorProduct {
@@ -234,7 +320,7 @@ export interface OrderItem {
   name: string
   quantity: number
   price: number
-  addons: AddonSelection[] | null
+  addons: AddonSelectionRecord[] | null
   variationId: string | null
   variationLabel: string | null
   product?: Product
@@ -277,14 +363,20 @@ export interface Payment {
 export interface CartItem {
   id: string
   productId: string
+  productName: string
+  productSlug: string
+  image: string
   quantity: number
-  addons: AddonSelection[] | null
-  variation: VariationSelection | null
+  price: number
+  variationId: string | null
+  selectedAttributes: Record<string, string> | null
+  addonSelections: AddonSelectionRecord[]
   deliveryDate: string | null
   deliverySlot: string | null
   product?: Product
 }
 
+// Legacy addon selection (kept for backward compat with old addons model)
 export interface AddonSelection {
   addonId: string
   name: string

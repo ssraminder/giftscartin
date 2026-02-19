@@ -12,26 +12,42 @@ interface CartItemProps {
   item: CartItemState
 }
 
+function calculateAddonTotal(addonSelections: CartItemState["addonSelections"]): number {
+  let total = 0
+  for (const addon of addonSelections) {
+    if (addon.totalAddonPrice !== undefined) {
+      total += addon.totalAddonPrice
+    } else if (addon.addonPrice !== undefined) {
+      total += addon.addonPrice
+    }
+  }
+  return total
+}
+
 export function CartItem({ item }: CartItemProps) {
   const { formatPrice } = useCurrency()
   const updateQuantity = useCart((s) => s.updateQuantity)
   const removeItem = useCart((s) => s.removeItem)
 
-  const baseUnitPrice = Number(item.variation ? item.variation.price : item.product.basePrice)
-  const addonTotal = item.addons.reduce((sum, a) => sum + Number(a.price), 0)
-  const unitPrice = baseUnitPrice + addonTotal
-  const lineTotal = unitPrice * item.quantity
+  const unitPrice = Number(item.price)
+  const addonTotal = calculateAddonTotal(item.addonSelections)
+  const lineTotal = (unitPrice + addonTotal) * item.quantity
+
+  // Build attribute label string (e.g. "1kg, Eggless")
+  const attributeLabel = item.selectedAttributes
+    ? Object.values(item.selectedAttributes).join(", ")
+    : null
 
   return (
     <div className="flex gap-3 py-4">
       {/* Product Image */}
       <Link
-        href={`/product/${item.product.slug}`}
+        href={`/product/${item.productSlug || item.product?.slug || ""}`}
         className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-24 sm:w-24"
       >
         <Image
-          src={item.product.images[0] || "/placeholder-product.svg"}
-          alt={item.product.name}
+          src={item.image || item.product?.images?.[0] || "/placeholder-product.svg"}
+          alt={item.productName || item.product?.name || "Product"}
           fill
           className="object-cover"
           sizes="96px"
@@ -43,14 +59,14 @@ export function CartItem({ item }: CartItemProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <Link
-              href={`/product/${item.product.slug}`}
+              href={`/product/${item.productSlug || item.product?.slug || ""}`}
               className="text-sm font-medium leading-tight line-clamp-2 hover:text-primary transition-colors"
             >
-              {item.product.name}
+              {item.productName || item.product?.name}
             </Link>
-            {(item.variation || item.product.weight) && (
+            {attributeLabel && (
               <p className="mt-0.5 text-xs text-muted-foreground">
-                {item.variation ? item.variation.label : item.product.weight}
+                {attributeLabel}
               </p>
             )}
           </div>
@@ -59,17 +75,23 @@ export function CartItem({ item }: CartItemProps) {
           </span>
         </div>
 
-        {/* Addons */}
-        {item.addons.length > 0 && (
+        {/* Addon selections */}
+        {item.addonSelections.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
-            {item.addons.map((addon) => (
-              <span
-                key={addon.addonId}
-                className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-              >
-                + {addon.name} ({formatPrice(addon.price)})
-              </span>
-            ))}
+            {item.addonSelections.map((addon) => {
+              const price = addon.totalAddonPrice ?? addon.addonPrice ?? 0
+              const label = addon.selectedLabels
+                ? addon.selectedLabels.join(", ")
+                : addon.selectedLabel || addon.text || addon.fileName || addon.groupName
+              return (
+                <span
+                  key={addon.groupId}
+                  className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                >
+                  + {label} {price > 0 ? `(${formatPrice(price)})` : ""}
+                </span>
+              )
+            })}
           </div>
         )}
 
@@ -80,7 +102,7 @@ export function CartItem({ item }: CartItemProps) {
               variant="outline"
               size="icon"
               className="h-7 w-7"
-              onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+              onClick={() => updateQuantity(item.id, item.quantity - 1)}
               aria-label="Decrease quantity"
             >
               <Minus className="h-3 w-3" />
@@ -92,7 +114,7 @@ export function CartItem({ item }: CartItemProps) {
               variant="outline"
               size="icon"
               className="h-7 w-7"
-              onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+              onClick={() => updateQuantity(item.id, item.quantity + 1)}
               disabled={item.quantity >= 10}
               aria-label="Increase quantity"
             >
@@ -104,7 +126,7 @@ export function CartItem({ item }: CartItemProps) {
             variant="ghost"
             size="sm"
             className="h-7 text-muted-foreground hover:text-destructive"
-            onClick={() => removeItem(item.productId)}
+            onClick={() => removeItem(item.id)}
           >
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             <span className="text-xs">Remove</span>
