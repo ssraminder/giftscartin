@@ -27,7 +27,6 @@ export async function GET() {
         product: {
           include: {
             category: { select: { id: true, name: true, slug: true } },
-            addons: { where: { isActive: true } },
           },
         },
       },

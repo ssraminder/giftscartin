@@ -14,7 +14,7 @@
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
 |Current Phase  |Phase A + B + C + D + E + F complete. Phase 3 ongoing.|
-|Last Updated   |2026-02-19                                                                        |
+|Last Updated   |2026-02-20                                                                        |
 
 ### What's Done
 
@@ -35,6 +35,7 @@
 - Phase D: Customer-facing variations & add-ons — attribute-based variation selector, addon group display (all 6 types), file upload addon with Supabase Storage, upsell products section, cart with variationId + addonSelections, variation-level vendor matching in order creation
 - Phase E: AI content & image generation — Claude API for SEO content, GPT-image-1 for product images, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload
 - Phase F: Category management & addon templates — Admin category CRUD API (tree structure), category form (Sheet with General/SEO/Addon Templates tabs), hierarchical category list page, bulk template propagation, per-product addon group re-sync API, detach/re-sync controls in product form
+- Fixed products API 500 — updated stale `addons` includes to use `addonGroups` relation in products list, product detail, and cart API routes
 
 ### What's NOT Done (Priority Order)
 

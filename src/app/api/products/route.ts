@@ -114,7 +114,6 @@ export async function GET(request: NextRequest) {
         include: {
           category: { select: { id: true, name: true, slug: true } },
           variations: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
-          addons: { where: { isActive: true } },
         },
       }),
       prisma.product.count({ where }),

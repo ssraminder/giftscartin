@@ -56,8 +56,6 @@ export async function GET(
             },
           },
         },
-        // Legacy addons
-        addons: { where: { isActive: true } },
         // Reviews
         reviews: {
           orderBy: { createdAt: 'desc' },
