@@ -2,12 +2,19 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 
+const publicRoutes = ['/login', '/register', '/', '/api/auth']
 const vendorPaths = ['/vendor']
 const adminPaths = ['/admin']
 
 export async function middleware(request: NextRequest) {
-  const token = await getToken({ req: request })
   const { pathname } = request.nextUrl
+
+  // Never redirect public routes — prevents redirect loops on login/register
+  if (publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'))) {
+    return NextResponse.next()
+  }
+
+  const token = await getToken({ req: request })
 
   const isVendorPath =
     vendorPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))
@@ -42,6 +49,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/login',
+    '/register',
     '/checkout',
     '/checkout/:path*',
     '/orders',

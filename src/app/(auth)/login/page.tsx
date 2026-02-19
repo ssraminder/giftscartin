@@ -14,8 +14,9 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { status } = useSession()
+  const [mounted, setMounted] = useState(false)
   const [step, setStep] = useState<Step>('email')
-  const [email, setEmail] = useState(searchParams.get('email') || '')
+  const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -23,12 +24,20 @@ function LoginForm() {
 
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([])
 
+  // Hydration guard — wait for client mount before rendering interactive UI
+  useEffect(() => {
+    setMounted(true)
+    const emailParam = searchParams.get('email')
+    if (emailParam) setEmail(emailParam)
+  }, [searchParams])
+
   // Redirect if already logged in
+  const callbackUrl = searchParams.get('callbackUrl') || '/'
   useEffect(() => {
     if (status === 'authenticated') {
-      router.replace('/')
+      router.replace(callbackUrl)
     }
-  }, [status, router])
+  }, [status, router, callbackUrl])
 
   // Resend OTP countdown timer
   useEffect(() => {
@@ -103,7 +112,7 @@ function LoginForm() {
         return
       }
 
-      router.push('/')
+      router.push(callbackUrl)
       router.refresh()
     } catch {
       setError('Something went wrong. Please try again.')
@@ -163,17 +172,18 @@ function LoginForm() {
     }
   }
 
-  // Show nothing while checking auth status
-  if (status === 'loading' || status === 'authenticated') {
+  // Show nothing until client is mounted (prevents mobile hydration mismatch)
+  // or while checking auth status
+  if (!mounted || status === 'loading' || status === 'authenticated') {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFF9F5' }}>
+      <div className="flex items-center justify-center" style={{ backgroundColor: '#FFF9F5', minHeight: '100dvh' }}>
         <Loader2 className="h-8 w-8 animate-spin text-pink-600" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#FFF9F5' }}>
+    <div className="flex" style={{ backgroundColor: '#FFF9F5', minHeight: '100dvh' }}>
       {/* Left Panel - Hidden on mobile */}
       <div
         className="hidden lg:flex lg:w-1/2 xl:w-[55%] relative overflow-hidden flex-col items-center justify-center px-12"
@@ -501,7 +511,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFF9F5' }}>
+        <div className="flex items-center justify-center" style={{ backgroundColor: '#FFF9F5', minHeight: '100dvh' }}>
           <Loader2 className="h-8 w-8 animate-spin text-pink-600" />
         </div>
       }
