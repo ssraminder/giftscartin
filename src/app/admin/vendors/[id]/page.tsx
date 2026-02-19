@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
+import { useEffect, useState } from "react"
+import { useParams } from "next/navigation"
 import Link from "next/link"
 import { VendorForm } from "@/components/admin/vendor-form"
 import { Badge } from "@/components/ui/badge"
@@ -51,12 +52,9 @@ interface City {
   name: string
 }
 
-export default function EditVendorPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const { id } = use(params)
+export default function EditVendorPage() {
+  const params = useParams()
+  const id = params.id as string
   const [vendor, setVendor] = useState<VendorData | null>(null)
   const [cities, setCities] = useState<City[]>([])
   const [loading, setLoading] = useState(true)
