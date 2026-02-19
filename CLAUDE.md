@@ -94,8 +94,11 @@ RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
 
 # AI
-ANTHROPIC_API_KEY=         # Claude API — SEO content generation
-OPENAI_API_KEY=            # GPT-image-1.5 — product image generation
+ANTHROPIC_API_KEY=         # Claude API — product content generation
+OPENAI_API_KEY=            # GPT-image-1 — product image generation
+
+# Supabase (server-side)
+SUPABASE_SERVICE_ROLE_KEY= # Server-side storage uploads (optional — falls back to anon key)
 ```
 
 -----
@@ -288,13 +291,15 @@ Order assignment updated to match at variation level.
 File upload addon with Supabase Storage integration.
 Upsell products ("Complete Your Gift") section.
 
-### Phase E — AI Content Generation
+### Phase E — AI Content & Image Generation ✅ COMPLETE (2026-02-19)
 
 Claude (claude-opus-4-5) generates: description, shortDesc, metaTitle,
 metaDescription, metaKeywords, tags, and a GPT image prompt.
-GPT-image-1.5 generates product image from prompt + optional reference photo.
+GPT-image-1 generates product image from prompt + optional reference photo.
 Images proxied through server and uploaded to products bucket.
-Integrated into product form as "Generate with AI" button.
+Integrated into product form as "Generate with AI" button on Images and SEO tabs.
+AI generator slide-out panel with reference image upload, two-phase progress,
+result preview with copy buttons, and "Apply All to Form" action.
 
 -----
 
@@ -318,6 +323,8 @@ Integrated into product form as "Generate with AI" button.
 |src/components/product/addon-group.tsx  |Renders addon group by type (6 types)              |
 |src/components/product/file-upload-addon.tsx|File upload widget for FILE_UPLOAD addons       |
 |src/components/product/upsell-products.tsx|"Complete Your Gift" upsell section              |
+|src/app/api/admin/products/generate-content/route.ts|AI content + image generation API     |
+|src/components/admin/ai-generator-panel.tsx|AI generator slide-out panel for product form|
 |src/app/api/customer/upload-addon-file/route.ts|Addon file upload to order-uploads bucket  |
 |netlify/functions/sync-exchange-rates.ts|DO NOT MODIFY — production scheduled job           |
 
