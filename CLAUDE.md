@@ -278,13 +278,15 @@ Handles both create and edit. AI generation integrated (Phase E).
 Category addon template system with sync status UI.
 Upsell product picker.
 
-### Phase D — Customer-Facing Variations
+### Phase D — Customer-Facing Variations & Add-ons ✅ COMPLETE (2026-02-19)
 
 Product detail page updated with real API data.
 Variation selector (attribute swatches/buttons).
 Addon group display by type (checkbox, radio, file upload widget, text inputs).
 Cart updated to store variationId + addonSelections.
 Order assignment updated to match at variation level.
+File upload addon with Supabase Storage integration.
+Upsell products ("Complete Your Gift") section.
 
 ### Phase E — AI Content Generation
 
@@ -311,7 +313,12 @@ Integrated into product form as "Generate with AI" button.
 |src/lib/utils.ts                        |cn(), formatPrice(), generateOrderNumber()         |
 |src/lib/validations.ts                  |All Zod schemas                                    |
 |src/middleware.ts                       |Route protection (auth + role-based)               |
-|src/hooks/use-cart.ts                   |Zustand cart store                                 |
+|src/hooks/use-cart.ts                   |Zustand cart store (variation + addon support)      |
+|src/components/product/variation-selector.tsx|Attribute-based variation picker              |
+|src/components/product/addon-group.tsx  |Renders addon group by type (6 types)              |
+|src/components/product/file-upload-addon.tsx|File upload widget for FILE_UPLOAD addons       |
+|src/components/product/upsell-products.tsx|"Complete Your Gift" upsell section              |
+|src/app/api/customer/upload-addon-file/route.ts|Addon file upload to order-uploads bucket  |
 |netlify/functions/sync-exchange-rates.ts|DO NOT MODIFY — production scheduled job           |
 
 -----

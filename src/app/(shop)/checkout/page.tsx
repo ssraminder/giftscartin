@@ -375,7 +375,8 @@ export default function CheckoutPage() {
           items: items.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
-            addons: item.addons.length > 0 ? item.addons : undefined,
+            variationId: item.variationId || undefined,
+            addons: item.addonSelections.length > 0 ? item.addonSelections : undefined,
           })),
           deliveryDate: selectedDate!.toISOString().split("T")[0],
           deliverySlot: selectedSlot!.slug,
@@ -1125,14 +1126,14 @@ export default function CheckoutPage() {
 
                 <div className="space-y-3">
                   {items.map((item) => {
-                    const unitPrice = Number(item.variation ? item.variation.price : item.product.basePrice)
-                    const addonTotal = item.addons.reduce((s, a) => s + Number(a.price), 0)
+                    const unitPrice = Number(item.price)
+                    const addonTotal = item.addonSelections.reduce((s, a) => s + (a.totalAddonPrice ?? a.addonPrice ?? 0), 0)
                     return (
-                      <div key={item.productId} className="flex gap-3">
+                      <div key={item.id || item.productId} className="flex gap-3">
                         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-50 border border-gray-100">
                           <Image
-                            src={item.product.images[0] || "/placeholder-product.svg"}
-                            alt={item.product.name}
+                            src={item.image || item.product?.images?.[0] || "/placeholder-product.svg"}
+                            alt={item.productName || item.product?.name || "Product"}
                             fill
                             className="object-cover"
                             sizes="56px"
@@ -1141,7 +1142,7 @@ export default function CheckoutPage() {
                         <div className="flex flex-1 justify-between gap-2 min-w-0">
                           <div className="min-w-0">
                             <p className="text-sm font-medium leading-tight line-clamp-1 text-gray-800">
-                              {item.product.name}
+                              {item.productName || item.product?.name}
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
                               Qty: {item.quantity}

@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { MapPin, Minus, Plus, ShoppingCart, Star, Truck, Shield, Clock, Package, Info } from "lucide-react"
+import { MapPin, Minus, Plus, ShoppingCart, Star, Truck, Shield, Clock, Package, Info, CheckCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,14 +12,26 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProductGallery } from "@/components/product/product-gallery"
 import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
-import { AddonSelector } from "@/components/product/addon-selector"
 import { VariationSelector } from "@/components/product/variation-selector"
+import { AddonGroup } from "@/components/product/addon-group"
+import { UpsellProducts } from "@/components/product/upsell-products"
 import { ReviewList } from "@/components/product/review-list"
 import { ProductCard } from "@/components/product/product-card"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
-import type { Product, ProductAddon, ProductVariation, Review, AddonSelection, VariationSelection, ApiResponse, PaginatedData } from "@/types"
+import type {
+  Product,
+  ProductAttribute,
+  ProductVariation,
+  ProductAddonGroup,
+  UpsellProduct,
+  Review,
+  AddonGroupSelection,
+  AddonSelectionRecord,
+  ApiResponse,
+  PaginatedData,
+} from "@/types"
 
 // -- Helper: render star rating ------------------------------------------------
 
@@ -74,31 +86,91 @@ function ProductDetailSkeleton() {
   )
 }
 
-// -- Component -----------------------------------------------------------------
+// -- Types for API response ---------------------------------------------------
 
-interface ProductWithDetails extends Omit<Product, 'category' | 'addons' | 'variations'> {
+interface ProductDetail extends Omit<Product, 'category'> {
+  productType: "SIMPLE" | "VARIABLE"
   category?: { id: string; name: string; slug: string }
+  attributes?: ProductAttribute[]
   variations?: ProductVariation[]
-  addons?: ProductAddon[]
+  addonGroups?: ProductAddonGroup[]
+  upsells?: UpsellProduct[]
   reviews?: Review[]
 }
+
+// -- Default addon selection initializer --------------------------------------
+
+function getDefaultAddonSelection(group: ProductAddonGroup): AddonGroupSelection {
+  switch (group.type) {
+    case "CHECKBOX": {
+      const defaults = group.options.filter((o) => o.isDefault).map((o) => o.id)
+      return { type: "CHECKBOX", selectedIds: defaults }
+    }
+    case "RADIO": {
+      const def = group.options.find((o) => o.isDefault)
+      return { type: "RADIO", selectedId: def?.id ?? null }
+    }
+    case "SELECT": {
+      const def = group.options.find((o) => o.isDefault)
+      return { type: "SELECT", selectedId: def?.id ?? null }
+    }
+    case "TEXT_INPUT":
+      return { type: "TEXT_INPUT", text: "" }
+    case "TEXTAREA":
+      return { type: "TEXTAREA", text: "" }
+    case "FILE_UPLOAD":
+      return { type: "FILE_UPLOAD", fileUrl: null, fileName: null }
+  }
+}
+
+// -- Calculate addon price from selections ------------------------------------
+
+function calculateAddonPrice(
+  groups: ProductAddonGroup[],
+  selections: Map<string, AddonGroupSelection>
+): number {
+  let total = 0
+  for (const group of groups) {
+    const sel = selections.get(group.id)
+    if (!sel) continue
+
+    if (sel.type === "CHECKBOX") {
+      for (const optId of sel.selectedIds) {
+        const opt = group.options.find((o) => o.id === optId)
+        if (opt) total += Number(opt.price)
+      }
+    } else if (sel.type === "RADIO" || sel.type === "SELECT") {
+      if (sel.selectedId) {
+        const opt = group.options.find((o) => o.id === sel.selectedId)
+        if (opt) total += Number(opt.price)
+      }
+    }
+    // TEXT, TEXTAREA, FILE_UPLOAD don't have prices
+  }
+  return total
+}
+
+// -- Component -----------------------------------------------------------------
 
 export default function ProductDetailClient({ slug }: { slug: string }) {
   const router = useRouter()
   const { formatPrice } = useCurrency()
-
-  const addItem = useCart((s) => s.addItem)
+  const addItemAdvanced = useCart((s) => s.addItemAdvanced)
+  const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // State for fetched data
-  const [product, setProduct] = useState<ProductWithDetails | null>(null)
+  const [product, setProduct] = useState<ProductDetail | null>(null)
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
   // UI state
   const [quantity, setQuantity] = useState(1)
-  const [selectedVariation, setSelectedVariation] = useState<VariationSelection | null>(null)
-  const [selectedAddons, setSelectedAddons] = useState<AddonSelection[]>([])
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
+  const [addonSelections, setAddonSelections] = useState<Map<string, AddonGroupSelection>>(new Map())
+  const [addonErrors, setAddonErrors] = useState<Set<string>>(new Set())
+  const [variationError, setVariationError] = useState(false)
+  const [addedToCart, setAddedToCart] = useState(false)
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null)
   const [deliverySlot, setDeliverySlot] = useState<string | null>(null)
   const [pincode, setPincode] = useState("")
@@ -112,7 +184,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
       setNotFound(false)
       try {
         const res = await fetch(`/api/products/${encodeURIComponent(slug)}`)
-        const json: ApiResponse<ProductWithDetails> = await res.json()
+        const json: ApiResponse<ProductDetail> = await res.json()
         if (json.success && json.data) {
           setProduct(json.data)
           // Fetch related products from same category
@@ -135,20 +207,189 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     fetchProduct()
   }, [slug])
 
-  // Auto-select default variation when product loads
+  // Initialize addon selections when product loads
   useEffect(() => {
-    if (product?.variations && product.variations.length > 0 && !selectedVariation) {
-      const defaultVar = product.variations.find((v) => v.isDefault) || product.variations[0]
-      if (defaultVar) {
-        setSelectedVariation({
-          variationId: defaultVar.id,
-          type: defaultVar.type,
-          label: defaultVar.label,
-          price: Number(defaultVar.price),
-        })
+    if (product?.addonGroups && product.addonGroups.length > 0) {
+      const initial = new Map<string, AddonGroupSelection>()
+      for (const group of product.addonGroups) {
+        initial.set(group.id, getDefaultAddonSelection(group))
+      }
+      setAddonSelections(initial)
+    }
+  }, [product])
+
+  // Match variation from selected options
+  const matchedVariation = useMemo(() => {
+    if (!product?.variations || Object.keys(selectedOptions).length === 0) return null
+    return product.variations.find((v) => {
+      const attrs = v.attributes as Record<string, string>
+      return Object.entries(selectedOptions).every(
+        ([slug, value]) => attrs[slug] === value
+      )
+    }) ?? null
+  }, [product?.variations, selectedOptions])
+
+  // Computed values
+  const isVariable = product?.productType === "VARIABLE"
+  const attributes = product?.attributes || []
+  const variations = useMemo(() => product?.variations || [], [product?.variations])
+  const addonGroups = useMemo(() => product?.addonGroups || [], [product?.addonGroups])
+  const upsells = product?.upsells || []
+  const reviews = product?.reviews || []
+
+  // Get min variation price for "From ₹X" display
+  const minVariationPrice = useMemo(() => {
+    if (variations.length === 0) return null
+    return Math.min(...variations.map((v) => {
+      const now = new Date()
+      const hasSale = v.salePrice &&
+        (!v.saleFrom || new Date(v.saleFrom) <= now) &&
+        (!v.saleTo || new Date(v.saleTo) >= now)
+      return Number(hasSale ? v.salePrice : v.price)
+    }))
+  }, [variations])
+
+  // Active sale price for matched variation
+  const variationDisplayPrice = useMemo(() => {
+    if (!matchedVariation) return null
+    const now = new Date()
+    const hasSale = matchedVariation.salePrice &&
+      (!matchedVariation.saleFrom || new Date(matchedVariation.saleFrom) <= now) &&
+      (!matchedVariation.saleTo || new Date(matchedVariation.saleTo) >= now)
+    return Number(hasSale ? matchedVariation.salePrice : matchedVariation.price)
+  }, [matchedVariation])
+
+  // Unit price (variation or base)
+  const unitPrice = isVariable
+    ? (variationDisplayPrice ?? 0)
+    : Number(product?.basePrice ?? 0)
+
+  const addonTotal = calculateAddonPrice(addonGroups, addonSelections)
+  const totalPrice = (unitPrice + addonTotal) * quantity
+
+  const handleOptionChange = useCallback((attributeSlug: string, value: string) => {
+    setSelectedOptions((prev) => ({ ...prev, [attributeSlug]: value }))
+    setVariationError(false)
+  }, [])
+
+  const handleAddonChange = useCallback((groupId: string, value: AddonGroupSelection) => {
+    setAddonSelections((prev) => {
+      const next = new Map(prev)
+      next.set(groupId, value)
+      return next
+    })
+    setAddonErrors((prev) => {
+      if (prev.has(groupId)) {
+        const next = new Set(prev)
+        next.delete(groupId)
+        return next
+      }
+      return prev
+    })
+  }, [])
+
+  // Build AddonSelectionRecord[] for cart
+  const buildAddonRecords = useCallback((): AddonSelectionRecord[] => {
+    const records: AddonSelectionRecord[] = []
+    for (const group of addonGroups) {
+      const sel = addonSelections.get(group.id)
+      if (!sel) continue
+
+      const record: AddonSelectionRecord = {
+        groupId: group.id,
+        groupName: group.name,
+        type: group.type,
+      }
+
+      if (sel.type === "CHECKBOX" && sel.selectedIds.length > 0) {
+        record.selectedIds = sel.selectedIds
+        record.selectedLabels = sel.selectedIds.map(
+          (id) => group.options.find((o) => o.id === id)?.label ?? ""
+        )
+        record.totalAddonPrice = sel.selectedIds.reduce((sum, id) => {
+          const opt = group.options.find((o) => o.id === id)
+          return sum + (opt ? Number(opt.price) : 0)
+        }, 0)
+        records.push(record)
+      } else if ((sel.type === "RADIO" || sel.type === "SELECT") && sel.selectedId) {
+        const opt = group.options.find((o) => o.id === sel.selectedId)
+        record.selectedId = sel.selectedId
+        record.selectedLabel = opt?.label
+        record.addonPrice = opt ? Number(opt.price) : 0
+        records.push(record)
+      } else if ((sel.type === "TEXT_INPUT" || sel.type === "TEXTAREA") && sel.text) {
+        record.text = sel.text
+        records.push(record)
+      } else if (sel.type === "FILE_UPLOAD" && sel.fileUrl) {
+        record.fileUrl = sel.fileUrl
+        record.fileName = sel.fileName ?? undefined
+        records.push(record)
       }
     }
-  }, [product, selectedVariation])
+    return records
+  }, [addonGroups, addonSelections])
+
+  const handleAddToCart = useCallback(() => {
+    if (!product) return
+
+    // Validate: VARIABLE product must have a variation selected
+    if (isVariable && !matchedVariation) {
+      setVariationError(true)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      return
+    }
+
+    // Validate required addon groups
+    const errors = new Set<string>()
+    for (const group of addonGroups) {
+      if (!group.required) continue
+      const sel = addonSelections.get(group.id)
+      if (!sel) { errors.add(group.id); continue }
+
+      let hasValue = false
+      if (sel.type === "CHECKBOX") hasValue = sel.selectedIds.length > 0
+      else if (sel.type === "RADIO" || sel.type === "SELECT") hasValue = !!sel.selectedId
+      else if (sel.type === "TEXT_INPUT" || sel.type === "TEXTAREA") hasValue = sel.text.trim().length > 0
+      else if (sel.type === "FILE_UPLOAD") hasValue = !!sel.fileUrl
+
+      if (!hasValue) errors.add(group.id)
+    }
+
+    if (errors.size > 0) {
+      setAddonErrors(errors)
+      // Scroll to first error
+      addonSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      return
+    }
+
+    addItemAdvanced({
+      product: product as Product,
+      quantity,
+      price: unitPrice,
+      variationId: matchedVariation?.id ?? null,
+      selectedAttributes: matchedVariation ? (matchedVariation.attributes as Record<string, string>) : null,
+      addonSelections: buildAddonRecords(),
+    })
+
+    setAddedToCart(true)
+    setTimeout(() => setAddedToCart(false), 2000)
+  }, [product, isVariable, matchedVariation, addonGroups, addonSelections, addItemAdvanced, quantity, unitPrice, buildAddonRecords])
+
+  const handleBuyNow = useCallback(() => {
+    handleAddToCart()
+    // Only navigate if validation passed (addedToCart will be set)
+    setTimeout(() => {
+      if (!variationError && addonErrors.size === 0) {
+        router.push("/cart")
+      }
+    }, 100)
+  }, [handleAddToCart, router, variationError, addonErrors])
+
+  const handleCheckPincode = () => {
+    if (pincode.length === 6) {
+      setPincodeChecked(true)
+    }
+  }
 
   if (loading) {
     return <ProductDetailSkeleton />
@@ -178,29 +419,6 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   const categorySlug = product.category?.slug || ""
   const categoryName = product.category?.name || ""
-  const variations = product.variations || []
-  const addons = product.addons || []
-  const reviews = product.reviews || []
-  const hasVariations = variations.length > 0
-
-  const unitPrice = selectedVariation ? selectedVariation.price : Number(product.basePrice)
-  const addonTotal = selectedAddons.reduce((sum, a) => sum + a.price, 0)
-  const totalPrice = (unitPrice + addonTotal) * quantity
-
-  const handleAddToCart = () => {
-    addItem(product as Product, quantity, selectedAddons, selectedVariation)
-  }
-
-  const handleBuyNow = () => {
-    addItem(product as Product, quantity, selectedAddons, selectedVariation)
-    router.push("/cart")
-  }
-
-  const handleCheckPincode = () => {
-    if (pincode.length === 6) {
-      setPincodeChecked(true)
-    }
-  }
 
   return (
     <div className="bg-[#FAFAFA] min-h-screen">
@@ -250,7 +468,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
               )}
             </div>
 
-            {/* Star rating with amber stars */}
+            {/* Star rating */}
             {product.totalReviews > 0 && (
               <div className="flex items-center gap-3">
                 <StarRating rating={Number(product.avgRating)} size="md" />
@@ -263,22 +481,31 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
               </div>
             )}
 
-            {/* Price */}
+            {/* Price display */}
             <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-[#E91E63]">
-                  {formatPrice(unitPrice)}
-                </span>
-                {hasVariations && selectedVariation && (
-                  <span className="text-sm text-muted-foreground">
-                    for {selectedVariation.label}
+              {isVariable ? (
+                matchedVariation ? (
+                  // VariationSelector shows its own price, so just show "Inclusive of all taxes"
+                  <div />
+                ) : (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm text-muted-foreground">From</span>
+                    <span className="text-3xl font-bold text-[#E91E63]">
+                      {minVariationPrice ? formatPrice(minVariationPrice) : ""}
+                    </span>
+                  </div>
+                )
+              ) : (
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-[#E91E63]">
+                    {formatPrice(Number(product.basePrice))}
                   </span>
-                )}
-              </div>
+                </div>
+              )}
               <p className="mt-0.5 text-xs text-muted-foreground">Inclusive of all taxes</p>
             </div>
 
-            {/* Veg/Non-veg indicator (Indian standard green dot) */}
+            {/* Veg/Non-veg indicator */}
             <div className="flex items-center gap-2">
               <div className={`flex h-5 w-5 items-center justify-center rounded-sm border-2 ${product.isVeg ? "border-green-600" : "border-red-600"}`}>
                 <div className={`h-2.5 w-2.5 rounded-full ${product.isVeg ? "bg-green-600" : "bg-red-600"}`} />
@@ -291,17 +518,22 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
             {/* Short description */}
             {product.shortDesc && (
               <p className="text-sm text-[#1A1A2E]/70 leading-relaxed">
-                {product.shortDesc} &mdash; {product.description?.split(".")[0]}.
+                {product.shortDesc}
               </p>
             )}
 
-            {/* -- Weight / Size variations -- */}
-            {hasVariations && (
+            {/* -- Variation selector (VARIABLE products) -- */}
+            {isVariable && attributes.length > 0 && (
               <>
+                {variationError && (
+                  <p className="text-sm text-red-500 font-medium">Please select all options</p>
+                )}
                 <VariationSelector
+                  attributes={attributes}
                   variations={variations}
-                  selected={selectedVariation}
-                  onChange={setSelectedVariation}
+                  selectedOptions={selectedOptions}
+                  onOptionChange={handleOptionChange}
+                  matchedVariation={matchedVariation}
                 />
                 <Separator />
               </>
@@ -362,16 +594,21 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
             <Separator />
 
-            {/* -- Add-ons -- */}
-            {addons.length > 0 && (
-              <>
-                <AddonSelector
-                  addons={addons}
-                  selected={selectedAddons}
-                  onChange={setSelectedAddons}
-                />
-                {selectedAddons.length > 0 && <Separator />}
-              </>
+            {/* -- Addon groups -- */}
+            {addonGroups.length > 0 && (
+              <div ref={addonSectionRef} className="space-y-4">
+                <h3 className="text-sm font-semibold text-[#1A1A2E]">Customise Your Order</h3>
+                {addonGroups.map((group) => (
+                  <AddonGroup
+                    key={group.id}
+                    group={group}
+                    value={addonSelections.get(group.id) || getDefaultAddonSelection(group)}
+                    onChange={(val) => handleAddonChange(group.id, val)}
+                    hasError={addonErrors.has(group.id)}
+                  />
+                ))}
+                <Separator />
+              </div>
             )}
 
             {/* -- Quantity selector -- */}
@@ -398,23 +635,41 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
               </div>
             </div>
 
-            {/* Price summary if addons or qty > 1 or variation selected */}
-            {(selectedAddons.length > 0 || quantity > 1 || selectedVariation) && (
+            {/* Price summary */}
+            {(addonTotal > 0 || quantity > 1 || matchedVariation) && unitPrice > 0 && (
               <div className="rounded-xl bg-[#FFF9F5] border border-[#E91E63]/10 p-4 space-y-2 text-sm">
                 <div className="flex justify-between text-[#1A1A2E]/70">
                   <span>
                     {product.name}
-                    {selectedVariation && ` (${selectedVariation.label})`}
+                    {matchedVariation && ` (${Object.values(matchedVariation.attributes as Record<string, string>).join(", ")})`}
                     {" "}x {quantity}
                   </span>
                   <span className="font-medium">{formatPrice(unitPrice * quantity)}</span>
                 </div>
-                {selectedAddons.map((addon) => (
-                  <div key={addon.addonId} className="flex justify-between text-[#1A1A2E]/70">
-                    <span>{addon.name} x {quantity}</span>
-                    <span className="font-medium">{formatPrice(addon.price * quantity)}</span>
-                  </div>
-                ))}
+                {addonGroups.map((group) => {
+                  const sel = addonSelections.get(group.id)
+                  if (!sel) return null
+                  let price = 0
+                  let label = ""
+                  if (sel.type === "CHECKBOX" && sel.selectedIds.length > 0) {
+                    const labels: string[] = []
+                    for (const id of sel.selectedIds) {
+                      const opt = group.options.find((o) => o.id === id)
+                      if (opt) { price += Number(opt.price); labels.push(opt.label) }
+                    }
+                    label = labels.join(", ")
+                  } else if ((sel.type === "RADIO" || sel.type === "SELECT") && sel.selectedId) {
+                    const opt = group.options.find((o) => o.id === sel.selectedId)
+                    if (opt) { price = Number(opt.price); label = opt.label }
+                  }
+                  if (price === 0 && !label) return null
+                  return (
+                    <div key={group.id} className="flex justify-between text-[#1A1A2E]/70">
+                      <span>{label} x {quantity}</span>
+                      <span className="font-medium">{price > 0 ? formatPrice(price * quantity) : "Free"}</span>
+                    </div>
+                  )
+                })}
                 <Separator className="my-1" />
                 <div className="flex justify-between font-bold text-[#1A1A2E]">
                   <span>Total</span>
@@ -426,15 +681,28 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
             {/* -- Action buttons -- */}
             <div className="flex gap-3">
               <button
-                className="flex-1 btn-gradient flex items-center justify-center gap-2 h-14 text-base rounded-xl shadow-lg"
+                className="flex-1 btn-gradient flex items-center justify-center gap-2 h-14 text-base rounded-xl shadow-lg disabled:opacity-50"
                 onClick={handleAddToCart}
+                disabled={isVariable && matchedVariation?.stockQty === 0}
               >
-                <ShoppingCart className="h-5 w-5" />
-                Add to Cart &mdash; {formatPrice(totalPrice)}
+                {addedToCart ? (
+                  <>
+                    <CheckCircle className="h-5 w-5" />
+                    Added to Cart!
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="h-5 w-5" />
+                    {unitPrice > 0
+                      ? `Add to Cart — ${formatPrice(totalPrice)}`
+                      : "Add to Cart"}
+                  </>
+                )}
               </button>
               <button
-                className="flex-1 h-14 rounded-xl border-2 border-[#E91E63] text-[#E91E63] font-semibold text-base hover:bg-[#FFF0F5] transition-all duration-200"
+                className="flex-1 h-14 rounded-xl border-2 border-[#E91E63] text-[#E91E63] font-semibold text-base hover:bg-[#FFF0F5] transition-all duration-200 disabled:opacity-50"
                 onClick={handleBuyNow}
+                disabled={isVariable && matchedVariation?.stockQty === 0}
               >
                 Buy Now
               </button>
@@ -458,6 +726,13 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
           </div>
         </div>
       </div>
+
+      {/* -- Upsell products section -- */}
+      {upsells.length > 0 && (
+        <div className="container mx-auto px-4 py-6">
+          <UpsellProducts upsells={upsells} />
+        </div>
+      )}
 
       {/* -- Below-fold: Tabs section -- */}
       <div className="bg-white border-t mt-8">

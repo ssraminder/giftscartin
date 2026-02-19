@@ -16,8 +16,49 @@ export async function GET(
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
-        variations: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
+        // Attributes and their options (for VARIABLE products)
+        attributes: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            options: { orderBy: { sortOrder: 'asc' } },
+          },
+        },
+        // Variations (active only)
+        variations: {
+          where: { isActive: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+        // Addon groups with active options
+        addonGroups: {
+          where: { isActive: true },
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            options: {
+              where: { isActive: true },
+              orderBy: { sortOrder: 'asc' },
+            },
+          },
+        },
+        // Upsell products (active only)
+        upsells: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            upsellProduct: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                images: true,
+                basePrice: true,
+                isActive: true,
+                category: { select: { name: true } },
+              },
+            },
+          },
+        },
+        // Legacy addons
         addons: { where: { isActive: true } },
+        // Reviews
         reviews: {
           orderBy: { createdAt: 'desc' },
           take: 10,
@@ -53,7 +94,25 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({ success: true, data: product })
+    // Filter upsells to only active products and flatten
+    const upsells = product.upsells
+      .filter((u) => u.upsellProduct.isActive)
+      .map((u) => ({
+        id: u.upsellProduct.id,
+        name: u.upsellProduct.name,
+        slug: u.upsellProduct.slug,
+        images: u.upsellProduct.images,
+        basePrice: u.upsellProduct.basePrice,
+        category: u.upsellProduct.category,
+      }))
+
+    // Build response with flattened upsells
+    const responseData = {
+      ...product,
+      upsells,
+    }
+
+    return NextResponse.json({ success: true, data: responseData })
   } catch (error) {
     console.error('GET /api/products/[id] error:', error)
     return NextResponse.json(
