@@ -158,7 +158,6 @@ export interface Product {
   variations?: ProductVariation[]
   addonGroups?: ProductAddonGroup[]
   upsells?: UpsellProduct[]
-  addons?: ProductAddon[]
   reviews?: Review[]
 }
 
@@ -197,15 +196,6 @@ export interface VariationSelection {
   attributes: Record<string, string>
   price: number
   salePrice: number | null
-}
-
-export interface ProductAddon {
-  id: string
-  productId: string
-  name: string
-  price: number
-  image: string | null
-  isActive: boolean
 }
 
 export interface ProductAddonGroup {
@@ -374,13 +364,6 @@ export interface CartItem {
   deliveryDate: string | null
   deliverySlot: string | null
   product?: Product
-}
-
-// Legacy addon selection (kept for backward compat with old addons model)
-export interface AddonSelection {
-  addonId: string
-  name: string
-  price: number
 }
 
 // ==================== COUPONS ====================
