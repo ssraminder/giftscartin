@@ -27,7 +27,7 @@ or "[Partner Name] managed by Cital Enterprises" for referral partners.
 | Payments | Razorpay | INR only, always |
 | Storage | Supabase Storage | Two buckets: products (public), order-uploads (private) |
 | AI — Content | Anthropic Claude API (claude-opus-4-5) | SEO copy generation |
-| AI — Images | OpenAI GPT-image-1.5 | Product image generation |
+| AI — Images | OpenAI gpt-image-1 | Product image generation |
 | Hosting | Netlify | Auto-deploy from GitHub main |
 | State | Zustand | Cart + UI state only |
 | Scheduled Jobs | Netlify Functions | sync-exchange-rates runs daily 00:30 UTC |

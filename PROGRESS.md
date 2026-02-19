@@ -37,6 +37,7 @@
 - Phase F: Category management & addon templates — Admin category CRUD API (tree structure), category form (Sheet with General/SEO/Addon Templates tabs), hierarchical category list page, bulk template propagation, per-product addon group re-sync API, detach/re-sync controls in product form
 - Fixed products API 500 — updated stale `addons` includes to use `addonGroups` relation in products list, product detail, and cart API routes
 - Product detail API: added `isVerified` filter to reviews query, verified all Prisma includes use `addonGroups` not `addons`
+- Fixed AI image generation — corrected model name references from `GPT-image-1.5` to `gpt-image-1`, verified base64 response handling and Supabase Storage upload
 
 ### What's NOT Done (Priority Order)
 
@@ -634,7 +635,7 @@ any feature in these areas.
 | Vendor availability | Variation level (vendor_product_variations) | Supports eggless-only vendors correctly |
 | Photo upload | FILE_UPLOAD addon type on photo cake product | order-uploads bucket (private), signed URLs |
 | URL structure | Flat (/product/slug, /category/slug) | City-prefixed URLs too complex, local SEO via content signals |
-| Image generation | GPT-image-1.5 (not DALL-E 3) | Natively multimodal, accepts reference image, 4x faster |
+| Image generation | gpt-image-1 (not DALL-E 3) | Natively multimodal, accepts reference image, 4x faster |
 | SEO content | Claude claude-opus-4-5 | Best copywriting quality for Indian gifting context |
 | Storage buckets | products (public) + order-uploads (private) | Customer photos must never be publicly accessible |
 | Product upsells | Separate product_upsells table | Clean cart line items, separate vendor assignment |
