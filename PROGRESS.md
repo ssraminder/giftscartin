@@ -13,7 +13,7 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A + B complete. Phase C-E planned (product system). Phase 3 ongoing.|
+|Current Phase  |Phase A + B + C complete. Phase D-E planned (product system). Phase 3 ongoing.|
 |Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
@@ -31,6 +31,7 @@
 - Netlify auto-deploy from GitHub, build passing
 - Phase A: Schema foundation — variations (JSONB), addon groups, upsells, SEO fields, category templates, seo_settings, vendor variation availability
 - Phase B: SEO infrastructure — generateMetadata on product/category/home pages, JSON-LD structured data (Product, BreadcrumbList, Organization, LocalBusiness), sitemap.xml, robots.txt, breadcrumb component, admin SEO settings page
+- Phase C: Admin product form — WooCommerce-style tabbed create/edit form (General, Pricing, Inventory, Images, Attributes, Variations, Add-ons, SEO, Advanced), product list with filters/pagination/bulk actions, admin product CRUD API routes, category addon template sync
 
 ### What's NOT Done (Priority Order)
 
@@ -109,6 +110,9 @@
 | `src/app/admin/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data) |
 | `src/app/admin/orders/page.tsx` | Not in spec | Yes | ✅ Bonus — admin order list |
 | `src/app/admin/orders/[id]/page.tsx` | Not in spec | Yes | ✅ Bonus — admin order detail |
+| `src/app/admin/products/page.tsx` | Yes (Phase C) | Yes | ✅ Product list with filters/pagination |
+| `src/app/admin/products/new/page.tsx` | Yes (Phase C) | Yes | ✅ Create product form |
+| `src/app/admin/products/[id]/edit/page.tsx` | Yes (Phase C) | Yes | ✅ Edit product form |
 | `src/app/admin/seo/page.tsx` | Yes (Phase B) | Yes | ✅ Admin SEO settings form |
 | `src/app/sitemap.ts` | Yes (Phase B) | Yes | ✅ Dynamic sitemap from DB |
 | `src/app/robots.ts` | Yes (Phase B) | Yes | ✅ Configurable robots.txt |
@@ -296,8 +300,11 @@
 | `/api/upload` | ✅ | Supabase Storage | POST | Generates signed upload URL |
 | `/api/admin/dashboard` | ✅ | Yes | GET | Today's orders, revenue, HITL count, recent activity |
 | `/api/admin/seo` | ✅ | Yes | GET, PUT | SEO settings CRUD (Phase B) |
+| `/api/admin/products` | ✅ | Yes | GET, POST | Product list with filters + create (Phase C) |
+| `/api/admin/products/[id]` | ✅ | Yes | GET, PUT, DELETE | Product detail, update, soft delete (Phase C) |
+| `/api/admin/categories` | ✅ | Yes | GET | Categories with addon templates for form dropdowns (Phase C) |
 
-**All 20+ API routes are fully implemented with real database queries.**
+**All 23+ API routes are fully implemented with real database queries.**
 
 ---
 
@@ -409,7 +416,7 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 1. ~~**Phase B: SEO Infrastructure**~~ — **COMPLETE.** generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings page.
 
-2. **Phase C: Admin Product Form** — WooCommerce-style tabbed product form. **IMMEDIATE NEXT PRIORITY.**
+2. ~~**Phase C: Admin Product Form**~~ — **COMPLETE.** WooCommerce-style tabbed product form (create + edit), admin product CRUD API, product list with filters/pagination, category addon template sync.
 
 3. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
