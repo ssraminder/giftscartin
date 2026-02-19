@@ -60,9 +60,9 @@
 |--------|---------|--------|
 | Prisma `db push` | Phase 1 schema creation (all 31 tables) | ✅ Executed |
 | `prisma/seed.ts` | Phase 1 seed data (cities, categories, products, vendor) | ✅ Executed |
-| Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ⏳ Pending execution |
+| Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ✅ Executed |
 
-> Run `prisma/migrations/phase-a-schema-foundation.sql` in Supabase SQL Editor block-by-block.
+> Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 
 ---
 
