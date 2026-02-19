@@ -75,7 +75,7 @@ export default function AdminProductsPage() {
       try {
         const res = await fetch("/api/admin/categories")
         const json = await res.json()
-        if (json.success) setCategories(json.data)
+        if (json.success) setCategories(json.data ?? [])
       } catch {
         // ignore
       }
@@ -98,8 +98,8 @@ export default function AdminProductsPage() {
       const res = await fetch(`/api/admin/products?${params}`)
       const json = await res.json()
       if (json.success) {
-        setProducts(json.data.items)
-        setTotal(json.data.total)
+        setProducts(json.data?.items ?? [])
+        setTotal(json.data?.total ?? 0)
       }
     } catch {
       // ignore
@@ -338,10 +338,10 @@ export default function AdminProductsPage() {
                   </td>
                   <td className="px-3 py-3">
                     <div className="h-10 w-10 rounded-lg border bg-slate-100 overflow-hidden">
-                      {product.images[0] ? (
+                      {product.images?.[0] ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={product.images[0]}
+                          src={product.images?.[0]}
                           alt={product.name}
                           className="h-full w-full object-cover"
                         />
