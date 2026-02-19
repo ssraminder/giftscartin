@@ -9,6 +9,7 @@ import {
   Package,
   MapPin,
   Settings,
+  Search,
   Shield,
   LogOut,
   Menu,
@@ -24,6 +25,7 @@ const sidebarLinks = [
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/cities", label: "Cities", icon: MapPin },
+  { href: "/admin/seo", label: "SEO Settings", icon: Search },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ]
 
