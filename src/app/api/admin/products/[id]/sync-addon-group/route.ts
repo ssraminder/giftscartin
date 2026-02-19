@@ -66,40 +66,38 @@ export async function POST(
       )
     }
 
-    // Update the group and replace options in a transaction
-    await prisma.$transaction(async (tx) => {
-      await tx.productAddonGroup.update({
-        where: { id: addonGroupId },
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+    await prisma.productAddonGroup.update({
+      where: { id: addonGroupId },
+      data: {
+        name: template.name,
+        description: template.description,
+        type: template.type,
+        required: template.required,
+        maxLength: template.maxLength,
+        placeholder: template.placeholder,
+        acceptedFileTypes: template.acceptedFileTypes,
+        maxFileSizeMb: template.maxFileSizeMb,
+        isOverridden: false,
+      },
+    })
+
+    // Delete existing options and insert fresh from template
+    await prisma.productAddonOption.deleteMany({
+      where: { groupId: addonGroupId },
+    })
+    for (const opt of template.options) {
+      await prisma.productAddonOption.create({
         data: {
-          name: template.name,
-          description: template.description,
-          type: template.type,
-          required: template.required,
-          maxLength: template.maxLength,
-          placeholder: template.placeholder,
-          acceptedFileTypes: template.acceptedFileTypes,
-          maxFileSizeMb: template.maxFileSizeMb,
-          isOverridden: false,
+          groupId: addonGroupId,
+          label: opt.label,
+          price: opt.price,
+          image: opt.image,
+          isDefault: opt.isDefault,
+          sortOrder: opt.sortOrder,
         },
       })
-
-      // Delete existing options and insert fresh from template
-      await tx.productAddonOption.deleteMany({
-        where: { groupId: addonGroupId },
-      })
-      for (const opt of template.options) {
-        await tx.productAddonOption.create({
-          data: {
-            groupId: addonGroupId,
-            label: opt.label,
-            price: opt.price,
-            image: opt.image,
-            isDefault: opt.isDefault,
-            sortOrder: opt.sortOrder,
-          },
-        })
-      }
-    })
+    }
 
     // Return the updated group with options
     const updated = await prisma.productAddonGroup.findUnique({

@@ -90,32 +90,31 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { orderId: order.id },
-          data: {
-            razorpayPaymentId,
-            razorpaySignature,
-            status: 'PAID',
-          },
-        })
+      // Sequential queries (no interactive transaction — pgbouncer compatible)
+      await prisma.payment.update({
+        where: { orderId: order.id },
+        data: {
+          razorpayPaymentId,
+          razorpaySignature,
+          status: 'PAID',
+        },
+      })
 
-        await tx.order.update({
-          where: { id: orderId },
-          data: {
-            paymentStatus: 'PAID',
-            paymentMethod: 'razorpay',
-            status: 'CONFIRMED',
-          },
-        })
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus: 'PAID',
+          paymentMethod: 'razorpay',
+          status: 'CONFIRMED',
+        },
+      })
 
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId,
-            status: 'CONFIRMED',
-            note: 'Payment verified via Razorpay',
-          },
-        })
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId,
+          status: 'CONFIRMED',
+          note: 'Payment verified via Razorpay',
+        },
       })
 
       return NextResponse.json({
@@ -137,24 +136,23 @@ export async function POST(request: NextRequest) {
       const stripeSession = await getStripeSession(order.payment.stripeSessionId)
 
       if (stripeSession.payment_status === 'paid') {
+        // Sequential queries (no interactive transaction — pgbouncer compatible)
         // Webhook may have already updated, but ensure consistency
-        await prisma.$transaction(async (tx) => {
-          await tx.payment.update({
-            where: { orderId: order.id },
-            data: {
-              stripePaymentIntentId: stripeSession.payment_intent as string,
-              status: 'PAID',
-            },
-          })
+        await prisma.payment.update({
+          where: { orderId: order.id },
+          data: {
+            stripePaymentIntentId: stripeSession.payment_intent as string,
+            status: 'PAID',
+          },
+        })
 
-          await tx.order.update({
-            where: { id: orderId },
-            data: {
-              paymentStatus: 'PAID',
-              paymentMethod: 'stripe',
-              status: 'CONFIRMED',
-            },
-          })
+        await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            paymentStatus: 'PAID',
+            paymentMethod: 'stripe',
+            status: 'CONFIRMED',
+          },
         })
 
         return NextResponse.json({

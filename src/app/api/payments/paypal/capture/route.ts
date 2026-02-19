@@ -29,32 +29,30 @@ export async function GET(request: NextRequest) {
     const capture = await capturePayPalOrder(payment.paypalOrderId)
 
     if (capture.status === 'COMPLETED') {
-      // Update payment and order in transaction
-      await prisma.$transaction(async (tx) => {
-        await tx.payment.update({
-          where: { orderId },
-          data: {
-            paypalCaptureId: capture.captureId,
-            status: 'PAID',
-          },
-        })
+      // Sequential queries (no interactive transaction — pgbouncer compatible)
+      await prisma.payment.update({
+        where: { orderId },
+        data: {
+          paypalCaptureId: capture.captureId,
+          status: 'PAID',
+        },
+      })
 
-        await tx.order.update({
-          where: { id: orderId },
-          data: {
-            paymentStatus: 'PAID',
-            paymentMethod: 'paypal',
-            status: 'CONFIRMED',
-          },
-        })
+      await prisma.order.update({
+        where: { id: orderId },
+        data: {
+          paymentStatus: 'PAID',
+          paymentMethod: 'paypal',
+          status: 'CONFIRMED',
+        },
+      })
 
-        await tx.orderStatusHistory.create({
-          data: {
-            orderId,
-            status: 'CONFIRMED',
-            note: 'Payment verified via PayPal',
-          },
-        })
+      await prisma.orderStatusHistory.create({
+        data: {
+          orderId,
+          status: 'CONFIRMED',
+          note: 'Payment verified via PayPal',
+        },
       })
 
       return NextResponse.redirect(`${baseUrl}/orders/${orderId}?payment=success&gateway=paypal`)

@@ -56,26 +56,22 @@ export async function PATCH(
       )
     }
 
-    // Update order status and create history entry in a transaction
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedOrder = await tx.order.update({
-        where: { id },
-        data: {
-          status,
-          ...(status === 'CANCELLED' ? { paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : 'FAILED' } : {}),
-        },
-      })
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+    const updated = await prisma.order.update({
+      where: { id },
+      data: {
+        status,
+        ...(status === 'CANCELLED' ? { paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : 'FAILED' } : {}),
+      },
+    })
 
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: id,
-          status,
-          note: note || null,
-          changedBy: admin.id,
-        },
-      })
-
-      return updatedOrder
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId: id,
+        status,
+        note: note || null,
+        changedBy: admin.id,
+      },
     })
 
     return NextResponse.json({ success: true, data: updated })

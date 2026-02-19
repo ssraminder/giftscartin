@@ -139,45 +139,87 @@ export async function PUT(
 
     let groupsUpdated = 0
 
-    await prisma.$transaction(async (tx) => {
-      // Update category fields
-      const categoryUpdate: Record<string, unknown> = {}
-      if (data.name !== undefined) categoryUpdate.name = data.name
-      if (data.slug !== undefined) categoryUpdate.slug = data.slug
-      if (data.description !== undefined) categoryUpdate.description = data.description
-      if (data.image !== undefined) categoryUpdate.image = data.image
-      if (data.parentId !== undefined) categoryUpdate.parentId = data.parentId
-      if (data.sortOrder !== undefined) categoryUpdate.sortOrder = data.sortOrder
-      if (data.isActive !== undefined) categoryUpdate.isActive = data.isActive
-      if (data.metaTitle !== undefined) categoryUpdate.metaTitle = data.metaTitle
-      if (data.metaDescription !== undefined) categoryUpdate.metaDescription = data.metaDescription
-      if (data.metaKeywords !== undefined) categoryUpdate.metaKeywords = data.metaKeywords
-      if (data.ogImage !== undefined) categoryUpdate.ogImage = data.ogImage
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
 
-      if (Object.keys(categoryUpdate).length > 0) {
-        await tx.category.update({
-          where: { id: params.id },
-          data: categoryUpdate,
-        })
-      }
+    // Update category fields
+    const categoryUpdate: Record<string, unknown> = {}
+    if (data.name !== undefined) categoryUpdate.name = data.name
+    if (data.slug !== undefined) categoryUpdate.slug = data.slug
+    if (data.description !== undefined) categoryUpdate.description = data.description
+    if (data.image !== undefined) categoryUpdate.image = data.image
+    if (data.parentId !== undefined) categoryUpdate.parentId = data.parentId
+    if (data.sortOrder !== undefined) categoryUpdate.sortOrder = data.sortOrder
+    if (data.isActive !== undefined) categoryUpdate.isActive = data.isActive
+    if (data.metaTitle !== undefined) categoryUpdate.metaTitle = data.metaTitle
+    if (data.metaDescription !== undefined) categoryUpdate.metaDescription = data.metaDescription
+    if (data.metaKeywords !== undefined) categoryUpdate.metaKeywords = data.metaKeywords
+    if (data.ogImage !== undefined) categoryUpdate.ogImage = data.ogImage
 
-      // Handle addon templates — delete removed, upsert existing
-      if (data.addonTemplates !== undefined) {
-        const incomingIds = data.addonTemplates.filter((t) => t.id).map((t) => t.id!)
+    if (Object.keys(categoryUpdate).length > 0) {
+      await prisma.category.update({
+        where: { id: params.id },
+        data: categoryUpdate,
+      })
+    }
 
-        // Delete templates that are no longer in the list
-        await tx.categoryAddonTemplate.deleteMany({
-          where: {
-            categoryId: params.id,
-            ...(incomingIds.length > 0 ? { id: { notIn: incomingIds } } : {}),
-          },
-        })
+    // Handle addon templates — delete removed, upsert existing
+    if (data.addonTemplates !== undefined) {
+      const incomingIds = data.addonTemplates.filter((t) => t.id).map((t) => t.id!)
 
-        for (const template of data.addonTemplates) {
-          if (template.id) {
-            // Update existing template
-            await tx.categoryAddonTemplate.update({
-              where: { id: template.id },
+      // Delete templates that are no longer in the list
+      await prisma.categoryAddonTemplate.deleteMany({
+        where: {
+          categoryId: params.id,
+          ...(incomingIds.length > 0 ? { id: { notIn: incomingIds } } : {}),
+        },
+      })
+
+      for (const template of data.addonTemplates) {
+        if (template.id) {
+          // Update existing template
+          await prisma.categoryAddonTemplate.update({
+            where: { id: template.id },
+            data: {
+              name: template.name,
+              description: template.description ?? null,
+              type: template.type,
+              required: template.required,
+              maxLength: template.maxLength ?? null,
+              placeholder: template.placeholder ?? null,
+              acceptedFileTypes: template.acceptedFileTypes,
+              maxFileSizeMb: template.maxFileSizeMb ?? 5,
+              sortOrder: template.sortOrder,
+            },
+          })
+
+          // Replace options: delete all existing, insert fresh
+          await prisma.categoryAddonTemplateOption.deleteMany({
+            where: { templateId: template.id },
+          })
+          for (const opt of template.options) {
+            await prisma.categoryAddonTemplateOption.create({
+              data: {
+                templateId: template.id,
+                label: opt.label,
+                price: opt.price,
+                image: opt.image ?? null,
+                isDefault: opt.isDefault,
+                sortOrder: opt.sortOrder,
+              },
+            })
+          }
+
+          // Propagate to linked product addon groups (non-overridden)
+          const linkedGroups = await prisma.productAddonGroup.findMany({
+            where: {
+              templateGroupId: template.id,
+              isOverridden: false,
+            },
+          })
+
+          for (const group of linkedGroups) {
+            await prisma.productAddonGroup.update({
+              where: { id: group.id },
               data: {
                 name: template.name,
                 description: template.description ?? null,
@@ -187,18 +229,17 @@ export async function PUT(
                 placeholder: template.placeholder ?? null,
                 acceptedFileTypes: template.acceptedFileTypes,
                 maxFileSizeMb: template.maxFileSizeMb ?? 5,
-                sortOrder: template.sortOrder,
               },
             })
 
-            // Replace options: delete all existing, insert fresh
-            await tx.categoryAddonTemplateOption.deleteMany({
-              where: { templateId: template.id },
+            // Replace product addon options with fresh from template
+            await prisma.productAddonOption.deleteMany({
+              where: { groupId: group.id },
             })
             for (const opt of template.options) {
-              await tx.categoryAddonTemplateOption.create({
+              await prisma.productAddonOption.create({
                 data: {
-                  templateId: template.id,
+                  groupId: group.id,
                   label: opt.label,
                   price: opt.price,
                   image: opt.image ?? null,
@@ -207,80 +248,39 @@ export async function PUT(
                 },
               })
             }
-
-            // Propagate to linked product addon groups (non-overridden)
-            const linkedGroups = await tx.productAddonGroup.findMany({
-              where: {
-                templateGroupId: template.id,
-                isOverridden: false,
-              },
-            })
-
-            for (const group of linkedGroups) {
-              await tx.productAddonGroup.update({
-                where: { id: group.id },
-                data: {
-                  name: template.name,
-                  description: template.description ?? null,
-                  type: template.type,
-                  required: template.required,
-                  maxLength: template.maxLength ?? null,
-                  placeholder: template.placeholder ?? null,
-                  acceptedFileTypes: template.acceptedFileTypes,
-                  maxFileSizeMb: template.maxFileSizeMb ?? 5,
-                },
-              })
-
-              // Replace product addon options with fresh from template
-              await tx.productAddonOption.deleteMany({
-                where: { groupId: group.id },
-              })
-              for (const opt of template.options) {
-                await tx.productAddonOption.create({
-                  data: {
-                    groupId: group.id,
-                    label: opt.label,
-                    price: opt.price,
-                    image: opt.image ?? null,
-                    isDefault: opt.isDefault,
-                    sortOrder: opt.sortOrder,
-                  },
-                })
-              }
-              groupsUpdated++
-            }
-          } else {
-            // Create new template
-            const created = await tx.categoryAddonTemplate.create({
+            groupsUpdated++
+          }
+        } else {
+          // Create new template
+          const created = await prisma.categoryAddonTemplate.create({
+            data: {
+              categoryId: params.id,
+              name: template.name,
+              description: template.description ?? null,
+              type: template.type,
+              required: template.required,
+              maxLength: template.maxLength ?? null,
+              placeholder: template.placeholder ?? null,
+              acceptedFileTypes: template.acceptedFileTypes,
+              maxFileSizeMb: template.maxFileSizeMb ?? 5,
+              sortOrder: template.sortOrder,
+            },
+          })
+          for (const opt of template.options) {
+            await prisma.categoryAddonTemplateOption.create({
               data: {
-                categoryId: params.id,
-                name: template.name,
-                description: template.description ?? null,
-                type: template.type,
-                required: template.required,
-                maxLength: template.maxLength ?? null,
-                placeholder: template.placeholder ?? null,
-                acceptedFileTypes: template.acceptedFileTypes,
-                maxFileSizeMb: template.maxFileSizeMb ?? 5,
-                sortOrder: template.sortOrder,
+                templateId: created.id,
+                label: opt.label,
+                price: opt.price,
+                image: opt.image ?? null,
+                isDefault: opt.isDefault,
+                sortOrder: opt.sortOrder,
               },
             })
-            for (const opt of template.options) {
-              await tx.categoryAddonTemplateOption.create({
-                data: {
-                  templateId: created.id,
-                  label: opt.label,
-                  price: opt.price,
-                  image: opt.image ?? null,
-                  isDefault: opt.isDefault,
-                  sortOrder: opt.sortOrder,
-                },
-              })
-            }
           }
         }
       }
-    }, { timeout: 30000 })
+    }
 
     // Fetch updated category
     const updated = await prisma.category.findUnique({

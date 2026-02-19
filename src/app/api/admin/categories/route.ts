@@ -189,55 +189,53 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const category = await prisma.$transaction(async (tx) => {
-      const created = await tx.category.create({
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+
+    const category = await prisma.category.create({
+      data: {
+        name: data.name,
+        slug,
+        description: data.description ?? null,
+        image: data.image ?? null,
+        parentId: data.parentId ?? null,
+        sortOrder: data.sortOrder,
+        isActive: data.isActive,
+        metaTitle: data.metaTitle ?? null,
+        metaDescription: data.metaDescription ?? null,
+        metaKeywords: data.metaKeywords,
+        ogImage: data.ogImage ?? null,
+      },
+    })
+
+    // Create addon templates and their options
+    for (const template of data.addonTemplates) {
+      const createdTemplate = await prisma.categoryAddonTemplate.create({
         data: {
-          name: data.name,
-          slug,
-          description: data.description ?? null,
-          image: data.image ?? null,
-          parentId: data.parentId ?? null,
-          sortOrder: data.sortOrder,
-          isActive: data.isActive,
-          metaTitle: data.metaTitle ?? null,
-          metaDescription: data.metaDescription ?? null,
-          metaKeywords: data.metaKeywords,
-          ogImage: data.ogImage ?? null,
+          categoryId: category.id,
+          name: template.name,
+          description: template.description ?? null,
+          type: template.type,
+          required: template.required,
+          maxLength: template.maxLength ?? null,
+          placeholder: template.placeholder ?? null,
+          acceptedFileTypes: template.acceptedFileTypes,
+          maxFileSizeMb: template.maxFileSizeMb ?? 5,
+          sortOrder: template.sortOrder,
         },
       })
-
-      // Create addon templates and their options
-      for (const template of data.addonTemplates) {
-        const createdTemplate = await tx.categoryAddonTemplate.create({
+      for (const opt of template.options) {
+        await prisma.categoryAddonTemplateOption.create({
           data: {
-            categoryId: created.id,
-            name: template.name,
-            description: template.description ?? null,
-            type: template.type,
-            required: template.required,
-            maxLength: template.maxLength ?? null,
-            placeholder: template.placeholder ?? null,
-            acceptedFileTypes: template.acceptedFileTypes,
-            maxFileSizeMb: template.maxFileSizeMb ?? 5,
-            sortOrder: template.sortOrder,
+            templateId: createdTemplate.id,
+            label: opt.label,
+            price: opt.price,
+            image: opt.image ?? null,
+            isDefault: opt.isDefault,
+            sortOrder: opt.sortOrder,
           },
         })
-        for (const opt of template.options) {
-          await tx.categoryAddonTemplateOption.create({
-            data: {
-              templateId: createdTemplate.id,
-              label: opt.label,
-              price: opt.price,
-              image: opt.image ?? null,
-              isDefault: opt.isDefault,
-              sortOrder: opt.sortOrder,
-            },
-          })
-        }
       }
-
-      return created
-    })
+    }
 
     // Fetch full category with relations
     const full = await prisma.category.findUnique({

@@ -147,36 +147,33 @@ export async function PATCH(
 
     const newStatus = actionToStatus[action]
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedOrder = await tx.order.update({
-        where: { id },
-        data: {
-          status: newStatus as OrderStatus,
-          ...(action === 'reject' && order.paymentStatus === 'PAID'
-            ? { paymentStatus: 'REFUNDED' as const }
-            : {}),
-        },
-      })
-
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: id,
-          status: newStatus as OrderStatus,
-          note: note || `Vendor ${action}ed the order`,
-          changedBy: vendor.userId,
-        },
-      })
-
-      // Update vendor total orders count on delivery
-      if (action === 'delivered') {
-        await tx.vendor.update({
-          where: { id: vendor.id },
-          data: { totalOrders: { increment: 1 } },
-        })
-      }
-
-      return updatedOrder
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+    const updated = await prisma.order.update({
+      where: { id },
+      data: {
+        status: newStatus as OrderStatus,
+        ...(action === 'reject' && order.paymentStatus === 'PAID'
+          ? { paymentStatus: 'REFUNDED' as const }
+          : {}),
+      },
     })
+
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId: id,
+        status: newStatus as OrderStatus,
+        note: note || `Vendor ${action}ed the order`,
+        changedBy: vendor.userId,
+      },
+    })
+
+    // Update vendor total orders count on delivery
+    if (action === 'delivered') {
+      await prisma.vendor.update({
+        where: { id: vendor.id },
+        data: { totalOrders: { increment: 1 } },
+      })
+    }
 
     return NextResponse.json({
       success: true,

@@ -68,37 +68,33 @@ export async function POST(
       )
     }
 
-    // Update order with vendor assignment
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedOrder = await tx.order.update({
-        where: { id },
-        data: { vendorId },
-      })
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+    const updated = await prisma.order.update({
+      where: { id },
+      data: { vendorId },
+    })
 
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: id,
-          status: order.status,
-          note: `Vendor assigned: ${vendor.businessName}`,
-          changedBy: admin.id,
-        },
-      })
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId: id,
+        status: order.status,
+        note: `Vendor assigned: ${vendor.businessName}`,
+        changedBy: admin.id,
+      },
+    })
 
-      await tx.auditLog.create({
-        data: {
-          adminId: admin.id,
-          adminRole: admin.role,
-          actionType: 'order_assign_vendor',
-          entityType: 'order',
-          entityId: id,
-          fieldChanged: 'vendorId',
-          oldValue: { vendorId: order.vendorId },
-          newValue: { vendorId },
-          reason: `Assigned vendor ${vendor.businessName} to order ${order.orderNumber}`,
-        },
-      })
-
-      return updatedOrder
+    await prisma.auditLog.create({
+      data: {
+        adminId: admin.id,
+        adminRole: admin.role,
+        actionType: 'order_assign_vendor',
+        entityType: 'order',
+        entityId: id,
+        fieldChanged: 'vendorId',
+        oldValue: { vendorId: order.vendorId },
+        newValue: { vendorId },
+        reason: `Assigned vendor ${vendor.businessName} to order ${order.orderNumber}`,
+      },
     })
 
     return NextResponse.json({ success: true, data: updated })

@@ -108,32 +108,29 @@ export async function PATCH(
 
     const data = parsed.data
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedVendor = await tx.vendor.update({
-        where: { id },
-        data: {
-          ...(data.status !== undefined ? { status: data.status } : {}),
-          ...(data.commissionRate !== undefined ? { commissionRate: data.commissionRate } : {}),
-          ...(data.categories !== undefined ? { categories: data.categories } : {}),
-        },
-      })
+    // Sequential queries (no interactive transaction — pgbouncer compatible)
+    const updated = await prisma.vendor.update({
+      where: { id },
+      data: {
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.commissionRate !== undefined ? { commissionRate: data.commissionRate } : {}),
+        ...(data.categories !== undefined ? { categories: data.categories } : {}),
+      },
+    })
 
-      // Log the action
-      await tx.auditLog.create({
-        data: {
-          adminId: admin.id,
-          adminRole: admin.role,
-          actionType: data.status ? `vendor_${data.status.toLowerCase()}` : 'vendor_update',
-          entityType: 'vendor',
-          entityId: id,
-          fieldChanged: Object.keys(data).join(', '),
-          oldValue: { status: vendor.status, commissionRate: Number(vendor.commissionRate) },
-          newValue: data,
-          reason: `Admin ${data.status ? data.status.toLowerCase() : 'updated'} vendor`,
-        },
-      })
-
-      return updatedVendor
+    // Log the action
+    await prisma.auditLog.create({
+      data: {
+        adminId: admin.id,
+        adminRole: admin.role,
+        actionType: data.status ? `vendor_${data.status.toLowerCase()}` : 'vendor_update',
+        entityType: 'vendor',
+        entityId: id,
+        fieldChanged: Object.keys(data).join(', '),
+        oldValue: { status: vendor.status, commissionRate: Number(vendor.commissionRate) },
+        newValue: data,
+        reason: `Admin ${data.status ? data.status.toLowerCase() : 'updated'} vendor`,
+      },
     })
 
     return NextResponse.json({
