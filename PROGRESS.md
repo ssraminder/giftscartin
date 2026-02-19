@@ -13,7 +13,7 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A complete (schema foundation). Phase B-E planned (SEO + product system). Phase 3 ongoing.|
+|Current Phase  |Phase A + B complete. Phase C-E planned (product system). Phase 3 ongoing.|
 |Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
@@ -30,6 +30,7 @@
 - Platform rebrand: Gifts Cart India by Cital Enterprises
 - Netlify auto-deploy from GitHub, build passing
 - Phase A: Schema foundation — variations (JSONB), addon groups, upsells, SEO fields, category templates, seo_settings, vendor variation availability
+- Phase B: SEO infrastructure — generateMetadata on product/category/home pages, JSON-LD structured data (Product, BreadcrumbList, Organization, LocalBusiness), sitemap.xml, robots.txt, breadcrumb component, admin SEO settings page
 
 ### What's NOT Done (Priority Order)
 
@@ -108,6 +109,9 @@
 | `src/app/admin/page.tsx` | Yes | Yes | ✅ Exists & Working (real API data) |
 | `src/app/admin/orders/page.tsx` | Not in spec | Yes | ✅ Bonus — admin order list |
 | `src/app/admin/orders/[id]/page.tsx` | Not in spec | Yes | ✅ Bonus — admin order detail |
+| `src/app/admin/seo/page.tsx` | Yes (Phase B) | Yes | ✅ Admin SEO settings form |
+| `src/app/sitemap.ts` | Yes (Phase B) | Yes | ✅ Dynamic sitemap from DB |
+| `src/app/robots.ts` | Yes (Phase B) | Yes | ✅ Configurable robots.txt |
 
 ### Source — API Routes
 
@@ -169,6 +173,8 @@
 | `src/components/providers/city-provider.tsx` | Yes | Yes | ✅ |
 | `src/components/providers/cart-provider.tsx` | Yes | Yes | ✅ |
 | `src/components/providers/currency-provider.tsx` | No (added) | Yes | ✅ CurrencyProvider + useCurrency hook |
+| `src/components/seo/json-ld.tsx` | Yes (Phase B) | Yes | ✅ JSON-LD script injector |
+| `src/components/seo/breadcrumb.tsx` | Yes (Phase B) | Yes | ✅ Visual breadcrumb + BreadcrumbList schema |
 
 ### Source — Lib Files
 
@@ -187,6 +193,7 @@
 | `src/lib/brevo.ts` | Not in spec | Yes | ✅ Brevo email OTP sender |
 | `src/lib/utils.ts` | Yes | Yes | ✅ cn(), formatPrice(), generateOrderNumber() |
 | `src/lib/validations.ts` | Yes | Yes | ✅ All Zod schemas implemented |
+| `src/lib/seo.ts` | Yes (Phase B) | Yes | ✅ Metadata + JSON-LD utility functions |
 
 ### Source — Other
 
@@ -241,7 +248,7 @@
 | VendorProductVariation | `vendor_product_variations` | — | — | No |
 | CategoryAddonTemplate | `category_addon_templates` | — | — | ✅ Cakes: Name on Cake, Message Card |
 | CategoryAddonTemplateOption | `category_addon_template_options` | — | — | ✅ 3 options (No Card, Printed, Premium) |
-| SeoSettings | `seo_settings` | — | — | ✅ 1 row (singleton) |
+| SeoSettings | `seo_settings` | /api/admin/seo | admin/seo page | ✅ 1 row (singleton) |
 | VendorProduct | `vendor_products` | /api/products (city filter) | — | ✅ 8 items |
 | Order | `orders` | /api/orders, /api/orders/[id] | orders pages, admin orders | No (runtime) |
 | OrderItem | `order_items` | /api/orders (nested) | order detail page | No (runtime) |
@@ -288,8 +295,9 @@
 | `/api/admin/currencies` | ✅ | Yes | GET, POST, PUT, DELETE | Full CRUD for currency configs |
 | `/api/upload` | ✅ | Supabase Storage | POST | Generates signed upload URL |
 | `/api/admin/dashboard` | ✅ | Yes | GET | Today's orders, revenue, HITL count, recent activity |
+| `/api/admin/seo` | ✅ | Yes | GET, PUT | SEO settings CRUD (Phase B) |
 
-**All 19+ API routes are fully implemented with real database queries.**
+**All 20+ API routes are fully implemented with real database queries.**
 
 ---
 
@@ -399,9 +407,11 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 ### Remaining Work
 
-1. **Phase B: SEO Infrastructure** — generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings page. **IMMEDIATE NEXT PRIORITY.**
+1. ~~**Phase B: SEO Infrastructure**~~ — **COMPLETE.** generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings page.
 
-2. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
+2. **Phase C: Admin Product Form** — WooCommerce-style tabbed product form. **IMMEDIATE NEXT PRIORITY.**
+
+3. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
 3. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
