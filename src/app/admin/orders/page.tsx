@@ -6,6 +6,7 @@ import {
   ShoppingBag,
   RefreshCw,
   ChevronRight,
+  Plus,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -89,15 +90,23 @@ export default function AdminOrdersPage() {
           <h1 className="text-2xl font-bold text-slate-900">Orders</h1>
           <p className="text-sm text-slate-500">Manage all customer orders</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Link href="/admin/orders/new">
+            <Button size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              New Order
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Order list */}
