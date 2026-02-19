@@ -14,7 +14,7 @@
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
 |Current Phase  |Phase A complete (schema foundation). Phase B-E planned (SEO + product system). Phase 3 ongoing.|
-|Last Updated   |2026-02-18                                                                        |
+|Last Updated   |2026-02-19                                                                        |
 
 ### What's Done
 
@@ -399,25 +399,23 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 ### Remaining Work
 
-1. **Run Phase A SQL migration** — Execute `prisma/migrations/phase-a-schema-foundation.sql` in Supabase SQL Editor block-by-block. Creates 10 new tables, adds SEO columns, migrates product_variations to JSONB format, seeds Cakes addon templates.
+1. **Phase B: SEO Infrastructure** — generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings page. **IMMEDIATE NEXT PRIORITY.**
 
-2. **Phase B: SEO Infrastructure** — generateMetadata on all pages, JSON-LD components, sitemap.xml, robots.txt, breadcrumbs, admin SEO settings page. **IMMEDIATE NEXT PRIORITY.**
+2. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
 
-3. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
+3. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
-4. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
+4. **Phase 3: Vendor dashboard** — Full vendor management UI (currently placeholder).
 
-5. **Phase 3: Vendor dashboard** — Full vendor management UI (currently placeholder).
+5. **Phase 3: Partner/referral system** — Partner branding, subdomain routing, and earnings tracking.
 
-6. **Phase 3: Partner/referral system** — Partner branding, subdomain routing, and earnings tracking.
+6. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
 
-7. **Decide on SMS vs Email OTP** — Either implement MSG91 for phone OTP or formally adopt email OTP approach.
+7. **Add coupon admin CRUD** — Admin UI for creating/managing coupons (no admin page exists yet).
 
-8. **Add coupon admin CRUD** — Admin UI for creating/managing coupons (no admin page exists yet).
+8. **Add review submission** — Allow customers to submit reviews on delivered orders.
 
-9. **Add review submission** — Allow customers to submit reviews on delivered orders.
-
-10. **Supabase Realtime** — Wire up real-time order notifications for vendors.
+9. **Supabase Realtime** — Wire up real-time order notifications for vendors.
 
 ---
 
