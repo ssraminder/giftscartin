@@ -28,11 +28,19 @@ export async function POST(
 
     const { id } = await params
     const body = await request.json()
-    const { paymentMethodId, amount, transactionRef, notes } = body
+    const { paymentMethodId, amount, transactionRef, notes, paidAt } = body
 
-    if (!paymentMethodId || !amount) {
+    if (!paymentMethodId || !amount || !paidAt) {
       return NextResponse.json(
-        { success: false, error: 'Payment method and amount are required' },
+        { success: false, error: 'Payment method, amount, and payment date are required' },
+        { status: 400 }
+      )
+    }
+
+    const parsedPaidAt = new Date(paidAt)
+    if (isNaN(parsedPaidAt.getTime())) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid payment date' },
         { status: 400 }
       )
     }
@@ -87,6 +95,7 @@ export async function POST(
         amount,
         method: paymentMethod.slug,
         status: 'PAID',
+        paidAt: parsedPaidAt,
       },
       create: {
         orderId: id,
@@ -95,6 +104,7 @@ export async function POST(
         gateway: 'COD',
         method: paymentMethod.slug,
         status: 'PAID',
+        paidAt: parsedPaidAt,
       },
     })
 

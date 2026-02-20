@@ -149,6 +149,7 @@ export default function AdminOrderDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState("")
   const [transactionRef, setTransactionRef] = useState("")
   const [paymentNotes, setPaymentNotes] = useState("")
+  const [paymentDate, setPaymentDate] = useState("")
   const [recordingPayment, setRecordingPayment] = useState(false)
   const [paymentError, setPaymentError] = useState<string | null>(null)
 
@@ -273,6 +274,7 @@ export default function AdminOrderDetailPage() {
       setSelectedPaymentMethod("")
       setTransactionRef("")
       setPaymentNotes("")
+      setPaymentDate(new Date().toISOString().split("T")[0])
       setPaymentError(null)
     }
     setPaymentDialogOpen(true)
@@ -288,6 +290,10 @@ export default function AdminOrderDetailPage() {
       setPaymentError("Please enter a valid amount")
       return
     }
+    if (!paymentDate) {
+      setPaymentError("Please select a payment date")
+      return
+    }
 
     setRecordingPayment(true)
     setPaymentError(null)
@@ -300,6 +306,7 @@ export default function AdminOrderDetailPage() {
           amount,
           transactionRef: transactionRef || undefined,
           notes: paymentNotes || undefined,
+          paidAt: new Date(paymentDate).toISOString(),
         }),
       })
       const json = await res.json()
@@ -819,6 +826,16 @@ export default function AdminOrderDetailPage() {
                 min="0"
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment-date">Payment Date</Label>
+              <Input
+                id="payment-date"
+                type="date"
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                required
               />
             </div>
             <div className="space-y-2">

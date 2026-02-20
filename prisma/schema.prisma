@@ -672,6 +672,7 @@ model Payment {
   paypalCaptureId   String?
   method            String?
   status            PaymentStatus  @default(PENDING)
+  paidAt            DateTime?
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
