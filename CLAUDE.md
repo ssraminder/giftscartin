@@ -67,6 +67,14 @@ Email → POST /api/auth/otp/send (creates OTP record, sends via Brevo)
   Moved to: orders/{orderId}/{addonGroupId}/{filename} on order creation.
   Always accessed via signed URLs (60 min expiry) — never expose raw paths.
 
+### City-First UX
+- CityProvider stores full selection: cityId, cityName, citySlug, pincode, areaName, zoneId, zoneName
+- Persisted to localStorage key "giftscart_city_v2" + cookie "gci_city_slug" (for SSR)
+- City selection modal blocks site until user picks a city (no X/dismiss)
+- Pincode → city resolution via POST /api/city/resolve
+- Coming soon cities show notify form → POST /api/city/notify
+- Products and categories API accept ?citySlug= to filter by vendor city
+
 ---
 
 ## Environment Variables
@@ -288,6 +296,18 @@ See PROGRESS.md section 1I for current task list.
 ## All Planned Product System Phases Complete
 Phases A–F (schema, SEO, product form, customer variations, AI generation,
 category management) are all complete as of 2026-02-19.
+
+### Sprint 1 — City-First UX + Schema Integration (Complete as of Feb 20, 2026)
+- New tables: pincode_city_map, city_notifications, product_relations, image_generation_jobs, catalog_imports
+- Cities table: added aliases[], displayName, isComingSoon, notifyCount, pincodePrefixes[]
+- City resolver API: POST /api/city/resolve (pincode + text search), POST /api/city/notify
+- CityProvider rewritten: stores cityId, cityName, citySlug, pincode, areaName, zoneId, zoneName
+- City selection modal: full-screen blocker until city is selected, popular city chips
+- CitySearch reusable component: debounced search, coming-soon notify, pincode resolution
+- Header: city display with inline dropdown change, pulsing "Select City" when unselected
+- Products/Categories APIs: accept ?citySlug= to filter by vendor city
+- [city]/page.tsx: coming-soon page with notify form, active city with hero + categories + trending
+
 Next focus: complete Phase 3 items (checkout flow, Razorpay integration).
 
 -----
@@ -321,6 +341,12 @@ Next focus: complete Phase 3 items (checkout flow, Razorpay integration).
 |src/app/api/admin/products/[id]/sync-addon-group/route.ts|Re-sync one addon group to template|
 |src/components/admin/category-form.tsx  |Category create/edit form (Sheet)                  |
 |src/app/admin/categories/page.tsx       |Admin category tree list page                      |
+|src/app/api/city/resolve/route.ts      |City resolver: pincode + text search               |
+|src/app/api/city/notify/route.ts       |City notification: coming-soon email signup         |
+|src/components/providers/city-provider.tsx|CityProvider: city + pincode + zone context       |
+|src/components/location/city-search.tsx |Reusable city search with debounce + dropdown      |
+|src/components/location/city-modal.tsx  |City selection modal (site load blocker)            |
+|src/components/location/city-gate.tsx   |Conditional modal renderer (checks isSelected)     |
 |netlify/functions/sync-exchange-rates.ts|DO NOT MODIFY — production scheduled job           |
 
 -----

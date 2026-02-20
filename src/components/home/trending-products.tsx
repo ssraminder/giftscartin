@@ -7,6 +7,7 @@ import { ArrowRight, ChefHat, Clock, HeadphonesIcon, RotateCcw } from "lucide-re
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProductCard } from "@/components/product/product-card"
+import { useCity } from "@/hooks/use-city"
 import type { Product, ApiResponse, PaginatedData } from "@/types"
 
 const WHY_CHOOSE = [
@@ -54,11 +55,14 @@ export function TrendingProducts() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showAll, setShowAll] = useState(false)
+  const { citySlug } = useCity()
 
   useEffect(() => {
     async function fetchTrending() {
       try {
-        const res = await fetch("/api/products?sortBy=rating&pageSize=10")
+        const params = new URLSearchParams({ sortBy: "rating", pageSize: "10" })
+        if (citySlug) params.set("citySlug", citySlug)
+        const res = await fetch(`/api/products?${params.toString()}`)
         const json: ApiResponse<PaginatedData<Product>> = await res.json()
         if (json.success && json.data) {
           setProducts(json.data.items)
@@ -70,7 +74,7 @@ export function TrendingProducts() {
       }
     }
     fetchTrending()
-  }, [])
+  }, [citySlug])
 
   const displayedProducts = showAll ? products : products.slice(0, 8)
 

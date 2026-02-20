@@ -50,8 +50,13 @@
 | `seo_settings` | SeoSettings | id, siteName, siteDescription, defaultOgImage, robotsTxt | singleton — always 1 row |
 | `currency_configs` | CurrencyConfig | id, code, name, symbol, symbolPosition, exchangeRate, markup, rounding, roundTo, locale, countries[], isDefault, isActive | (standalone) |
 | `audit_logs` | AuditLog | id, adminId, adminRole, actionType, entityType, entityId, reason | (standalone) |
+| `pincode_city_map` | PincodeCityMap | id, pincode (unique), cityId, areaName, isActive | → cities |
+| `city_notifications` | CityNotification | id, email, phone, cityName | (standalone) |
+| `product_relations` | ProductRelation | id, productId, relatedProductId, relationType, sortOrder, isActive | → products (×2), unique(productId, relatedProductId, relationType) |
+| `image_generation_jobs` | ImageGenerationJob | id, productId, imageIndex, imageType, status, promptUsed, storageUrl, retryCount | → products, unique(productId, imageIndex) |
+| `catalog_imports` | CatalogImport | id, adminId, fileName, status, categoriesCount, productsCount | (standalone) |
 
-**Total: 42 tables** (31 original + 10 Phase A + 1 multi-currency)
+**Total: 47 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1)
 
 ---
 
@@ -63,8 +68,10 @@
 | `prisma/seed.ts` | Phase 1 seed data (cities, categories, products, vendor) | ✅ Executed |
 | Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ✅ Executed |
 | Migration 002 — Schema sync | order_items: +variationId, +variationLabel; payments: +gateway (PaymentGateway enum), +stripe/paypal columns; cart_items: +variationId; currency_configs table | ⏳ **PENDING — Run `prisma/migrations/002_sync_schema.sql` in Supabase SQL Editor** |
+| Sprint 1 migration | pincode_city_map, city_notifications, product_relations (RelationType enum), image_generation_jobs (ImageJobStatus, ImageType enums), catalog_imports (ImportStatus enum). Cities table: +aliases, +display_name, +is_coming_soon, +notify_count, +pincode_prefix. | ✅ Executed (pre-run in Supabase) |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
+> Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
 
 ---
 
@@ -104,7 +111,12 @@ UNION ALL SELECT 'cart_items', count(*) FROM cart_items
 UNION ALL SELECT 'coupons', count(*) FROM coupons
 UNION ALL SELECT 'reviews', count(*) FROM reviews
 UNION ALL SELECT 'currency_configs', count(*) FROM currency_configs
-UNION ALL SELECT 'audit_logs', count(*) FROM audit_logs;
+UNION ALL SELECT 'audit_logs', count(*) FROM audit_logs
+UNION ALL SELECT 'pincode_city_map', count(*) FROM pincode_city_map
+UNION ALL SELECT 'city_notifications', count(*) FROM city_notifications
+UNION ALL SELECT 'product_relations', count(*) FROM product_relations
+UNION ALL SELECT 'image_generation_jobs', count(*) FROM image_generation_jobs
+UNION ALL SELECT 'catalog_imports', count(*) FROM catalog_imports;
 ```
 
 ### All Users with Roles
@@ -299,6 +311,11 @@ CREATE TABLE cities (
     lng DECIMAL(10,7) NOT NULL,
     base_delivery_charge DECIMAL(10,2) NOT NULL DEFAULT 49,
     free_delivery_above DECIMAL(10,2) NOT NULL DEFAULT 499,
+    aliases TEXT[] NOT NULL DEFAULT '{}',
+    display_name TEXT,
+    is_coming_soon BOOLEAN NOT NULL DEFAULT false,
+    notify_count INTEGER NOT NULL DEFAULT 0,
+    pincode_prefix TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP(3) NOT NULL
 );
@@ -869,6 +886,110 @@ CREATE TABLE audit_logs (
 );
 CREATE INDEX audit_logs_entity_type_entity_id_idx ON audit_logs(entity_type, entity_id);
 CREATE INDEX audit_logs_admin_id_idx ON audit_logs(admin_id);
+```
+
+### Sprint 1 — City-First UX Tables
+
+```sql
+-- Enums
+CREATE TYPE "RelationType" AS ENUM ('UPSELL', 'CROSS_SELL');
+CREATE TYPE "ImageJobStatus" AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED', 'SKIPPED');
+CREATE TYPE "ImageType" AS ENUM ('HERO', 'LIFESTYLE', 'DETAIL');
+CREATE TYPE "ImportStatus" AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
+
+-- Cities table alterations (already run)
+ALTER TABLE cities ADD COLUMN aliases TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE cities ADD COLUMN display_name TEXT;
+ALTER TABLE cities ADD COLUMN is_coming_soon BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE cities ADD COLUMN notify_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE cities ADD COLUMN pincode_prefix TEXT[] NOT NULL DEFAULT '{}';
+
+CREATE TABLE pincode_city_map (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    pincode TEXT NOT NULL UNIQUE,
+    city_id TEXT NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
+    area_name TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE city_notifications (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    email TEXT,
+    phone TEXT,
+    city_name TEXT NOT NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE product_relations (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    related_product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    relation_type "RelationType" NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(product_id, related_product_id, relation_type)
+);
+
+CREATE TABLE image_generation_jobs (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    image_index INTEGER NOT NULL DEFAULT 1,
+    image_type "ImageType" NOT NULL DEFAULT 'HERO',
+    status "ImageJobStatus" NOT NULL DEFAULT 'PENDING',
+    prompt_used TEXT,
+    openai_generation_id TEXT,
+    storage_url TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP(3),
+    completed_at TIMESTAMP(3),
+    UNIQUE(product_id, image_index)
+);
+
+CREATE TABLE catalog_imports (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    admin_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    status "ImportStatus" NOT NULL DEFAULT 'PENDING',
+    categories_count INTEGER NOT NULL DEFAULT 0,
+    products_count INTEGER NOT NULL DEFAULT 0,
+    addons_count INTEGER NOT NULL DEFAULT 0,
+    relations_count INTEGER NOT NULL DEFAULT 0,
+    skipped_count INTEGER NOT NULL DEFAULT 0,
+    errors_json JSONB,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP(3)
+);
+```
+
+### Pincode Lookup Queries
+
+```sql
+-- Find city for exact pincode
+SELECT pcm.pincode, pcm.area_name, c.name as city, c.slug, c.state
+FROM pincode_city_map pcm
+JOIN cities c ON c.id = pcm.city_id
+WHERE pcm.pincode = '160017' AND pcm.is_active = true;
+
+-- Find cities by pincode prefix
+SELECT DISTINCT c.name, c.slug, c.state, c.is_coming_soon
+FROM cities c
+WHERE c.pincode_prefix && ARRAY['16']
+  AND c.is_active = true;
+
+-- City notification signups by city
+SELECT city_name, count(*) as signup_count
+FROM city_notifications
+GROUP BY city_name
+ORDER BY signup_count DESC;
+
+-- Cities with notify counts
+SELECT name, slug, is_active, is_coming_soon, notify_count
+FROM cities
+ORDER BY notify_count DESC;
 ```
 
 ---

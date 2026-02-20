@@ -98,6 +98,11 @@ model City {
   lng       Decimal @db.Decimal(10, 7)
   baseDeliveryCharge Decimal @default(49) @db.Decimal(10, 2)
   freeDeliveryAbove  Decimal @default(499) @db.Decimal(10, 2)
+  aliases          String[]  @default([])
+  displayName      String?
+  isComingSoon     Boolean   @default(false)
+  notifyCount      Int       @default(0)
+  pincodePrefixes  String[]  @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -105,6 +110,7 @@ model City {
   vendors   Vendor[]
   deliveryConfig CityDeliveryConfig[]
   deliveryHolidays DeliveryHoliday[]
+  pincodes  PincodeCityMap[]
 
   @@map("cities")
 }
@@ -386,6 +392,9 @@ model Product {
   addonGroups       ProductAddonGroup[]
   upsells           ProductUpsell[]   @relation("ProductUpsells")
   upsellOf          ProductUpsell[]   @relation("UpsellProducts")
+  relations         ProductRelation[] @relation("ProductRelations")
+  relatedBy         ProductRelation[] @relation("RelatedProducts")
+  imageJobs         ImageGenerationJob[]
 
   @@map("products")
 }
@@ -893,4 +902,117 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([adminId])
   @@map("audit_logs")
+}
+
+// ==================== PINCODE CITY MAP ====================
+
+model PincodeCityMap {
+  id        String   @id @default(cuid())
+  pincode   String   @unique
+  cityId    String
+  areaName  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  city      City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@map("pincode_city_map")
+}
+
+// ==================== CITY NOTIFICATIONS ====================
+
+model CityNotification {
+  id        String   @id @default(cuid())
+  email     String?
+  phone     String?
+  cityName  String
+  createdAt DateTime @default(now())
+
+  @@map("city_notifications")
+}
+
+// ==================== PRODUCT RELATIONS ====================
+
+enum RelationType {
+  UPSELL
+  CROSS_SELL
+}
+
+model ProductRelation {
+  id               String       @id @default(cuid())
+  productId        String
+  relatedProductId String
+  relationType     RelationType
+  sortOrder        Int          @default(0)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+
+  product          Product      @relation("ProductRelations", fields: [productId], references: [id], onDelete: Cascade)
+  relatedProduct   Product      @relation("RelatedProducts", fields: [relatedProductId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, relatedProductId, relationType])
+  @@map("product_relations")
+}
+
+// ==================== IMAGE GENERATION JOBS ====================
+
+enum ImageJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+enum ImageType {
+  HERO
+  LIFESTYLE
+  DETAIL
+}
+
+model ImageGenerationJob {
+  id                  String         @id @default(cuid())
+  productId           String
+  imageIndex          Int            @default(1)
+  imageType           ImageType      @default(HERO)
+  status              ImageJobStatus @default(PENDING)
+  promptUsed          String?
+  openaiGenerationId  String?
+  storageUrl          String?
+  retryCount          Int            @default(0)
+  errorMessage        String?
+  createdAt           DateTime       @default(now())
+  startedAt           DateTime?
+  completedAt         DateTime?
+
+  product             Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, imageIndex])
+  @@map("image_generation_jobs")
+}
+
+// ==================== CATALOG IMPORTS ====================
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model CatalogImport {
+  id              String       @id @default(cuid())
+  adminId         String
+  fileName        String
+  status          ImportStatus @default(PENDING)
+  categoriesCount Int          @default(0)
+  productsCount   Int          @default(0)
+  addonsCount     Int          @default(0)
+  relationsCount  Int          @default(0)
+  skippedCount    Int          @default(0)
+  errorsJson      Json?
+  createdAt       DateTime     @default(now())
+  completedAt     DateTime?
+
+  @@map("catalog_imports")
 }

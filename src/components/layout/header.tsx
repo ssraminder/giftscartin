@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useSession, signOut } from "next-auth/react"
 import {
   Cake,
+  ChevronDown,
   Flower2,
   Gift,
   LogOut,
+  MapPin,
   Package,
   Search,
   ShoppingCart,
@@ -28,7 +30,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useCart } from "@/hooks/use-cart"
-import { CitySelector } from "./city-selector"
+import { useCity } from "@/hooks/use-city"
+import { CitySearch } from "@/components/location/city-search"
 import { MobileNav } from "./mobile-nav"
 
 const CATEGORY_LINKS = [
@@ -62,8 +65,11 @@ export function Header() {
   const [searchQuery, setSearchQuery] = useState("")
   const [scrolled, setScrolled] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
+  const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
+  const { cityName, pincode, isSelected, setCity } = useCity()
 
   const user = session?.user as { id?: string; name?: string | null; phone?: string; role?: string } | undefined
 
@@ -74,6 +80,17 @@ export function Header() {
     }
     window.addEventListener("scroll", handleScroll, { passive: true })
     return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  // Close city dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (cityDropdownRef.current && !cityDropdownRef.current.contains(e.target as Node)) {
+        setCityDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
   return (
@@ -150,11 +167,43 @@ export function Header() {
             </Button>
 
             {/* City Selector */}
-            <div className="hidden sm:flex items-center">
-              <CitySelector />
-            </div>
-            <div className="sm:hidden">
-              <CitySelector variant="compact" />
+            <div ref={cityDropdownRef} className="relative">
+              <button
+                onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
+                className={`flex items-center gap-1 text-sm transition-colors hover:text-[#E91E63] ${
+                  isSelected
+                    ? "rounded-full border border-border px-2.5 py-1.5 bg-background"
+                    : "rounded-full bg-pink-50 border border-[#E91E63]/30 px-2.5 py-1.5"
+                }`}
+              >
+                <MapPin className={`h-4 w-4 shrink-0 ${isSelected ? 'text-[#E91E63]' : 'text-[#E91E63] animate-pulse'}`} />
+                <span className="truncate max-w-[100px] sm:max-w-[140px] font-medium">
+                  {isSelected ? (
+                    <>
+                      <span className="hidden sm:inline">{cityName}{pincode ? `, ${pincode}` : ''}</span>
+                      <span className="sm:hidden">{cityName}</span>
+                    </>
+                  ) : (
+                    "Select City"
+                  )}
+                </span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+              </button>
+
+              {/* City dropdown */}
+              {cityDropdownOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Change delivery location</p>
+                  <CitySearch
+                    onSelect={(selection) => {
+                      setCity(selection)
+                      setCityDropdownOpen(false)
+                    }}
+                    autoFocus
+                    placeholder="Search city or pincode..."
+                  />
+                </div>
+              )}
             </div>
 
             {/* Account */}

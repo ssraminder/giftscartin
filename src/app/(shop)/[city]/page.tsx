@@ -3,47 +3,93 @@
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { MapPin, ArrowRight, Gift, Truck, Clock, Shield } from "lucide-react"
+import { MapPin, ArrowRight, Gift, Truck, Clock, Shield, Bell, CheckCircle2, Loader2 } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CategoryGrid } from "@/components/home/category-grid"
 import { TrendingProducts } from "@/components/home/trending-products"
-import type { ApiResponse } from "@/types"
+import { useCity } from "@/hooks/use-city"
 
 interface CityData {
-  id: string
-  name: string
-  slug: string
+  cityId: string
+  cityName: string
+  citySlug: string
   state: string
-  baseDeliveryCharge: number
-  freeDeliveryAbove: number
+  isActive: boolean
+  isComingSoon: boolean
+  baseDeliveryCharge?: number
+  freeDeliveryAbove?: number
 }
 
 export default function CityPage() {
   const params = useParams()
   const router = useRouter()
-  const citySlug = params.city as string
+  const citySlugParam = params.city as string
+  const { setCity: setCityContext } = useCity()
 
   const [city, setCity] = useState<CityData | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+
+  // Notify form state (for coming soon)
+  const [notifyEmail, setNotifyEmail] = useState("")
+  const [notifySending, setNotifySending] = useState(false)
+  const [notifySent, setNotifySent] = useState(false)
 
   useEffect(() => {
     async function fetchCity() {
       setLoading(true)
       setNotFound(false)
       try {
-        const res = await fetch("/api/cities")
-        const json: ApiResponse<CityData[]> = await res.json()
-        if (json.success && json.data) {
-          const found = json.data.find((c) => c.slug === citySlug)
-          if (found) {
-            setCity(found)
+        const res = await fetch("/api/city/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: citySlugParam }),
+        })
+        const json = await res.json()
+        if (json.success && json.data && json.data.length > 0) {
+          const match = json.data[0]
+          setCity(match)
+          // Auto-set the city context when visiting a city page
+          if (match.isActive && !match.isComingSoon) {
+            setCityContext({
+              cityId: match.cityId,
+              cityName: match.cityName,
+              citySlug: match.citySlug,
+            })
+          }
+        } else {
+          // Try fetching from /api/cities as fallback
+          const citiesRes = await fetch("/api/cities")
+          const citiesJson = await citiesRes.json()
+          if (citiesJson.success && citiesJson.data) {
+            const found = citiesJson.data.find((c: { slug: string }) => c.slug === citySlugParam)
+            if (found) {
+              setCity({
+                cityId: found.id,
+                cityName: found.name,
+                citySlug: found.slug,
+                state: found.state,
+                isActive: found.isActive,
+                isComingSoon: found.isComingSoon || false,
+                baseDeliveryCharge: found.baseDeliveryCharge,
+                freeDeliveryAbove: found.freeDeliveryAbove,
+              })
+              if (found.isActive) {
+                setCityContext({
+                  cityId: found.id,
+                  cityName: found.name,
+                  citySlug: found.slug,
+                })
+              }
+            } else {
+              setNotFound(true)
+            }
           } else {
             setNotFound(true)
           }
-        } else {
-          setNotFound(true)
         }
       } catch {
         setNotFound(true)
@@ -52,7 +98,8 @@ export default function CityPage() {
       }
     }
     fetchCity()
-  }, [citySlug])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [citySlugParam])
 
   // Redirect to homepage if city not found
   useEffect(() => {
@@ -60,6 +107,23 @@ export default function CityPage() {
       router.replace("/")
     }
   }, [loading, notFound, router])
+
+  async function handleNotify() {
+    if (!notifyEmail || !city) return
+    setNotifySending(true)
+    try {
+      await fetch("/api/city/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: notifyEmail, cityName: city.cityName }),
+      })
+      setNotifySent(true)
+    } catch {
+      // silently fail
+    } finally {
+      setNotifySending(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -87,6 +151,85 @@ export default function CityPage() {
     return null // Will redirect via useEffect
   }
 
+  // Coming Soon page
+  if (city.isComingSoon) {
+    return (
+      <div className="min-h-screen">
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#1A1A2E] via-[#2D1B3D] to-[#1A1A2E]" />
+          <div className="absolute inset-0">
+            <div className="absolute -left-20 -top-20 h-80 w-80 rounded-full bg-pink-500/10 blur-3xl" />
+            <div className="absolute right-0 top-0 h-96 w-96 rounded-full bg-purple-500/10 blur-3xl" />
+          </div>
+
+          <div className="container relative mx-auto px-4 py-20 md:py-32 text-center">
+            <div className="max-w-lg mx-auto">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm font-medium text-pink-300 backdrop-blur-sm border border-white/10 mb-6">
+                <Clock className="h-4 w-4" />
+                Coming Soon
+              </span>
+
+              <h1 className="text-4xl font-bold leading-tight text-white sm:text-5xl tracking-tight">
+                Gift Delivery in{" "}
+                <span className="bg-gradient-to-r from-pink-400 to-rose-300 bg-clip-text text-transparent">
+                  {city.cityName}
+                </span>
+              </h1>
+
+              <p className="mt-5 text-lg text-gray-300 leading-relaxed">
+                We&apos;re expanding to {city.cityName} soon! Get notified when we start delivering fresh cakes, flowers &amp; gifts in your area.
+              </p>
+
+              {notifySent ? (
+                <div className="mt-8 flex items-center justify-center gap-2 text-green-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-medium">We&apos;ll notify you when we launch in {city.cityName}!</span>
+                </div>
+              ) : (
+                <div className="mt-8 flex items-center gap-2 max-w-md mx-auto">
+                  <Input
+                    type="email"
+                    placeholder="Enter your email"
+                    value={notifyEmail}
+                    onChange={(e) => setNotifyEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleNotify()}
+                    className="h-12 rounded-xl bg-white/95 border-0 text-gray-800 placeholder:text-gray-400"
+                  />
+                  <Button
+                    onClick={handleNotify}
+                    disabled={!notifyEmail || notifySending}
+                    className="h-12 px-6 rounded-xl btn-gradient shrink-0"
+                  >
+                    {notifySending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Bell className="h-4 w-4 mr-2" />
+                        Notify Me
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              <div className="mt-10">
+                <Link
+                  href="/"
+                  className="text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Browse all available cities &rarr;
+                </Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  // Active city page
+  const freeDeliveryAbove = city.freeDeliveryAbove ? Number(city.freeDeliveryAbove) : 499
+
   return (
     <div className="min-h-screen">
       {/* City Hero Banner */}
@@ -105,18 +248,18 @@ export default function CityPage() {
           <div className="max-w-2xl">
             <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm font-medium text-pink-300 backdrop-blur-sm border border-white/10">
               <MapPin className="h-4 w-4" />
-              Delivering in {city.name}, {city.state}
+              Delivering in {city.cityName}, {city.state}
             </span>
 
             <h1 className="mt-6 text-4xl font-bold leading-[1.1] text-white sm:text-5xl md:text-6xl tracking-tight">
               Online Gift Delivery in{" "}
               <span className="bg-gradient-to-r from-pink-400 to-rose-300 bg-clip-text text-transparent">
-                {city.name}
+                {city.cityName}
               </span>
             </h1>
 
             <p className="mt-5 text-lg text-gray-300 sm:text-xl leading-relaxed max-w-lg">
-              Fresh Cakes, Flowers &amp; Gifts delivered same-day across {city.name}. Free delivery on orders above &#8377;{Number(city.freeDeliveryAbove)}.
+              Fresh Cakes, Flowers &amp; Gifts delivered same-day across {city.cityName}. Free delivery on orders above &#8377;{freeDeliveryAbove}.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -166,7 +309,7 @@ export default function CityPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-white">Free Delivery</p>
-                  <p className="text-xs text-gray-400">Above &#8377;{Number(city.freeDeliveryAbove)}</p>
+                  <p className="text-xs text-gray-400">Above &#8377;{freeDeliveryAbove}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
@@ -174,7 +317,7 @@ export default function CityPage() {
                   <MapPin className="h-5 w-5 text-purple-300" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">{city.name}</p>
+                  <p className="text-sm font-semibold text-white">{city.cityName}</p>
                   <p className="text-xs text-gray-400">{city.state}</p>
                 </div>
               </div>
