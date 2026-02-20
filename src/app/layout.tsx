@@ -1,9 +1,16 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
 import { CityProvider } from "@/components/providers/city-provider"
 import { CurrencyProvider } from "@/components/providers/currency-provider"
 import { CartHydration } from "@/components/providers/cart-provider"
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
 
 export const metadata: Metadata = {
   title: "Gifts Cart India — Send Cakes, Flowers & Gifts Online",

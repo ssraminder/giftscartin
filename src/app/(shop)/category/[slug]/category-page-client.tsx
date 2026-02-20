@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProductCard } from "@/components/product/product-card"
+import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { useCity } from "@/hooks/use-city"
 import type { Product, Category, ApiResponse, PaginatedData } from "@/types"
@@ -165,14 +166,7 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
         <div className="container mx-auto px-4 py-6">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="rounded-xl bg-white overflow-hidden" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                <Skeleton className="aspect-square w-full" />
-                <div className="p-3 space-y-2">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
-                  <Skeleton className="h-5 w-1/3" />
-                </div>
-              </div>
+              <ProductCardSkeleton key={i} />
             ))}
           </div>
         </div>
@@ -563,14 +557,7 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
             {productsLoading ? (
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="rounded-xl bg-white overflow-hidden" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-                    <Skeleton className="aspect-square w-full" />
-                    <div className="p-3 space-y-2">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                      <Skeleton className="h-5 w-1/3" />
-                    </div>
-                  </div>
+                  <ProductCardSkeleton key={i} />
                 ))}
               </div>
             ) : products.length > 0 ? (
