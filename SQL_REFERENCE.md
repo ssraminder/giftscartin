@@ -36,21 +36,22 @@
 | `vendor_product_variations` | VendorProductVariation | id, vendorId, productId, variationId, costPrice, isAvailable | → vendors, product_variations |
 | `vendor_products` | VendorProduct | id, vendorId, productId, costPrice, sellingPrice, isAvailable | → vendors, products |
 | `orders` | Order | id, orderNumber, userId, vendorId, partnerId, addressId, deliveryDate, status, total | → users, vendors, partners, addresses, order_items, payments, order_status_history |
-| `order_items` | OrderItem | id, orderId, productId, name, quantity, price, addons | → orders, products |
+| `order_items` | OrderItem | id, orderId, productId, name, quantity, price, addons, variationId, variationLabel | → orders, products |
 | `order_status_history` | OrderStatusHistory | id, orderId, status, note, changedBy | → orders |
-| `payments` | Payment | id, orderId, amount, razorpayOrderId, razorpayPaymentId, status | → orders |
+| `payments` | Payment | id, orderId, amount, currency, gateway, razorpayOrderId, razorpayPaymentId, razorpaySignature, stripeSessionId, stripePaymentIntentId, paypalOrderId, paypalCaptureId, method, status | → orders |
 | `vendor_payouts` | VendorPayout | id, vendorId, amount, period, orderCount, netAmount, status | → vendors |
 | `partners` | Partner | id, name, refCode, subdomain, customDomain, commissionPercent | → orders, partner_earnings |
 | `partner_earnings` | PartnerEarning | id, partnerId, orderId, amount, status | → partners |
-| `cart_items` | CartItem | id, userId, productId, quantity, addons, deliveryDate, deliverySlot | → users, products |
+| `cart_items` | CartItem | id, userId, productId, quantity, addons, variationId, deliveryDate, deliverySlot | → users, products |
 | `coupons` | Coupon | id, code, discountType, discountValue, minOrderAmount, validFrom, validUntil | (standalone) |
 | `reviews` | Review | id, userId, productId, orderId, rating, comment, images[] | → users, products |
 | `category_addon_templates` | CategoryAddonTemplate | id, categoryId, name, type, required | → categories, category_addon_template_options |
 | `category_addon_template_options` | CategoryAddonTemplateOption | id, templateId, label, price, isDefault | → category_addon_templates |
 | `seo_settings` | SeoSettings | id, siteName, siteDescription, defaultOgImage, robotsTxt | singleton — always 1 row |
+| `currency_configs` | CurrencyConfig | id, code, name, symbol, symbolPosition, exchangeRate, markup, rounding, roundTo, locale, countries[], isDefault, isActive | (standalone) |
 | `audit_logs` | AuditLog | id, adminId, adminRole, actionType, entityType, entityId, reason | (standalone) |
 
-**Total: 41 tables** (31 original + 10 Phase A)
+**Total: 42 tables** (31 original + 10 Phase A + 1 multi-currency)
 
 ---
 
@@ -61,6 +62,7 @@
 | Prisma `db push` | Phase 1 schema creation (all 31 tables) | ✅ Executed |
 | `prisma/seed.ts` | Phase 1 seed data (cities, categories, products, vendor) | ✅ Executed |
 | Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ✅ Executed |
+| Migration 002 — Schema sync | order_items: +variationId, +variationLabel; payments: +gateway (PaymentGateway enum), +stripe/paypal columns; cart_items: +variationId; currency_configs table | ⏳ **PENDING — Run `prisma/migrations/002_sync_schema.sql` in Supabase SQL Editor** |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 
@@ -101,6 +103,7 @@ UNION ALL SELECT 'partner_earnings', count(*) FROM partner_earnings
 UNION ALL SELECT 'cart_items', count(*) FROM cart_items
 UNION ALL SELECT 'coupons', count(*) FROM coupons
 UNION ALL SELECT 'reviews', count(*) FROM reviews
+UNION ALL SELECT 'currency_configs', count(*) FROM currency_configs
 UNION ALL SELECT 'audit_logs', count(*) FROM audit_logs;
 ```
 
@@ -235,6 +238,7 @@ CREATE TYPE "BusinessModel" AS ENUM ('MODEL_A', 'MODEL_B');
 CREATE TYPE "PayoutStatus" AS ENUM ('PENDING', 'PROCESSING', 'PAID', 'FAILED');
 CREATE TYPE "ProductType" AS ENUM ('SIMPLE', 'VARIABLE');
 CREATE TYPE "AddonType" AS ENUM ('CHECKBOX', 'RADIO', 'SELECT', 'TEXT_INPUT', 'TEXTAREA', 'FILE_UPLOAD');
+CREATE TYPE "PaymentGateway" AS ENUM ('RAZORPAY', 'STRIPE', 'PAYPAL', 'COD');
 ```
 
 ### Users & Auth
@@ -633,12 +637,14 @@ CREATE INDEX orders_order_number_idx ON orders(order_number);
 
 CREATE TABLE order_items (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    product_id TEXT NOT NULL REFERENCES products(id),
+    "orderId" TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    "productId" TEXT NOT NULL REFERENCES products(id),
     name TEXT NOT NULL,
     quantity INTEGER NOT NULL,
     price DECIMAL(10,2) NOT NULL,
-    addons JSONB
+    addons JSONB,
+    "variationId" TEXT,
+    "variationLabel" TEXT
 );
 
 CREATE TABLE order_status_history (
@@ -654,18 +660,25 @@ CREATE TABLE order_status_history (
 ### Payments
 
 ```sql
+CREATE TYPE "PaymentGateway" AS ENUM ('RAZORPAY', 'STRIPE', 'PAYPAL', 'COD');
+
 CREATE TABLE payments (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    order_id TEXT NOT NULL UNIQUE REFERENCES orders(id),
+    "orderId" TEXT NOT NULL UNIQUE REFERENCES orders(id),
     amount DECIMAL(10,2) NOT NULL,
     currency TEXT NOT NULL DEFAULT 'INR',
-    razorpay_order_id TEXT,
-    razorpay_payment_id TEXT,
-    razorpay_signature TEXT,
+    gateway "PaymentGateway" NOT NULL DEFAULT 'RAZORPAY',
+    "razorpayOrderId" TEXT,
+    "razorpayPaymentId" TEXT,
+    "razorpaySignature" TEXT,
+    "stripeSessionId" TEXT,
+    "stripePaymentIntentId" TEXT,
+    "paypalOrderId" TEXT,
+    "paypalCaptureId" TEXT,
     method TEXT,
     status "PaymentStatus" NOT NULL DEFAULT 'PENDING',
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 CREATE TABLE vendor_payouts (
@@ -812,6 +825,28 @@ CREATE TABLE seo_settings (
     robots_txt TEXT,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Currency Configs
+
+```sql
+CREATE TABLE currency_configs (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    "symbolPosition" TEXT NOT NULL DEFAULT 'before',
+    "exchangeRate" DECIMAL(12,6) NOT NULL,
+    markup DECIMAL(5,2) NOT NULL DEFAULT 0,
+    rounding TEXT NOT NULL DEFAULT 'nearest',
+    "roundTo" DECIMAL(10,2) NOT NULL DEFAULT 0.01,
+    locale TEXT NOT NULL DEFAULT 'en-US',
+    countries TEXT[] NOT NULL DEFAULT '{}',
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+    "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 

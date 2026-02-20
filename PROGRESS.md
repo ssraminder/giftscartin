@@ -437,7 +437,7 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 5. ~~**Phase F: Category Management & Addon Templates**~~ — **COMPLETE.** Admin category CRUD API (tree structure, propagation), category form Sheet, hierarchical list page, bulk template sync, per-product addon group re-sync/detach.
 
-6. **Run `prisma db push`** — Deploy CurrencyConfig model and Payment gateway fields to Supabase. Must be done locally since DIRECT_URL is required.
+6. **Run migration 002** — Execute `prisma/migrations/002_sync_schema.sql` in Supabase SQL Editor to add missing columns (order_items: variationId/variationLabel, payments: gateway + multi-gateway columns, cart_items: variationId) and create currency_configs table. **This blocks admin order creation (causes 500 error).**
 
 3. **Run seed with currencies** — `npx prisma db seed` to populate INR, USD, GBP, AED, EUR currency configs.
 
