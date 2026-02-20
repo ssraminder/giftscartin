@@ -102,7 +102,7 @@ model City {
   displayName      String?
   isComingSoon     Boolean   @default(false)
   notifyCount      Int       @default(0)
-  pincodePrefixes  String[]  @default([])
+  pincodePrefixes  String[]  @default([]) @map("pincode_prefix")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
