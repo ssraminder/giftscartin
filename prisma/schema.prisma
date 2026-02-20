@@ -99,9 +99,9 @@ model City {
   baseDeliveryCharge Decimal @default(49) @db.Decimal(10, 2)
   freeDeliveryAbove  Decimal @default(499) @db.Decimal(10, 2)
   aliases          String[]  @default([])
-  displayName      String?
-  isComingSoon     Boolean   @default(false)
-  notifyCount      Int       @default(0)
+  displayName      String?   @map("display_name")
+  isComingSoon     Boolean   @default(false) @map("is_coming_soon")
+  notifyCount      Int       @default(0) @map("notify_count")
   pincodePrefixes  String[]  @default([]) @map("pincode_prefix")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -909,10 +909,10 @@ model AuditLog {
 model PincodeCityMap {
   id        String   @id @default(cuid())
   pincode   String   @unique
-  cityId    String
-  areaName  String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  cityId    String   @map("city_id")
+  areaName  String?  @map("area_name")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
 
   city      City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
 
@@ -925,8 +925,8 @@ model CityNotification {
   id        String   @id @default(cuid())
   email     String?
   phone     String?
-  cityName  String
-  createdAt DateTime @default(now())
+  cityName  String   @map("city_name")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("city_notifications")
 }
@@ -940,12 +940,12 @@ enum RelationType {
 
 model ProductRelation {
   id               String       @id @default(cuid())
-  productId        String
-  relatedProductId String
-  relationType     RelationType
-  sortOrder        Int          @default(0)
-  isActive         Boolean      @default(true)
-  createdAt        DateTime     @default(now())
+  productId        String       @map("product_id")
+  relatedProductId String       @map("related_product_id")
+  relationType     RelationType @map("relation_type")
+  sortOrder        Int          @default(0) @map("sort_order")
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @map("created_at")
 
   product          Product      @relation("ProductRelations", fields: [productId], references: [id], onDelete: Cascade)
   relatedProduct   Product      @relation("RelatedProducts", fields: [relatedProductId], references: [id], onDelete: Cascade)
@@ -972,18 +972,18 @@ enum ImageType {
 
 model ImageGenerationJob {
   id                  String         @id @default(cuid())
-  productId           String
-  imageIndex          Int            @default(1)
-  imageType           ImageType      @default(HERO)
+  productId           String         @map("product_id")
+  imageIndex          Int            @default(1) @map("image_index")
+  imageType           ImageType      @default(HERO) @map("image_type")
   status              ImageJobStatus @default(PENDING)
-  promptUsed          String?
-  openaiGenerationId  String?
-  storageUrl          String?
-  retryCount          Int            @default(0)
-  errorMessage        String?
-  createdAt           DateTime       @default(now())
-  startedAt           DateTime?
-  completedAt         DateTime?
+  promptUsed          String?        @map("prompt_used")
+  openaiGenerationId  String?        @map("openai_generation_id")
+  storageUrl          String?        @map("storage_url")
+  retryCount          Int            @default(0) @map("retry_count")
+  errorMessage        String?        @map("error_message")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  startedAt           DateTime?      @map("started_at")
+  completedAt         DateTime?      @map("completed_at")
 
   product             Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -1002,17 +1002,17 @@ enum ImportStatus {
 
 model CatalogImport {
   id              String       @id @default(cuid())
-  adminId         String
-  fileName        String
+  adminId         String       @map("admin_id")
+  fileName        String       @map("file_name")
   status          ImportStatus @default(PENDING)
-  categoriesCount Int          @default(0)
-  productsCount   Int          @default(0)
-  addonsCount     Int          @default(0)
-  relationsCount  Int          @default(0)
-  skippedCount    Int          @default(0)
-  errorsJson      Json?
-  createdAt       DateTime     @default(now())
-  completedAt     DateTime?
+  categoriesCount Int          @default(0) @map("categories_count")
+  productsCount   Int          @default(0) @map("products_count")
+  addonsCount     Int          @default(0) @map("addons_count")
+  relationsCount  Int          @default(0) @map("relations_count")
+  skippedCount    Int          @default(0) @map("skipped_count")
+  errorsJson      Json?        @map("errors_json")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  completedAt     DateTime?    @map("completed_at")
 
   @@map("catalog_imports")
 }
