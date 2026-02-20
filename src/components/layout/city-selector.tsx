@@ -16,9 +16,9 @@ import { useCity } from "@/hooks/use-city"
 import { cn } from "@/lib/utils"
 
 const CITIES = [
-  { name: "Chandigarh", slug: "chandigarh", state: "Chandigarh" },
-  { name: "Mohali", slug: "mohali", state: "Punjab" },
-  { name: "Panchkula", slug: "panchkula", state: "Haryana" },
+  { name: "Chandigarh", slug: "chandigarh", state: "Chandigarh", id: "city_chandigarh" },
+  { name: "Mohali", slug: "mohali", state: "Punjab", id: "city_mohali" },
+  { name: "Panchkula", slug: "panchkula", state: "Haryana", id: "city_panchkula" },
 ]
 
 interface CitySelectorProps {
@@ -26,13 +26,17 @@ interface CitySelectorProps {
 }
 
 export function CitySelector({ variant = "header" }: CitySelectorProps) {
-  const { city, setCity, setPincode } = useCity()
+  const { cityName, citySlug, setCity } = useCity()
   const [open, setOpen] = useState(false)
   const [pincodeInput, setPincodeInput] = useState("")
   const [pincodeError, setPincodeError] = useState("")
 
-  function handleCitySelect(name: string, slug: string) {
-    setCity(name, slug)
+  function handleCitySelect(c: typeof CITIES[number]) {
+    setCity({
+      cityId: c.id,
+      cityName: c.name,
+      citySlug: c.slug,
+    })
     setPincodeInput("")
     setPincodeError("")
     setOpen(false)
@@ -44,15 +48,14 @@ export function CitySelector({ variant = "header" }: CitySelectorProps) {
       return
     }
     setPincodeError("")
-    setPincode(pincodeInput)
 
     // Auto-detect city from pincode prefix
     if (pincodeInput.startsWith("16")) {
-      setCity("Chandigarh", "chandigarh")
+      setCity({ cityId: "city_chandigarh", cityName: "Chandigarh", citySlug: "chandigarh", pincode: pincodeInput })
     } else if (pincodeInput.startsWith("140")) {
-      setCity("Mohali", "mohali")
+      setCity({ cityId: "city_mohali", cityName: "Mohali", citySlug: "mohali", pincode: pincodeInput })
     } else if (pincodeInput.startsWith("134")) {
-      setCity("Panchkula", "panchkula")
+      setCity({ cityId: "city_panchkula", cityName: "Panchkula", citySlug: "panchkula", pincode: pincodeInput })
     }
     setOpen(false)
   }
@@ -70,7 +73,7 @@ export function CitySelector({ variant = "header" }: CitySelectorProps) {
       >
         <MapPin className="h-4 w-4 text-primary shrink-0" />
         <span className="truncate max-w-[120px]">
-          {city.city || "Select City"}
+          {cityName || "Select City"}
         </span>
         <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
       </button>
@@ -125,16 +128,16 @@ export function CitySelector({ variant = "header" }: CitySelectorProps) {
               {CITIES.map((c) => (
                 <button
                   key={c.slug}
-                  onClick={() => handleCitySelect(c.name, c.slug)}
+                  onClick={() => handleCitySelect(c)}
                   className={cn(
                     "flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted",
-                    city.citySlug === c.slug && "border-primary bg-primary/5"
+                    citySlug === c.slug && "border-primary bg-primary/5"
                   )}
                 >
                   <MapPin
                     className={cn(
                       "h-5 w-5 shrink-0",
-                      city.citySlug === c.slug
+                      citySlug === c.slug
                         ? "text-primary"
                         : "text-muted-foreground"
                     )}

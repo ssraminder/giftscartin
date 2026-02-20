@@ -16,6 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProductCard } from "@/components/product/product-card"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
+import { useCity } from "@/hooks/use-city"
 import type { Product, Category, ApiResponse, PaginatedData } from "@/types"
 
 const OCCASIONS = ["birthday", "anniversary", "valentines-day", "congratulations", "housewarming", "thank-you", "diwali"]
@@ -36,6 +37,7 @@ function sortOptionToApi(sort: SortOption): string {
 export default function CategoryPageClient({ slug }: { slug: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { citySlug } = useCity()
 
   // State for category info
   const [categoryData, setCategoryData] = useState<(Category & { children?: Category[] }) | null>(null)
@@ -104,6 +106,7 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
       params.set("pageSize", String(PAGE_SIZE))
       params.set("sortBy", sortOptionToApi(sortBy))
 
+      if (citySlug) params.set("citySlug", citySlug)
       if (priceRange[0] > 0) params.set("minPrice", String(priceRange[0]))
       if (priceRange[1] < 5000) params.set("maxPrice", String(priceRange[1]))
       if (vegOnly) params.set("isVeg", "true")
@@ -120,7 +123,7 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
     } finally {
       setProductsLoading(false)
     }
-  }, [slug, currentPage, sortBy, priceRange, vegOnly, selectedOccasion])
+  }, [slug, currentPage, sortBy, priceRange, vegOnly, selectedOccasion, citySlug])
 
   useEffect(() => {
     fetchProducts()

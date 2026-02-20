@@ -13,8 +13,8 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A + B + C + D + E + F complete. Phase 3 ongoing.|
-|Last Updated   |2026-02-19                                                                        |
+|Current Phase  |Phase A + B + C + D + E + F + Sprint 1 complete. Phase 3 ongoing.|
+|Last Updated   |2026-02-20                                                                        |
 
 ### What's Done
 
@@ -38,6 +38,7 @@
 - Fixed products API 500 — updated stale `addons` includes to use `addonGroups` relation in products list, product detail, and cart API routes
 - Product detail API: added `isVerified` filter to reviews query, verified all Prisma includes use `addonGroups` not `addons`
 - Fixed AI image generation — corrected model name references from `GPT-image-1.5` to `gpt-image-1`, verified base64 response handling and Supabase Storage upload
+- Sprint 1: City-First UX + Schema Integration — new tables (pincode_city_map, city_notifications, product_relations, image_generation_jobs, catalog_imports), city resolver API, CityProvider rewrite (stores full city+pincode+zone), city selection modal (site load blocker), CitySearch component, header city display, products/categories API citySlug filter, [city] page with coming-soon support
 
 ### What's NOT Done (Priority Order)
 
@@ -187,6 +188,9 @@
 | `src/components/providers/currency-provider.tsx` | No (added) | Yes | ✅ CurrencyProvider + useCurrency hook |
 | `src/components/seo/json-ld.tsx` | Yes (Phase B) | Yes | ✅ JSON-LD script injector |
 | `src/components/seo/breadcrumb.tsx` | Yes (Phase B) | Yes | ✅ Visual breadcrumb + BreadcrumbList schema |
+| `src/components/location/city-search.tsx` | Yes (Sprint 1) | Yes | ✅ Reusable city search with debounce + dropdown |
+| `src/components/location/city-modal.tsx` | Yes (Sprint 1) | Yes | ✅ City selection modal (site load blocker) |
+| `src/components/location/city-gate.tsx` | Yes (Sprint 1) | Yes | ✅ Conditional modal renderer |
 
 ### Source — Lib Files
 
@@ -274,6 +278,11 @@
 | Review | `reviews` | /api/products/[id] (nested) | review-list (hardcoded) | No |
 | CurrencyConfig | `currency_configs` | /api/currencies/resolve, /api/admin/currencies | CurrencyProvider, admin settings | ✅ 5 currencies |
 | AuditLog | `audit_logs` | — | — | No |
+| PincodeCityMap | `pincode_city_map` | /api/city/resolve | city-search | No |
+| CityNotification | `city_notifications` | /api/city/notify | city-search, [city] page | No (runtime) |
+| ProductRelation | `product_relations` | — | — | No |
+| ImageGenerationJob | `image_generation_jobs` | — | — | No |
+| CatalogImport | `catalog_imports` | — | — | No |
 
 ### Key Gaps:
 - **DeliveryHoliday, DeliverySurcharge, CityDeliveryConfig**: No API routes or UI
@@ -316,6 +325,8 @@
 | `/api/admin/categories/[id]/sync-templates` | ✅ | Yes | POST | Bulk template propagation to linked products (Phase F) |
 | `/api/admin/products/[id]/sync-addon-group` | ✅ | Yes | POST | Re-sync one addon group to category template (Phase F) |
 | `/api/admin/products/generate-content` | ✅ | Claude + OpenAI + Supabase Storage | POST | AI content generation + image generation (Phase E) |
+| `/api/city/resolve` | ✅ | Yes | POST | City resolver: pincode + text search (Sprint 1) |
+| `/api/city/notify` | ✅ | Yes | POST | City notification: email signup for coming-soon cities (Sprint 1) |
 
 **All 24+ API routes are fully implemented with real database queries.**
 

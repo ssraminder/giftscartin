@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
       pageSize,
       categorySlug,
       city,
+      citySlug,
       minPrice,
       maxPrice,
       isVeg,
@@ -29,6 +30,8 @@ export async function GET(request: NextRequest) {
       sortBy,
       search,
     } = parsed.data
+
+    const effectiveCitySlug = citySlug || city
 
     const where: Prisma.ProductWhereInput = {
       isActive: true,
@@ -73,12 +76,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Filter by city: only show products available from vendors in that city
-    if (city) {
+    if (effectiveCitySlug) {
       where.vendorProducts = {
         some: {
           isAvailable: true,
           vendor: {
-            city: { slug: city },
+            city: { slug: effectiveCitySlug },
             status: 'APPROVED',
           },
         },
