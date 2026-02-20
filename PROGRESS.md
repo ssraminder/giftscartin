@@ -40,6 +40,7 @@
 - Fixed AI image generation — corrected model name references from `GPT-image-1.5` to `gpt-image-1`, verified base64 response handling and Supabase Storage upload
 - Sprint 1: City-First UX + Schema Integration — new tables (pincode_city_map, city_notifications, product_relations, image_generation_jobs, catalog_imports), city resolver API, CityProvider rewrite (stores full city+pincode+zone), city selection modal (site load blocker), CitySearch component, header city display, products/categories API citySlug filter, [city] page with coming-soon support
 - Fixed city resolve API 500 error — Prisma field `pincodePrefixes` was auto-mapping to `pincode_prefixes` but DB column is `pincode_prefix` (singular); added `@map("pincode_prefix")` to schema. Rewrote resolve route to use `$queryRaw` for alias ILIKE search (Prisma array filters don't support ILIKE) and partial pincode matching. Added detailed error logging in catch block.
+- **Fixed all Netlify API 500 errors** — Root cause: Netlify's `npx prisma generate` resolved to Prisma v7 (latest) instead of the project's v5.22.0. Prisma v7 dropped support for `url`/`directUrl` in datasource, breaking the generated client. Fix: pinned `prisma` and `@prisma/client` to exact `5.22.0` (removed `^` caret), changed build script to `npx prisma@5.22.0 generate && next build`. Also restored city/resolve route from diagnostic stub back to full implementation. All 24+ API routes should now work correctly on Netlify.
 
 ### What's NOT Done (Priority Order)
 
