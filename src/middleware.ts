@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
+import { ADMIN_ROLES, VENDOR_ROLES } from '@/lib/roles'
 
 const publicRoutes = ['/login', '/register', '/', '/api/auth']
 const vendorPaths = ['/vendor']
@@ -30,16 +31,16 @@ export async function middleware(request: NextRequest) {
 
   const role = token.role as string | undefined
 
-  // Vendor routes: require VENDOR or ADMIN role
+  // Vendor routes: require VENDOR/VENDOR_STAFF or any admin role
   if (isVendorPath) {
-    if (role !== 'VENDOR' && role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+    if (!role || (!(VENDOR_ROLES as readonly string[]).includes(role) && !(ADMIN_ROLES as readonly string[]).includes(role))) {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }
 
-  // Admin routes: require ADMIN or SUPER_ADMIN role
+  // Admin routes: require any admin role
   if (isAdminPath) {
-    if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') {
+    if (!role || !(ADMIN_ROLES as readonly string[]).includes(role)) {
       return NextResponse.redirect(new URL('/', request.url))
     }
   }

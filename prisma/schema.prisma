@@ -33,8 +33,12 @@ model User {
 enum UserRole {
   CUSTOMER
   VENDOR
+  VENDOR_STAFF
   ADMIN
   SUPER_ADMIN
+  ACCOUNTANT
+  CITY_MANAGER
+  OPERATIONS
 }
 
 enum ProductType {
