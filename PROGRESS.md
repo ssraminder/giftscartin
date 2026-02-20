@@ -39,6 +39,7 @@
 - Product detail API: added `isVerified` filter to reviews query, verified all Prisma includes use `addonGroups` not `addons`
 - Fixed AI image generation — corrected model name references from `GPT-image-1.5` to `gpt-image-1`, verified base64 response handling and Supabase Storage upload
 - Sprint 1: City-First UX + Schema Integration — new tables (pincode_city_map, city_notifications, product_relations, image_generation_jobs, catalog_imports), city resolver API, CityProvider rewrite (stores full city+pincode+zone), city selection modal (site load blocker), CitySearch component, header city display, products/categories API citySlug filter, [city] page with coming-soon support
+- Fixed city resolve API 500 error — Prisma field `pincodePrefixes` was auto-mapping to `pincode_prefixes` but DB column is `pincode_prefix` (singular); added `@map("pincode_prefix")` to schema. Rewrote resolve route to use `$queryRaw` for alias ILIKE search (Prisma array filters don't support ILIKE) and partial pincode matching. Added detailed error logging in catch block.
 
 ### What's NOT Done (Priority Order)
 

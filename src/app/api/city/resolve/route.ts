@@ -19,6 +19,16 @@ interface CityMatch {
   isComingSoon: boolean
 }
 
+interface RawCityRow {
+  id: string
+  name: string
+  slug: string
+  state: string
+  is_active: boolean
+  is_coming_soon: boolean
+  display_name: string | null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -37,141 +47,118 @@ export async function POST(request: NextRequest) {
 
     // Case 1: Exact 6-digit pincode
     if (/^\d{6}$/.test(trimmed)) {
-      const pincodeRecord = await prisma.pincodeCityMap.findUnique({
-        where: { pincode: trimmed },
-        include: { city: true },
-      })
+      try {
+        const pincodeRecord = await prisma.pincodeCityMap.findUnique({
+          where: { pincode: trimmed },
+          include: { city: true },
+        })
 
-      if (pincodeRecord) {
-        results.push({
-          cityId: pincodeRecord.city.id,
-          cityName: pincodeRecord.city.name,
-          citySlug: pincodeRecord.city.slug,
-          state: pincodeRecord.city.state,
-          pincode: pincodeRecord.pincode,
-          areaName: pincodeRecord.areaName,
-          isActive: pincodeRecord.city.isActive,
-          isComingSoon: pincodeRecord.city.isComingSoon,
-        })
-      } else {
-        // Pincode not in map — try matching by prefix against cities
-        const cities = await prisma.city.findMany({
-          where: {
-            pincodePrefixes: { isEmpty: false },
-          },
-        })
-        for (const city of cities) {
-          const matches = city.pincodePrefixes.some((prefix) =>
-            trimmed.startsWith(prefix)
-          )
-          if (matches) {
-            results.push({
-              cityId: city.id,
-              cityName: city.name,
-              citySlug: city.slug,
-              state: city.state,
-              pincode: trimmed,
-              areaName: null,
-              isActive: city.isActive,
-              isComingSoon: city.isComingSoon,
-            })
+        if (pincodeRecord) {
+          results.push({
+            cityId: pincodeRecord.city.id,
+            cityName: pincodeRecord.city.name,
+            citySlug: pincodeRecord.city.slug,
+            state: pincodeRecord.city.state,
+            pincode: pincodeRecord.pincode,
+            areaName: pincodeRecord.areaName,
+            isActive: pincodeRecord.city.isActive,
+            isComingSoon: pincodeRecord.city.isComingSoon,
+          })
+        } else {
+          // Pincode not in map — try matching by prefix against cities
+          const cities = await prisma.$queryRaw<RawCityRow[]>`
+            SELECT id, name, slug, state, is_active, is_coming_soon, display_name
+            FROM cities
+            WHERE pincode_prefix != '{}'
+          `
+          for (const city of cities) {
+            // Fetch the pincode_prefix array for this city
+            const prefixRows = await prisma.$queryRaw<{ pincode_prefix: string[] }[]>`
+              SELECT pincode_prefix FROM cities WHERE id = ${city.id}
+            `
+            const prefixes = prefixRows[0]?.pincode_prefix ?? []
+            const matches = prefixes.some((prefix: string) =>
+              trimmed.startsWith(prefix)
+            )
+            if (matches) {
+              results.push({
+                cityId: city.id,
+                cityName: city.name,
+                citySlug: city.slug,
+                state: city.state,
+                pincode: trimmed,
+                areaName: null,
+                isActive: city.is_active,
+                isComingSoon: city.is_coming_soon,
+              })
+            }
           }
         }
+      } catch (err) {
+        console.error('City resolve pincode query error:', err)
+        throw err
       }
     }
     // Case 2: Partial pincode (2-5 digits)
     else if (/^\d{2,5}$/.test(trimmed)) {
-      const cities = await prisma.city.findMany({
-        where: {
-          pincodePrefixes: { isEmpty: false },
-        },
-      })
-      for (const city of cities) {
-        const matches = city.pincodePrefixes.some(
-          (prefix) =>
-            prefix.startsWith(trimmed) || trimmed.startsWith(prefix)
-        )
-        if (matches) {
+      try {
+        const cities = await prisma.$queryRaw<(RawCityRow & { pincode?: string })[]>`
+          SELECT DISTINCT c.id, c.name, c.slug, c.state, c.is_active, c.is_coming_soon, c.display_name
+          FROM cities c
+          JOIN pincode_city_map p ON p.city_id = c.id
+          WHERE p.pincode LIKE ${trimmed + '%'}
+          LIMIT 8
+        `
+        for (const city of cities) {
           results.push({
             cityId: city.id,
             cityName: city.name,
             citySlug: city.slug,
             state: city.state,
-            isActive: city.isActive,
-            isComingSoon: city.isComingSoon,
+            isActive: city.is_active,
+            isComingSoon: city.is_coming_soon,
           })
         }
+      } catch (err) {
+        console.error('City resolve partial pincode query error:', err)
+        throw err
       }
     }
     // Case 3: Text search — city name or alias
     else {
-      const lower = trimmed.toLowerCase()
+      try {
+        const searchPattern = `%${trimmed}%`
+        const cities = await prisma.$queryRaw<RawCityRow[]>`
+          SELECT id, name, slug, state, is_active, is_coming_soon, display_name
+          FROM cities
+          WHERE
+            name ILIKE ${searchPattern}
+            OR slug ILIKE ${searchPattern}
+            OR EXISTS (
+              SELECT 1 FROM unnest(aliases) AS alias
+              WHERE alias ILIKE ${searchPattern}
+            )
+          ORDER BY
+            CASE WHEN lower(name) = lower(${trimmed}) THEN 0 ELSE 1 END,
+            is_active DESC,
+            name ASC
+          LIMIT 8
+        `
 
-      // Search by name (ILIKE)
-      const cities = await prisma.city.findMany({
-        where: {
-          OR: [
-            { name: { contains: trimmed, mode: 'insensitive' } },
-            { slug: { contains: lower } },
-          ],
-        },
-        orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
-        take: 8,
-      })
-
-      // Separate exact matches from partial
-      const exactMatches: CityMatch[] = []
-      const partialMatches: CityMatch[] = []
-
-      for (const city of cities) {
-        const match: CityMatch = {
-          cityId: city.id,
-          cityName: city.name,
-          citySlug: city.slug,
-          state: city.state,
-          isActive: city.isActive,
-          isComingSoon: city.isComingSoon,
+        for (const city of cities) {
+          results.push({
+            cityId: city.id,
+            cityName: city.name,
+            citySlug: city.slug,
+            state: city.state,
+            isActive: city.is_active,
+            isComingSoon: city.is_coming_soon,
+          })
         }
-        if (city.name.toLowerCase() === lower) {
-          exactMatches.push(match)
-        } else {
-          partialMatches.push(match)
-        }
+      } catch (err) {
+        console.error('City resolve text search error:', err)
+        throw err
       }
-
-      // Also search aliases
-      const allCities = await prisma.city.findMany({
-        where: {
-          aliases: { isEmpty: false },
-        },
-      })
-      for (const city of allCities) {
-        const aliasMatch = city.aliases.some(
-          (alias) => alias.toLowerCase().includes(lower)
-        )
-        if (aliasMatch) {
-          const alreadyIncluded = [...exactMatches, ...partialMatches].some(
-            (m) => m.cityId === city.id
-          )
-          if (!alreadyIncluded) {
-            const match: CityMatch = {
-              cityId: city.id,
-              cityName: city.name,
-              citySlug: city.slug,
-              state: city.state,
-              isActive: city.isActive,
-              isComingSoon: city.isComingSoon,
-            }
-            if (city.aliases.some((a) => a.toLowerCase() === lower)) {
-              exactMatches.push(match)
-            } else {
-              partialMatches.push(match)
-            }
-          }
-        }
-      }
-
-      results.push(...exactMatches, ...partialMatches)
     }
 
     // Deduplicate and limit to 8
@@ -188,9 +175,9 @@ export async function POST(request: NextRequest) {
       data: deduped.slice(0, 8),
     })
   } catch (error) {
-    console.error('POST /api/city/resolve error:', error)
+    console.error('City resolve error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to resolve city' },
+      { success: false, error: String(error) },
       { status: 500 }
     )
   }
