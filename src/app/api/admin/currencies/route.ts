@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
+import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
 const currencySchema = z.object({
@@ -30,7 +31,7 @@ const updateSchema = currencySchema.partial().extend({
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user || !['ADMIN', 'SUPER_ADMIN'].includes((session.user as { role?: string }).role || '')) {
+    if (!session?.user || !isAdminRole((session.user as { role?: string }).role || '')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -60,7 +61,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user || !['ADMIN', 'SUPER_ADMIN'].includes((session.user as { role?: string }).role || '')) {
+    if (!session?.user || !isAdminRole((session.user as { role?: string }).role || '')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -104,7 +105,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user || !['ADMIN', 'SUPER_ADMIN'].includes((session.user as { role?: string }).role || '')) {
+    if (!session?.user || !isAdminRole((session.user as { role?: string }).role || '')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -151,7 +152,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user || !['ADMIN', 'SUPER_ADMIN'].includes((session.user as { role?: string }).role || '')) {
+    if (!session?.user || !isAdminRole((session.user as { role?: string }).role || '')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
+import { isAdminRole } from '@/lib/roles'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -14,7 +15,7 @@ const updateSchema = z.object({
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions)
-  if (!session || !['ADMIN', 'SUPER_ADMIN'].includes((session.user as { role?: string }).role || '')) {
+  if (!session || !isAdminRole((session.user as { role?: string }).role || '')) {
     return NextResponse.json({ success: false, error: 'Unauthorised' }, { status: 401 })
   }
   return null

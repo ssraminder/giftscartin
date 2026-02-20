@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
+import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
 // ==================== GET — Single city with zones and delivery config ====================
@@ -14,7 +15,7 @@ export async function GET(
     const session = await getServerSession(authOptions)
     if (
       !session?.user ||
-      !['ADMIN', 'SUPER_ADMIN'].includes(
+      !isAdminRole(
         (session.user as { role?: string }).role || ''
       )
     ) {
@@ -92,7 +93,7 @@ export async function PUT(
     const session = await getServerSession(authOptions)
     if (
       !session?.user ||
-      !['ADMIN', 'SUPER_ADMIN'].includes(
+      !isAdminRole(
         (session.user as { role?: string }).role || ''
       )
     ) {

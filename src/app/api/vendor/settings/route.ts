@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
+import { isVendorRole, isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -28,7 +29,7 @@ async function getVendor() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return null
   const user = session.user as { id: string; role: string }
-  if (user.role !== 'VENDOR' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') return null
+  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
   return prisma.vendor.findUnique({
     where: { userId: user.id },
     include: {
@@ -95,7 +96,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const user = session.user as { id: string; role: string }
-    if (user.role !== 'VENDOR' && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+    if (!isVendorRole(user.role) && !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
         { status: 403 }

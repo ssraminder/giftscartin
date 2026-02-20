@@ -1,7 +1,7 @@
 // Shared TypeScript interfaces for Gifts Cart India
 // These are frontend-friendly types (Decimal → number) derived from the Prisma schema
 
-export type UserRole = "CUSTOMER" | "VENDOR" | "ADMIN" | "SUPER_ADMIN"
+export type UserRole = "CUSTOMER" | "VENDOR" | "VENDOR_STAFF" | "ADMIN" | "SUPER_ADMIN" | "ACCOUNTANT" | "CITY_MANAGER" | "OPERATIONS"
 export type VendorStatus = "PENDING" | "APPROVED" | "SUSPENDED" | "TERMINATED"
 export type OrderStatus =
   | "PENDING"

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
+import { isAdminRole } from '@/lib/roles'
 
 /**
  * GET /api/admin/currencies/rate?code=USD
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const session = await getServerSession(authOptions)
     if (
       !session?.user ||
-      !['ADMIN', 'SUPER_ADMIN'].includes(
+      !isAdminRole(
         (session.user as { role?: string }).role || ''
       )
     ) {

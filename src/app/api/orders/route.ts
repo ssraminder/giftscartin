@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { getSupabase } from '@/lib/supabase'
+import { isAdminRole } from '@/lib/roles'
 import { paginationSchema } from '@/lib/validations'
 import { generateOrderNumber } from '@/lib/utils'
 import { z } from 'zod/v4'
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest) {
     const { page, pageSize } = parsed.data
     const skip = (page - 1) * pageSize
 
-    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+    const isAdmin = isAdminRole(user.role)
     const where = isAdmin ? {} : { userId: user.id }
 
     const [items, total] = await Promise.all([

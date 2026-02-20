@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
+import { isAdminRole } from '@/lib/roles'
 import { updateOrderStatusSchema } from '@/lib/validations'
 
 async function getAdminUser() {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return null
   const user = session.user as { id: string; role: string }
-  if (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') return null
+  if (!isAdminRole(user.role)) return null
   return user
 }
 
