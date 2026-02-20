@@ -887,6 +887,21 @@ model SeoSettings {
   @@map("seo_settings")
 }
 
+// ==================== PAYMENT METHODS ====================
+
+model PaymentMethod {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("payment_methods")
+}
+
 // ==================== ADMIN AUDIT ====================
 
 model AuditLog {

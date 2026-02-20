@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { DollarSign, ChevronRight } from "lucide-react"
+import { CreditCard, DollarSign, ChevronRight } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 
 const settingsLinks = [
@@ -10,6 +10,12 @@ const settingsLinks = [
     icon: DollarSign,
     label: "Currency Settings",
     description: "Configure currencies, exchange rates, markup, and rounding rules for international visitors",
+  },
+  {
+    href: "/admin/settings/payment-methods",
+    icon: CreditCard,
+    label: "Payment Methods",
+    description: "Configure available payment methods for manual payment recording (Cash, UPI, Bank Transfer, etc.)",
   },
 ]
 
