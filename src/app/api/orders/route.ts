@@ -85,9 +85,12 @@ export async function GET(request: NextRequest) {
     const { page, pageSize } = parsed.data
     const skip = (page - 1) * pageSize
 
+    const isAdmin = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
+    const where = isAdmin ? {} : { userId: user.id }
+
     const [items, total] = await Promise.all([
       prisma.order.findMany({
-        where: { userId: user.id },
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
@@ -102,7 +105,7 @@ export async function GET(request: NextRequest) {
           address: true,
         },
       }),
-      prisma.order.count({ where: { userId: user.id } }),
+      prisma.order.count({ where }),
     ])
 
     return NextResponse.json({
