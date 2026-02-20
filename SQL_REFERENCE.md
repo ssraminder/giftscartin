@@ -55,8 +55,9 @@
 | `product_relations` | ProductRelation | id, productId, relatedProductId, relationType, sortOrder, isActive | → products (×2), unique(productId, relatedProductId, relationType) |
 | `image_generation_jobs` | ImageGenerationJob | id, productId, imageIndex, imageType, status, promptUsed, storageUrl, retryCount | → products, unique(productId, imageIndex) |
 | `catalog_imports` | CatalogImport | id, adminId, fileName, status, categoriesCount, productsCount | (standalone) |
+| `payment_methods` | PaymentMethod | id, name, slug (unique), description, isActive, sortOrder | (standalone) |
 
-**Total: 47 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1)
+**Total: 48 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods)
 
 ---
 
@@ -69,6 +70,7 @@
 | Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ✅ Executed |
 | Migration 002 — Schema sync | order_items: +variationId, +variationLabel; payments: +gateway (PaymentGateway enum), +stripe/paypal columns; cart_items: +variationId; currency_configs table | ⏳ **PENDING — Run `prisma/migrations/002_sync_schema.sql` in Supabase SQL Editor** |
 | Sprint 1 migration | pincode_city_map, city_notifications, product_relations (RelationType enum), image_generation_jobs (ImageJobStatus, ImageType enums), catalog_imports (ImportStatus enum). Cities table: +aliases, +display_name, +is_coming_soon, +notify_count, +pincode_prefix. | ✅ Executed (pre-run in Supabase) |
+| Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | ⏳ **PENDING — Run in Supabase SQL Editor** |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 > Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
@@ -963,6 +965,30 @@ CREATE TABLE catalog_imports (
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP(3)
 );
+```
+
+### Payment Methods
+
+```sql
+CREATE TABLE payment_methods (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  description TEXT,
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO payment_methods (id, name, slug, description, "sortOrder") VALUES
+  (gen_random_uuid()::text, 'Cash', 'cash', 'Cash on delivery or in person', 1),
+  (gen_random_uuid()::text, 'UPI', 'upi', 'Google Pay, PhonePe, Paytm, etc.', 2),
+  (gen_random_uuid()::text, 'Bank Transfer', 'bank-transfer', 'NEFT / IMPS / RTGS', 3),
+  (gen_random_uuid()::text, 'Razorpay', 'razorpay', 'Online payment via Razorpay gateway', 4),
+  (gen_random_uuid()::text, 'Cheque', 'cheque', 'Payment by cheque', 5),
+  (gen_random_uuid()::text, 'Credit Card', 'credit-card', 'Visa, Mastercard, Amex', 6),
+  (gen_random_uuid()::text, 'Wallet', 'wallet', 'Platform wallet balance', 7);
 ```
 
 ### Pincode Lookup Queries

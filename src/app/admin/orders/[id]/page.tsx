@@ -8,7 +8,7 @@ import {
   CheckCircle2,
   Circle,
   Clock,
-  FileText,
+  CreditCard,
   Loader2,
   MapPin,
   MessageSquare,
@@ -30,6 +30,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -70,13 +72,14 @@ const STATUS_BADGE: Record<string, { label: string; variant: "default" | "second
   REFUNDED: { label: "Refunded", variant: "outline" },
 }
 
-const WORK_STATUSES = [
-  { value: "NEW", label: "New" },
-  { value: "IN_PROGRESS", label: "In Progress" },
-  { value: "QUOTE_SENT", label: "Quote Sent" },
-  { value: "CONFIRMED", label: "Confirmed" },
-  { value: "COMPLETED", label: "Completed" },
-]
+// ==================== Types ====================
+
+interface PaymentMethodOption {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+}
 
 // ==================== Helpers ====================
 
@@ -96,10 +99,6 @@ function formatDateTime(dateStr: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
-}
-
-function generateQuoteNumber(orderNumber: string): string {
-  return orderNumber.replace("GC-", "QT26-")
 }
 
 // ==================== Skeleton ====================
@@ -136,13 +135,22 @@ export default function AdminOrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [workStatus, setWorkStatus] = useState("NEW")
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [vendors, setVendors] = useState<{ id: string; businessName: string; status: string; city: { name: string } }[]>([])
   const [assigningVendor, setAssigningVendor] = useState(false)
   const [selectedVendorId, setSelectedVendorId] = useState("")
+
+  // Record Payment state
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>([])
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("")
+  const [paymentAmount, setPaymentAmount] = useState("")
+  const [transactionRef, setTransactionRef] = useState("")
+  const [paymentNotes, setPaymentNotes] = useState("")
+  const [recordingPayment, setRecordingPayment] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -172,10 +180,23 @@ export default function AdminOrderDetailPage() {
     }
   }, [])
 
+  const fetchPaymentMethods = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/payment-methods")
+      const json = await res.json()
+      if (json.success) {
+        setPaymentMethods(json.data.filter((m: { isActive: boolean }) => m.isActive))
+      }
+    } catch {
+      // Ignore
+    }
+  }, [])
+
   useEffect(() => {
     fetchOrder()
     fetchVendors()
-  }, [fetchOrder, fetchVendors])
+    fetchPaymentMethods()
+  }, [fetchOrder, fetchVendors, fetchPaymentMethods])
 
   const handleAssignVendor = async () => {
     if (!selectedVendorId) return
@@ -246,6 +267,55 @@ export default function AdminOrderDetailPage() {
     }
   }
 
+  const openPaymentDialog = () => {
+    if (order) {
+      setPaymentAmount(String(order.total))
+      setSelectedPaymentMethod("")
+      setTransactionRef("")
+      setPaymentNotes("")
+      setPaymentError(null)
+    }
+    setPaymentDialogOpen(true)
+  }
+
+  const handleRecordPayment = async () => {
+    if (!selectedPaymentMethod) {
+      setPaymentError("Please select a payment method")
+      return
+    }
+    const amount = parseFloat(paymentAmount)
+    if (isNaN(amount) || amount <= 0) {
+      setPaymentError("Please enter a valid amount")
+      return
+    }
+
+    setRecordingPayment(true)
+    setPaymentError(null)
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentMethodId: selectedPaymentMethod,
+          amount,
+          transactionRef: transactionRef || undefined,
+          notes: paymentNotes || undefined,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setPaymentDialogOpen(false)
+        fetchOrder()
+      } else {
+        setPaymentError(json.error || "Failed to record payment")
+      }
+    } catch {
+      setPaymentError("Network error. Please try again.")
+    } finally {
+      setRecordingPayment(false)
+    }
+  }
+
   if (loading) {
     return <OrderDetailSkeleton />
   }
@@ -265,7 +335,7 @@ export default function AdminOrderDetailPage() {
   const isDelivered = order.status === "DELIVERED"
   const currentStepIndex = STATUS_ORDER[order.status] ?? -1
   const statusBadge = STATUS_BADGE[order.status] || STATUS_BADGE.PENDING
-  const quoteNumber = generateQuoteNumber(order.orderNumber)
+  const canRecordPayment = order.paymentStatus === "PENDING" || order.paymentStatus === "FAILED"
 
   // Determine next status for quick advance button
   const nextStatusMap: Record<string, OrderStatus> = {
@@ -289,7 +359,7 @@ export default function AdminOrderDetailPage() {
 
       {/* ==================== HEADER SECTION ==================== */}
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
-        {/* Left: Order number + status badge + work status dropdown */}
+        {/* Left: Order number + status badge */}
         <div className="flex flex-col gap-2 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-bold text-slate-900 sm:text-xl">
@@ -297,63 +367,10 @@ export default function AdminOrderDetailPage() {
             </h1>
             <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-500 shrink-0">Work Status:</span>
-            <Select value={workStatus} onValueChange={setWorkStatus}>
-              <SelectTrigger className="h-8 w-[140px] text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {WORK_STATUSES.map((s) => (
-                  <SelectItem key={s.value} value={s.value}>
-                    {s.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
         </div>
 
         {/* Right: Action buttons */}
-        <div className="grid grid-cols-2 gap-2 md:flex md:flex-row md:gap-2 md:shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            className="col-span-2 justify-center"
-            onClick={() => {
-              const printContent = [
-                `Quote: ${quoteNumber}`,
-                `Order: ${order.orderNumber}`,
-                `Date: ${formatDateTime(order.createdAt)}`,
-                ``,
-                `Items:`,
-                ...(order.items?.map((item) =>
-                  `  ${item.name}${item.variationLabel ? ` (${item.variationLabel})` : ""} x${item.quantity} — ${formatPrice(item.price * item.quantity)}`
-                ) || []),
-                ``,
-                `Subtotal: ${formatPrice(order.subtotal)}`,
-                order.deliveryCharge > 0 ? `Delivery: ${formatPrice(order.deliveryCharge)}` : null,
-                order.discount > 0 ? `Discount: -${formatPrice(order.discount)}` : null,
-                `Total: ${formatPrice(order.total)}`,
-                ``,
-                `Delivery: ${formatDate(order.deliveryDate)} — ${order.deliverySlot}`,
-                order.address ? `Address: ${order.address.name}, ${order.address.address}, ${order.address.city} - ${order.address.pincode}` : null,
-                order.giftMessage ? `Gift Message: ${order.giftMessage}` : null,
-              ].filter(Boolean).join("\n")
-
-              const win = window.open("", "_blank")
-              if (win) {
-                win.document.write(`<html><head><title>${quoteNumber}</title></head><body><pre style="font-family:monospace;font-size:14px;padding:2rem;">${printContent}</pre></body></html>`)
-                win.document.close()
-              }
-            }}
-          >
-            <FileText className="mr-1.5 h-4 w-4" />
-            <span>
-              View Quote
-              <span className="hidden sm:inline"> ({quoteNumber})</span>
-            </span>
-          </Button>
+        <div className="flex flex-wrap gap-2 md:shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -420,6 +437,27 @@ export default function AdminOrderDetailPage() {
         )}
         {order.paymentMethod && <span>Method: {order.paymentMethod}</span>}
       </div>
+
+      {/* ==================== RECORD PAYMENT ==================== */}
+      {canRecordPayment && (
+        <Card className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-amber-200 bg-amber-50">
+          <div>
+            <p className="text-sm font-medium text-amber-800">Payment {order.paymentStatus === "FAILED" ? "Failed" : "Pending"}</p>
+            <p className="text-xs text-amber-600">
+              Record a manual payment for this order ({formatPrice(order.total)})
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-amber-300 text-amber-800 hover:bg-amber-100"
+            onClick={openPaymentDialog}
+          >
+            <CreditCard className="mr-1.5 h-4 w-4" />
+            Record Payment
+          </Button>
+        </Card>
+      )}
 
       {/* ==================== STATUS TIMELINE ==================== */}
       {!isCancelled && (
@@ -741,6 +779,89 @@ export default function AdminOrderDetailPage() {
                 </>
               ) : (
                 "Yes, Cancel Order"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== RECORD PAYMENT DIALOG ==================== */}
+      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+            <DialogDescription>
+              Manually record a payment for order {order.orderNumber}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="payment-method">Payment Method</Label>
+              <Select value={selectedPaymentMethod} onValueChange={setSelectedPaymentMethod}>
+                <SelectTrigger id="payment-method">
+                  <SelectValue placeholder="Select payment method..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentMethods.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment-amount">Amount</Label>
+              <Input
+                id="payment-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={paymentAmount}
+                onChange={(e) => setPaymentAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="transaction-ref">Transaction Reference (optional)</Label>
+              <Input
+                id="transaction-ref"
+                placeholder="e.g. UPI ref number, cheque number"
+                value={transactionRef}
+                onChange={(e) => setTransactionRef(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment-notes">Notes (optional)</Label>
+              <Input
+                id="payment-notes"
+                placeholder="e.g. Paid via Google Pay"
+                value={paymentNotes}
+                onChange={(e) => setPaymentNotes(e.target.value)}
+              />
+            </div>
+            {paymentError && (
+              <p className="text-sm text-destructive">{paymentError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPaymentDialogOpen(false)}
+              disabled={recordingPayment}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRecordPayment}
+              disabled={recordingPayment || !selectedPaymentMethod}
+            >
+              {recordingPayment ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  Recording...
+                </>
+              ) : (
+                "Mark as Paid"
               )}
             </Button>
           </DialogFooter>
