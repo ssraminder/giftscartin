@@ -234,7 +234,7 @@ export function CitySearch({
                       placeholder="Your email"
                       value={notifyEmail}
                       onChange={(e) => setNotifyEmail(e.target.value)}
-                      className="h-9 text-sm"
+                      className="h-9"
                     />
                     <Button
                       size="sm"

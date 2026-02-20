@@ -893,7 +893,7 @@ export default function CheckoutPage() {
                   {giftExpanded && (
                     <div className="border-t border-gray-100 p-4 sm:p-5">
                       <textarea
-                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-200 focus-visible:border-pink-300 min-h-[100px] resize-y"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-200 focus-visible:border-pink-300 min-h-[100px] resize-y"
                         placeholder="Write a heartfelt message for the recipient..."
                         maxLength={500}
                         value={giftMessage}
@@ -924,7 +924,7 @@ export default function CheckoutPage() {
                   {instructionsExpanded && (
                     <div className="border-t border-gray-100 p-4 sm:p-5">
                       <textarea
-                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-200 focus-visible:border-pink-300 min-h-[100px] resize-y"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-200 focus-visible:border-pink-300 min-h-[100px] resize-y"
                         placeholder="E.g., call before delivery, don't ring the bell..."
                         maxLength={500}
                         value={specialInstructions}

@@ -5,8 +5,8 @@ import Link from "next/link"
 import { ArrowRight, ChefHat, Clock, HeadphonesIcon, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { ProductCard } from "@/components/product/product-card"
+import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
 import { useCity } from "@/hooks/use-city"
 import type { Product, ApiResponse, PaginatedData } from "@/types"
 
@@ -36,20 +36,6 @@ const WHY_CHOOSE = [
     color: "bg-purple-50 text-purple-600",
   },
 ]
-
-function ProductCardSkeleton() {
-  return (
-    <div className="rounded-xl bg-white overflow-hidden" style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-      <Skeleton className="aspect-square w-full" />
-      <div className="p-3 sm:p-4 space-y-2">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-3 w-1/2" />
-        <Skeleton className="h-5 w-1/3" />
-        <Skeleton className="h-3 w-2/5" />
-      </div>
-    </div>
-  )
-}
 
 export function TrendingProducts() {
   const [products, setProducts] = useState<Product[]>([])

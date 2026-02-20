@@ -332,7 +332,7 @@ function LoginForm() {
                       required
                       autoFocus
                       disabled={loading}
-                      className="w-full px-4 py-3 rounded-lg text-sm transition-all duration-200 outline-none disabled:opacity-50"
+                      className="w-full px-4 py-3 rounded-lg text-base transition-all duration-200 outline-none disabled:opacity-50"
                       style={{
                         backgroundColor: '#FFF9F5',
                         border: '1.5px solid #E8DDD5',
