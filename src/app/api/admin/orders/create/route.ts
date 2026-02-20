@@ -58,22 +58,61 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data
 
-    // 1. Find or create user by phone
+    // 1. Find or create user by phone — handle email uniqueness conflicts
     let user = await prisma.user.findUnique({
       where: { phone: data.customerPhone },
     })
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          phone: data.customerPhone,
-          name: data.customerName,
-          email: data.customerEmail || null,
-        },
-      })
+      // If email is provided, check if another user already has it
+      if (data.customerEmail) {
+        const existingByEmail = await prisma.user.findUnique({
+          where: { email: data.customerEmail },
+        })
+        if (existingByEmail) {
+          // Email belongs to another user — create without email to avoid unique constraint violation
+          user = await prisma.user.create({
+            data: {
+              phone: data.customerPhone,
+              name: data.customerName,
+            },
+          })
+        } else {
+          user = await prisma.user.create({
+            data: {
+              phone: data.customerPhone,
+              name: data.customerName,
+              email: data.customerEmail,
+            },
+          })
+        }
+      } else {
+        user = await prisma.user.create({
+          data: {
+            phone: data.customerPhone,
+            name: data.customerName,
+          },
+        })
+      }
     }
 
-    // 2. Create address record
+    // 2. Validate all product IDs exist before creating the order
+    const productIds = data.items.map((i) => i.productId)
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true },
+    })
+
+    const foundProductIds = new Set(products.map((p) => p.id))
+    const missingIds = productIds.filter((id) => !foundProductIds.has(id))
+    if (missingIds.length > 0) {
+      return NextResponse.json(
+        { success: false, error: `Products not found: ${missingIds.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // 3. Create address record
     const address = await prisma.address.create({
       data: {
         userId: user.id,
@@ -86,14 +125,15 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // 3. Calculate subtotal from items
+    // 4. Calculate subtotal from items
     let subtotal = 0
+    const productNameMap = new Map(products.map((p) => [p.id, p.name]))
     const itemsForOrder = data.items.map((item) => {
       const lineTotal = item.price * item.quantity
       subtotal += lineTotal
       return {
         productId: item.productId,
-        name: '', // Will be set below
+        name: productNameMap.get(item.productId) || 'Unknown Product',
         quantity: item.quantity,
         price: item.price,
         variationId: item.variationId || null,
@@ -102,18 +142,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Fetch product names
-    const productIds = data.items.map((i) => i.productId)
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, name: true },
-    })
-    const productNameMap = new Map(products.map((p) => [p.id, p.name]))
-    for (const item of itemsForOrder) {
-      item.name = productNameMap.get(item.productId) || 'Unknown Product'
-    }
-
-    // 4. Apply coupon if provided
+    // 5. Apply coupon if provided
     let discount = 0
     let appliedCouponId: string | null = null
     if (data.couponCode) {
@@ -142,7 +171,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Find/assign vendor if not specified
+    // 6. Find/assign vendor if not specified
     let vendorId: string | null = data.vendorId || null
 
     if (!vendorId) {
@@ -200,14 +229,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 6. Generate order number
+    // 7. Generate order number with collision retry
     const zone = await prisma.cityZone.findFirst({
       where: { pincodes: { has: data.deliveryAddress.pincode }, isActive: true },
       include: { city: true },
     })
     const cityCode = zone?.city.slug.substring(0, 3).toUpperCase() || 'GEN'
 
-    // 7. Determine order status
+    let orderNumber = generateOrderNumber(cityCode)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const existing = await prisma.order.findUnique({
+        where: { orderNumber },
+        select: { id: true },
+      })
+      if (!existing) break
+      orderNumber = generateOrderNumber(cityCode)
+    }
+
+    // 8. Determine order status
     const orderStatus = vendorId ? 'CONFIRMED' : 'PENDING'
 
     // Calculate total
@@ -215,10 +254,10 @@ export async function POST(request: NextRequest) {
     const surchargeAmount = data.surcharge
     const total = subtotal + deliveryCharge + surchargeAmount - discount
 
-    // 8. Create the order
+    // 9. Create the order
     const order = await prisma.order.create({
       data: {
-        orderNumber: generateOrderNumber(cityCode),
+        orderNumber,
         userId: user.id,
         vendorId,
         addressId: address.id,
@@ -253,7 +292,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // 9. Create payment record for CASH or PAID_ONLINE
+    // 10. Create payment record for CASH or PAID_ONLINE
     if (data.paymentMethod === 'CASH' || data.paymentMethod === 'PAID_ONLINE') {
       await prisma.payment.create({
         data: {
@@ -267,7 +306,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 10. Increment coupon usage
+    // 11. Increment coupon usage
     if (appliedCouponId) {
       await prisma.coupon.update({
         where: { id: appliedCouponId },
@@ -288,9 +327,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: fullOrder }, { status: 201 })
   } catch (error) {
-    console.error('POST /api/admin/orders/create error:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('POST /api/admin/orders/create error:', message, error)
     return NextResponse.json(
-      { success: false, error: 'Failed to create order' },
+      { success: false, error: `Failed to create order: ${message}` },
       { status: 500 }
     )
   }
