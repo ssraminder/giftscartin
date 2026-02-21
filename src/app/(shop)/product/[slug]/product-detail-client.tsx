@@ -892,7 +892,18 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
             <h2 className="section-title text-[#1A1A2E] mb-8">You May Also Like</h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6 mt-10">
               {relatedProducts.map((rp) => (
-                <ProductCard key={rp.id} product={rp} />
+                <ProductCard
+                  key={rp.id}
+                  id={rp.id}
+                  name={rp.name}
+                  slug={rp.slug}
+                  basePrice={Number(rp.basePrice)}
+                  images={rp.images}
+                  avgRating={rp.avgRating}
+                  totalReviews={rp.totalReviews}
+                  weight={rp.weight ?? undefined}
+                  tags={rp.tags}
+                />
               ))}
             </div>
           </div>
