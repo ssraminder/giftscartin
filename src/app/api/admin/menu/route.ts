@@ -73,17 +73,22 @@ export async function GET() {
   }
 }
 
-// ==================== PATCH — Bulk update menu items (admin only) ====================
+// ==================== PATCH — Update menu items (admin only) ====================
+// Accepts either:
+//   { updates: [{ id, ...fields }] }  — bulk format
+//   { id, ...fields }                  — single item shorthand
 
 const patchItemSchema = z.object({
   id: z.string(),
   isVisible: z.boolean().optional(),
   label: z.string().min(1).optional(),
   href: z.string().optional(),
+  icon: z.string().optional(),
+  slug: z.string().optional(),
   sortOrder: z.number().int().optional(),
 })
 
-const patchSchema = z.object({
+const patchBulkSchema = z.object({
   updates: z.array(patchItemSchema).min(1).max(100),
 })
 
@@ -98,15 +103,33 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const parsed = patchSchema.safeParse(body)
-    if (!parsed.success) {
+
+    // Support both single { id, ...fields } and bulk { updates: [...] }
+    let updates: z.infer<typeof patchItemSchema>[]
+    if (body.updates) {
+      const parsed = patchBulkSchema.safeParse(body)
+      if (!parsed.success) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid input', details: parsed.error.issues },
+          { status: 400 }
+        )
+      }
+      updates = parsed.data.updates
+    } else if (body.id) {
+      const parsed = patchItemSchema.safeParse(body)
+      if (!parsed.success) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid input', details: parsed.error.issues },
+          { status: 400 }
+        )
+      }
+      updates = [parsed.data]
+    } else {
       return NextResponse.json(
-        { success: false, error: 'Invalid input', details: parsed.error.issues },
+        { success: false, error: 'Must provide either { id, ...fields } or { updates: [...] }' },
         { status: 400 }
       )
     }
-
-    const { updates } = parsed.data
 
     // Run all updates in a transaction
     await prisma.$transaction(
@@ -134,8 +157,10 @@ export async function PATCH(request: NextRequest) {
 const createSchema = z.object({
   parentId: z.string().optional(),
   label: z.string().min(1),
+  slug: z.string().optional(),
   href: z.string().optional(),
   icon: z.string().optional(),
+  isVisible: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   itemType: z.string().default('link'),
 })
@@ -159,7 +184,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { parentId, label, href, icon, sortOrder, itemType } = parsed.data
+    const { parentId, label, slug, href, icon, isVisible, sortOrder, itemType } = parsed.data
 
     // Determine sort order if not provided — append to end
     let finalSortOrder = sortOrder
@@ -176,8 +201,10 @@ export async function POST(request: NextRequest) {
       data: {
         parentId: parentId ?? null,
         label,
+        slug: slug ?? null,
         href: href ?? null,
         icon: icon ?? null,
+        isVisible: isVisible ?? true,
         sortOrder: finalSortOrder,
         itemType,
       },
