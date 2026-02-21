@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import {
   Package,
   Plus,
@@ -16,6 +15,8 @@ import {
   ChevronRight,
   CheckCircle,
   AlertCircle,
+  Zap,
+  Users,
 } from "lucide-react"
 import { formatPrice } from "@/lib/utils"
 
@@ -26,9 +27,10 @@ interface ProductItem {
   productType: "SIMPLE" | "VARIABLE"
   basePrice: number
   isActive: boolean
+  isSameDayEligible: boolean
   images: string[]
   category: { id: string; name: string }
-  _count: { variations: number }
+  _count: { variations: number; vendorProducts: number }
 }
 
 interface CategoryOption {
@@ -51,6 +53,7 @@ export default function AdminProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState("")
   const [typeFilter, setTypeFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
+  const [sameDayFilter, setSameDayFilter] = useState("")
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -67,7 +70,7 @@ export default function AdminProductsPage() {
   // Reset page on filter change
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, categoryFilter, typeFilter, statusFilter])
+  }, [debouncedSearch, categoryFilter, typeFilter, statusFilter, sameDayFilter])
 
   // Fetch categories
   useEffect(() => {
@@ -94,6 +97,7 @@ export default function AdminProductsPage() {
       if (categoryFilter) params.set("category", categoryFilter)
       if (typeFilter) params.set("type", typeFilter)
       if (statusFilter) params.set("status", statusFilter)
+      if (sameDayFilter) params.set("isSameDayEligible", sameDayFilter)
 
       const res = await fetch(`/api/admin/products?${params}`)
       const json = await res.json()
@@ -106,7 +110,7 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, debouncedSearch, categoryFilter, typeFilter, statusFilter])
+  }, [page, pageSize, debouncedSearch, categoryFilter, typeFilter, statusFilter, sameDayFilter])
 
   useEffect(() => {
     fetchProducts()
@@ -116,7 +120,7 @@ export default function AdminProductsPage() {
   const toggleActive = async (id: string, isActive: boolean) => {
     try {
       const res = await fetch(`/api/admin/products/${id}`, {
-        method: "PUT",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive }),
       })
@@ -124,6 +128,25 @@ export default function AdminProductsPage() {
       if (json.success) {
         setProducts((prev) =>
           prev.map((p) => (p.id === id ? { ...p, isActive } : p))
+        )
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Inline toggle same-day
+  const toggleSameDay = async (id: string, isSameDayEligible: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isSameDayEligible }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, isSameDayEligible } : p))
         )
       }
     } catch {
@@ -225,8 +248,8 @@ export default function AdminProductsPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
             value={search}
@@ -238,7 +261,7 @@ export default function AdminProductsPage() {
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-base"
         >
           <option value="">All Categories</option>
           {categories
@@ -256,7 +279,7 @@ export default function AdminProductsPage() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-base"
         >
           <option value="">All Types</option>
           <option value="SIMPLE">Simple</option>
@@ -265,11 +288,20 @@ export default function AdminProductsPage() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-base"
         >
           <option value="">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
+        </select>
+        <select
+          value={sameDayFilter}
+          onChange={(e) => setSameDayFilter(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 py-2 text-base"
+        >
+          <option value="">Same Day: All</option>
+          <option value="true">Same Day Only</option>
+          <option value="false">Not Same Day</option>
         </select>
       </div>
 
@@ -316,12 +348,12 @@ export default function AdminProductsPage() {
                     className="h-4 w-4 rounded border-slate-300"
                   />
                 </th>
-                <th className="px-3 py-3 text-left font-medium text-slate-600">Image</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Product</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Category</th>
-                <th className="px-3 py-3 text-left font-medium text-slate-600">Type</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Price</th>
+                <th className="px-3 py-3 text-left font-medium text-slate-600">Same Day</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Status</th>
+                <th className="px-3 py-3 text-left font-medium text-slate-600">Vendors</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Actions</th>
               </tr>
             </thead>
@@ -337,46 +369,44 @@ export default function AdminProductsPage() {
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <div className="h-10 w-10 rounded-lg border bg-slate-100 overflow-hidden">
-                      {product.images?.[0] ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={product.images?.[0]}
-                          alt={product.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center h-full">
-                          <Package className="h-4 w-4 text-slate-300" />
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div>
-                      <p className="font-medium text-slate-900 line-clamp-1">{product.name}</p>
-                      <p className="text-xs text-slate-400">/{product.slug}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 flex-shrink-0 rounded-lg border bg-slate-100 overflow-hidden">
+                        {product.images?.[0] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={product.images?.[0]}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full">
+                            <Package className="h-4 w-4 text-slate-300" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-900 line-clamp-1">{product.name}</p>
+                        <p className="text-xs text-slate-400">/{product.slug}</p>
+                      </div>
                     </div>
                   </td>
                   <td className="px-3 py-3 text-slate-600">{product.category?.name}</td>
-                  <td className="px-3 py-3">
-                    <Badge
-                      variant="outline"
-                      className={
-                        product.productType === "VARIABLE"
-                          ? "border-purple-200 bg-purple-50 text-purple-700"
-                          : "border-slate-200 bg-slate-50 text-slate-600"
-                      }
-                    >
-                      {product.productType === "VARIABLE"
-                        ? `Variable (${product._count.variations})`
-                        : "Simple"}
-                    </Badge>
-                  </td>
                   <td className="px-3 py-3 font-medium">
-                    {product.productType === "VARIABLE" && product._count.variations > 0
-                      ? `From ${formatPrice(product.basePrice)}`
-                      : formatPrice(product.basePrice)}
+                    {formatPrice(product.basePrice)}
+                  </td>
+                  <td className="px-3 py-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleSameDay(product.id, !product.isSameDayEligible)}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors cursor-pointer ${
+                        product.isSameDayEligible
+                          ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                          : "bg-slate-50 text-slate-400 hover:bg-slate-100"
+                      }`}
+                    >
+                      <Zap className="h-3 w-3" />
+                      {product.isSameDayEligible ? "Yes" : "No"}
+                    </button>
                   </td>
                   <td className="px-3 py-3">
                     <button
@@ -390,6 +420,12 @@ export default function AdminProductsPage() {
                     >
                       {product.isActive ? "Active" : "Inactive"}
                     </button>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1 text-slate-600">
+                      <Users className="h-3.5 w-3.5" />
+                      {product._count.vendorProducts}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1">

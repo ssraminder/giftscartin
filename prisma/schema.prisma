@@ -397,6 +397,7 @@ model Product {
   aiImagePrompt     String?
   minLeadTimeHours  Int            @default(2)
   leadTimeNote      String?
+  isSameDayEligible Boolean        @default(false)
 
   category        Category       @relation(fields: [categoryId], references: [id])
   variations      ProductVariation[]

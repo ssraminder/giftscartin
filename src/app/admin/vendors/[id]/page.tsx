@@ -203,6 +203,21 @@ export default function EditVendorPage() {
         </div>
       </div>
 
+      {/* Products tab link */}
+      <div className="rounded-lg border bg-white p-4">
+        <Link
+          href={`/admin/vendors/${id}/products`}
+          className="flex items-center justify-between rounded-lg px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+        >
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            <span>Manage Products</span>
+            <span className="text-slate-400">({vendor._count.products} assigned)</span>
+          </div>
+          <ChevronLeft className="h-4 w-4 rotate-180 text-slate-400" />
+        </Link>
+      </div>
+
       <VendorForm vendor={vendor} cities={cities} />
     </div>
   )

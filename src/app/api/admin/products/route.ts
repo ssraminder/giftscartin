@@ -12,8 +12,10 @@ export const dynamic = 'force-dynamic'
 const listSchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
+  categorySlug: z.string().optional(),
   type: z.enum(['SIMPLE', 'VARIABLE']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
+  isSameDayEligible: z.enum(['true', 'false']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 })
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const params = listSchema.parse(Object.fromEntries(searchParams))
-    const { search, category, type, status, page, pageSize } = params
+    const { search, category, categorySlug, type, status, isSameDayEligible, page, pageSize } = params
 
     const where: Record<string, unknown> = {}
 
@@ -43,6 +45,9 @@ export async function GET(request: NextRequest) {
     if (category) {
       where.categoryId = category
     }
+    if (categorySlug) {
+      where.category = { slug: categorySlug }
+    }
     if (type) {
       where.productType = type
     }
@@ -50,6 +55,11 @@ export async function GET(request: NextRequest) {
       where.isActive = true
     } else if (status === 'inactive') {
       where.isActive = false
+    }
+    if (isSameDayEligible === 'true') {
+      where.isSameDayEligible = true
+    } else if (isSameDayEligible === 'false') {
+      where.isSameDayEligible = false
     }
 
     const [items, total] = await Promise.all([
@@ -59,8 +69,8 @@ export async function GET(request: NextRequest) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
-          category: { select: { id: true, name: true } },
-          _count: { select: { variations: true } },
+          category: { select: { id: true, name: true, slug: true } },
+          _count: { select: { variations: true, vendorProducts: true } },
         },
       }),
       prisma.product.count({ where }),
@@ -73,6 +83,7 @@ export async function GET(request: NextRequest) {
       productType: item.productType,
       basePrice: Number(item.basePrice),
       isActive: item.isActive,
+      isSameDayEligible: item.isSameDayEligible,
       images: item.images,
       category: item.category,
       _count: item._count,
@@ -159,6 +170,7 @@ const createProductSchema = z.object({
   weight: z.string().nullable().optional(),
   isVeg: z.boolean().default(true),
   isActive: z.boolean().default(true),
+  isSameDayEligible: z.boolean().default(false),
   sku: z.string().nullable().optional(),
   stockQty: z.number().int().nullable().optional(),
   dailyLimit: z.number().int().nullable().optional(),
@@ -215,6 +227,7 @@ export async function POST(request: NextRequest) {
         weight: data.weight ?? null,
         isVeg: data.isVeg,
         isActive: data.isActive,
+        isSameDayEligible: data.isSameDayEligible,
         metaTitle: data.metaTitle ?? null,
         metaDescription: data.metaDescription ?? null,
         metaKeywords: data.metaKeywords,

@@ -72,6 +72,7 @@
 | Sprint 1 migration | pincode_city_map, city_notifications, product_relations (RelationType enum), image_generation_jobs (ImageJobStatus, ImageType enums), catalog_imports (ImportStatus enum). Cities table: +aliases, +display_name, +is_coming_soon, +notify_count, +pincode_prefix. | ✅ Executed (pre-run in Supabase) |
 | Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | ⏳ **PENDING — Run in Supabase SQL Editor** |
 | Delivery Slot System — Prompt 7 | Added min_lead_time_hours + lead_time_note to products; cutoff_hours + cutoff_time + slot_group to delivery_slots; replaced blocked_slots[] with mode + slot_overrides on delivery_holidays; seeded 6 fixed windows + Chandigarh city configs + example holidays | ⏳ **PENDING — Run `prisma/migrations/prompt7_delivery_slot_system.sql` in Supabase SQL Editor** |
+| Same-Day Eligible column | Added `isSameDayEligible` BOOLEAN column to products table (default false) | ⏳ **PENDING — Run `ALTER TABLE products ADD COLUMN IF NOT EXISTS "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false;` in Supabase SQL Editor** |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 > Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
@@ -512,7 +513,10 @@ CREATE TABLE products (
     meta_keywords TEXT[] NOT NULL DEFAULT '{}',
     og_image TEXT,
     canonical_url TEXT,
-    ai_image_prompt TEXT
+    ai_image_prompt TEXT,
+    min_lead_time_hours INTEGER NOT NULL DEFAULT 2,
+    lead_time_note TEXT,
+    "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE product_addons (

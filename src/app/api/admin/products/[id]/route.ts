@@ -131,6 +131,7 @@ const updateProductSchema = z.object({
   weight: z.string().nullable().optional(),
   isVeg: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  isSameDayEligible: z.boolean().optional(),
   // SEO
   metaTitle: z.string().nullable().optional(),
   metaDescription: z.string().nullable().optional(),
@@ -221,6 +222,7 @@ export async function PUT(
     if (data.weight !== undefined) productUpdate.weight = data.weight
     if (data.isVeg !== undefined) productUpdate.isVeg = data.isVeg
     if (data.isActive !== undefined) productUpdate.isActive = data.isActive
+    if (data.isSameDayEligible !== undefined) productUpdate.isSameDayEligible = data.isSameDayEligible
     if (data.metaTitle !== undefined) productUpdate.metaTitle = data.metaTitle
     if (data.metaDescription !== undefined) productUpdate.metaDescription = data.metaDescription
     if (data.metaKeywords !== undefined) productUpdate.metaKeywords = data.metaKeywords
@@ -483,6 +485,95 @@ export async function PUT(
     const message = error instanceof Error ? error.message : 'Failed to update product'
     return NextResponse.json(
       { success: false, error: message },
+      { status: 500 }
+    )
+  }
+}
+
+// ==================== PATCH — Quick update (isActive, isSameDayEligible, basePrice) ====================
+
+const patchProductSchema = z.object({
+  name: z.string().min(1).optional(),
+  slug: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  shortDesc: z.string().nullable().optional(),
+  categoryId: z.string().min(1).optional(),
+  basePrice: z.number().min(0).optional(),
+  images: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+  occasion: z.array(z.string()).optional(),
+  weight: z.string().nullable().optional(),
+  isVeg: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  isSameDayEligible: z.boolean().optional(),
+})
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 403 }
+      )
+    }
+
+    const existing = await prisma.product.findUnique({ where: { id: params.id } })
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: 'Product not found' },
+        { status: 404 }
+      )
+    }
+
+    const body = await request.json()
+    const parsed = patchProductSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: parsed.error.issues[0].message },
+        { status: 400 }
+      )
+    }
+
+    const data = parsed.data
+    const productUpdate: Record<string, unknown> = {}
+    if (data.name !== undefined) productUpdate.name = data.name
+    if (data.slug !== undefined) productUpdate.slug = data.slug
+    if (data.description !== undefined) productUpdate.description = data.description
+    if (data.shortDesc !== undefined) productUpdate.shortDesc = data.shortDesc
+    if (data.categoryId !== undefined) productUpdate.categoryId = data.categoryId
+    if (data.basePrice !== undefined) productUpdate.basePrice = data.basePrice
+    if (data.images !== undefined) productUpdate.images = data.images
+    if (data.tags !== undefined) productUpdate.tags = data.tags
+    if (data.occasion !== undefined) productUpdate.occasion = data.occasion
+    if (data.weight !== undefined) productUpdate.weight = data.weight
+    if (data.isVeg !== undefined) productUpdate.isVeg = data.isVeg
+    if (data.isActive !== undefined) productUpdate.isActive = data.isActive
+    if (data.isSameDayEligible !== undefined) productUpdate.isSameDayEligible = data.isSameDayEligible
+
+    const updated = await prisma.product.update({
+      where: { id: params.id },
+      data: productUpdate,
+      include: {
+        category: { select: { id: true, name: true } },
+        _count: { select: { variations: true, vendorProducts: true } },
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updated,
+        basePrice: Number(updated.basePrice),
+      },
+    })
+  } catch (error) {
+    console.error('PATCH /api/admin/products/[id] error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to update product' },
       { status: 500 }
     )
   }
