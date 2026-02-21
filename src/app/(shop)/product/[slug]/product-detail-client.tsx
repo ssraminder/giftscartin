@@ -20,7 +20,9 @@ import { VariationSelector } from "@/components/product/variation-selector"
 import { AddonGroup } from "@/components/product/addon-group"
 import { UpsellProducts } from "@/components/product/upsell-products"
 import { ReviewList } from "@/components/product/review-list"
-import { ProductCard } from "@/components/product/product-card"
+import { UrgencyCountdown } from "@/components/product/urgency-countdown"
+import { YouMayAlsoLike } from "@/components/product/you-may-also-like"
+import { addRecentlyViewed } from "@/components/product/recently-viewed"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import { usePartner } from "@/hooks/use-partner"
@@ -35,7 +37,6 @@ import type {
   AddonGroupSelection,
   AddonSelectionRecord,
   ApiResponse,
-  PaginatedData,
 } from "@/types"
 
 // -- Helper: render star rating ------------------------------------------------
@@ -220,7 +221,6 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   // State for fetched data
   const [product, setProduct] = useState<ProductDetail | null>(null)
-  const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -260,15 +260,18 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
         const json: ApiResponse<ProductDetail> = await res.json()
         if (json.success && json.data) {
           setProduct(json.data)
-          // Fetch related products from same category
-          if (json.data.category?.slug) {
-            const vendorParam = partner?.defaultVendorId ? `&vendorId=${partner.defaultVendorId}` : ""
-            const relRes = await fetch(`/api/products?categorySlug=${json.data.category.slug}&pageSize=5&sortBy=rating${vendorParam}`)
-            const relJson: ApiResponse<PaginatedData<Product>> = await relRes.json()
-            if (relJson.success && relJson.data) {
-              setRelatedProducts(relJson.data.items.filter((p) => p.id !== json.data!.id).slice(0, 4))
-            }
-          }
+          // Track in recently viewed
+          addRecentlyViewed({
+            id: json.data.id,
+            name: json.data.name,
+            slug: json.data.slug,
+            basePrice: Number(json.data.basePrice),
+            images: json.data.images,
+            avgRating: json.data.avgRating,
+            totalReviews: json.data.totalReviews,
+            weight: json.data.weight,
+            tags: json.data.tags,
+          })
         } else {
           setNotFound(true)
         }
@@ -974,6 +977,9 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
               {addonBlock}
               {giftMessageBlock}
               {quantityBlock}
+              <div className="mb-4">
+                <UrgencyCountdown />
+              </div>
               {actionButtons}
               {trustBadges}
             </div>
@@ -1005,6 +1011,9 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
               {giftMessageBlock}
               {addonBlock}
               {quantityBlock}
+              <div className="mb-4">
+                <UrgencyCountdown />
+              </div>
               {actionButtons}
               {trustBadges}
             </div>
@@ -1019,27 +1028,14 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
         </div>
       )}
 
-      {/* Related Products */}
-      {relatedProducts.length > 0 && (
+      {/* You May Also Like */}
+      {product.category?.slug && (
         <div className="bg-gray-50 border-t py-10">
           <div className="container mx-auto px-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-6">You May Also Like</h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6">
-              {relatedProducts.map((rp) => (
-                <ProductCard
-                  key={rp.id}
-                  id={rp.id}
-                  name={rp.name}
-                  slug={rp.slug}
-                  basePrice={Number(rp.basePrice)}
-                  images={rp.images}
-                  avgRating={rp.avgRating}
-                  totalReviews={rp.totalReviews}
-                  weight={rp.weight ?? undefined}
-                  tags={rp.tags}
-                />
-              ))}
-            </div>
+            <YouMayAlsoLike
+              categorySlug={product.category.slug}
+              currentProductId={product.id}
+            />
           </div>
         </div>
       )}
