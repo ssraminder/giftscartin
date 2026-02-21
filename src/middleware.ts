@@ -10,6 +10,23 @@ const adminPaths = ['/admin']
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // Referral cookie forwarding: capture ?ref= param into cookie for persistence
+  const ref = request.nextUrl.searchParams.get('ref')
+  const existingRef = request.cookies.get('gci_ref')
+
+  if (ref && !existingRef) {
+    const sanitized = ref.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50)
+    if (sanitized) {
+      const response = NextResponse.next()
+      response.cookies.set('gci_ref', sanitized, {
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/',
+        sameSite: 'lax',
+      })
+      return response
+    }
+  }
+
   // Never redirect public routes — prevents redirect loops on login/register
   if (publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'))) {
     return NextResponse.next()
@@ -60,5 +77,10 @@ export const config = {
     '/vendor/:path*',
     '/admin',
     '/admin/:path*',
+    // Capture referral ?ref= params on shop pages
+    '/',
+    '/category/:path*',
+    '/product/:path*',
+    '/:city',
   ],
 }

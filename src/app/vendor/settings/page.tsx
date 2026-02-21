@@ -600,7 +600,7 @@ export default function VendorSettingsPage() {
             }>{settings?.status}</Badge>
           </span>
           <span>Commission: {settings?.commissionRate}%</span>
-          <span>Rating: {settings?.rating ? settings.rating.toFixed(1) : "N/A"}</span>
+          <span>Rating: {settings?.rating ? Number(settings.rating).toFixed(1) : "N/A"}</span>
           <span>Total Orders: {settings?.totalOrders}</span>
         </CardContent>
       </Card>

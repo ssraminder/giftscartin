@@ -253,8 +253,27 @@ export async function POST(request: NextRequest) {
       giftMessage,
       specialInstructions,
       couponCode,
-      partnerId,
+      partnerId: bodyPartnerId,
     } = parsed.data
+
+    // Resolve partner: prefer body partnerId, fallback to gci_ref cookie
+    let partnerId = bodyPartnerId || null
+    if (!partnerId) {
+      const refCode = request.cookies.get('gci_ref')?.value ?? null
+      if (refCode) {
+        try {
+          const partner = await prisma.partner.findUnique({
+            where: { refCode, isActive: true },
+            select: { id: true },
+          })
+          if (partner) {
+            partnerId = partner.id
+          }
+        } catch {
+          // Non-critical: ignore referral lookup errors
+        }
+      }
+    }
 
     // Resolve address: create inline or look up existing
     let address

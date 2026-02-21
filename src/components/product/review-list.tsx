@@ -62,7 +62,7 @@ export function ReviewList({ reviews, avgRating, totalReviews }: ReviewListProps
       {/* Rating summary */}
       <div className="flex gap-6 rounded-xl border p-4 sm:p-6">
         <div className="flex flex-col items-center gap-1">
-          <span className="text-4xl font-bold">{avgRating.toFixed(1)}</span>
+          <span className="text-4xl font-bold">{Number(avgRating).toFixed(1)}</span>
           <StarRating rating={Math.round(avgRating)} />
           <span className="mt-1 text-xs text-muted-foreground">
             {totalReviews} {totalReviews === 1 ? "review" : "reviews"}

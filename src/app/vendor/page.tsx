@@ -145,7 +145,7 @@ export default function VendorDashboardPage() {
     },
     {
       title: "Rating",
-      value: data.rating > 0 ? data.rating.toFixed(1) : "New",
+      value: Number(data.rating) > 0 ? Number(data.rating).toFixed(1) : "New",
       icon: Star,
       color: "text-amber-600",
       bg: "bg-amber-50",

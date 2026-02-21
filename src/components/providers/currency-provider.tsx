@@ -86,7 +86,13 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         if (!res.ok) throw new Error("Failed to resolve currency")
         const json = await res.json()
         if (json.success && json.data?.currency) {
-          setCurrency(json.data.currency)
+          const c = json.data.currency
+          setCurrency({
+            ...c,
+            exchangeRate: Number(c.exchangeRate),
+            markup: Number(c.markup),
+            roundTo: Number(c.roundTo),
+          })
           setCountry(json.data.country || "IN")
           setRegion(json.data.region || "india")
           setGateways(json.data.gateways || ["razorpay", "cod"])
