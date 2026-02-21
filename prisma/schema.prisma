@@ -55,6 +55,12 @@ enum AddonType {
   FILE_UPLOAD
 }
 
+enum HolidayMode {
+  FULL_BLOCK
+  STANDARD_ONLY
+  CUSTOM
+}
+
 model OtpVerification {
   id        String   @id @default(cuid())
   email     String
@@ -136,16 +142,19 @@ model CityZone {
 // ==================== DELIVERY CONFIGURATION ====================
 
 model DeliverySlot {
-  id          String  @id @default(cuid())
-  name        String
-  slug        String  @unique
-  startTime   String
-  endTime     String
-  baseCharge  Decimal @default(0) @db.Decimal(10, 2)
-  isActive    Boolean @default(true)
+  id           String  @id @default(cuid())
+  name         String
+  slug         String  @unique
+  startTime    String
+  endTime      String
+  baseCharge   Decimal @default(0) @db.Decimal(10, 2)
+  cutoffHours  Int     @default(4)
+  cutoffTime   String?
+  slotGroup    String  @default("standard")
+  isActive     Boolean @default(true)
 
-  cityConfigs CityDeliveryConfig[]
-  vendorSlots VendorSlot[]
+  cityConfigs  CityDeliveryConfig[]
+  vendorSlots  VendorSlot[]
 
   @@map("delivery_slots")
 }
@@ -165,13 +174,15 @@ model CityDeliveryConfig {
 }
 
 model DeliveryHoliday {
-  id           String   @id @default(cuid())
-  date         DateTime @db.Date
-  cityId       String?
-  blockedSlots String[]
-  reason       String
+  id              String      @id @default(cuid())
+  date            DateTime    @db.Date
+  cityId          String?
+  reason          String
+  customerMessage String?
+  mode            HolidayMode @default(FULL_BLOCK)
+  slotOverrides   Json?
 
-  city         City?    @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  city            City?       @relation(fields: [cityId], references: [id], onDelete: Cascade)
 
   @@map("delivery_holidays")
 }
@@ -382,6 +393,8 @@ model Product {
   ogImage           String?
   canonicalUrl      String?
   aiImagePrompt     String?
+  minLeadTimeHours  Int            @default(2)
+  leadTimeNote      String?
 
   category        Category       @relation(fields: [categoryId], references: [id])
   variations      ProductVariation[]

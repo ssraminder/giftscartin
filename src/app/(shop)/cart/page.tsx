@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2 } from "lucide-react"
+import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2, Truck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { CartItem } from "@/components/cart/cart-item"
 import { CartSummary } from "@/components/cart/cart-summary"
 import { CouponInput } from "@/components/cart/coupon-input"
+import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
 import { useCart } from "@/hooks/use-cart"
 
 const BASE_DELIVERY_CHARGE = 49
@@ -27,6 +28,12 @@ export default function CartPage() {
   const [couponExpanded, setCouponExpanded] = useState(!!storedCouponCode)
   const [couponLoading, setCouponLoading] = useState(false)
   const [couponError, setCouponError] = useState<string | null>(null)
+
+  // Delivery slot state
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
+  const [, setSelectedSlotName] = useState('')
+  const [selectedSlotCharge, setSelectedSlotCharge] = useState(0)
 
   // Hydration guard for Zustand persisted store
   const [mounted, setMounted] = useState(false)
@@ -52,7 +59,9 @@ export default function CartPage() {
   }
 
   const subtotal = getSubtotal()
-  const deliveryCharge = subtotal >= FREE_DELIVERY_ABOVE ? 0 : BASE_DELIVERY_CHARGE
+  const baseDeliveryCharge = subtotal >= FREE_DELIVERY_ABOVE ? 0 : BASE_DELIVERY_CHARGE
+  const deliveryCharge = baseDeliveryCharge + selectedSlotCharge
+  const cartProductIds = items.map(item => item.productId)
 
   const handleApplyCoupon = async (code: string) => {
     setCouponLoading(true)
@@ -178,6 +187,29 @@ export default function CartPage() {
                   )}
                 </div>
               ))}
+            </div>
+
+            {/* Delivery Slot Section */}
+            <div className="card-premium overflow-hidden">
+              <div className="bg-[#FFF9F5] px-4 py-3 sm:px-5 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <Truck className="h-5 w-5 text-[#E91E63]" />
+                  <h3 className="font-semibold text-gray-800">Delivery Schedule</h3>
+                </div>
+              </div>
+              <div className="p-4 sm:p-5">
+                <DeliverySlotPicker
+                  productIds={cartProductIds}
+                  selectedDate={selectedDate}
+                  selectedSlot={selectedSlotId}
+                  onDateChange={setSelectedDate}
+                  onSlotChange={(id, name, charge) => {
+                    setSelectedSlotId(id)
+                    setSelectedSlotName(name)
+                    setSelectedSlotCharge(charge)
+                  }}
+                />
+              </div>
             </div>
 
             {/* Coupon Section */}

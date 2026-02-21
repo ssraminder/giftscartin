@@ -171,8 +171,10 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const [addonErrors, setAddonErrors] = useState<Set<string>>(new Set())
   const [variationError, setVariationError] = useState(false)
   const [addedToCart, setAddedToCart] = useState(false)
-  const [deliveryDate, setDeliveryDate] = useState<string | null>(null)
-  const [deliverySlot, setDeliverySlot] = useState<string | null>(null)
+  const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [deliverySlotId, setDeliverySlotId] = useState<string | null>(null)
+  const [, setDeliverySlotName] = useState('')
+  const [, setDeliverySlotCharge] = useState(0)
   const [pincode, setPincode] = useState("")
   const [pincodeChecked, setPincodeChecked] = useState(false)
   const [activeTab, setActiveTab] = useState<"description" | "reviews" | "delivery">("description")
@@ -584,10 +586,15 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
                 {/* Delivery slot picker */}
                 <DeliverySlotPicker
+                  productIds={product ? [product.id] : []}
                   selectedDate={deliveryDate}
-                  selectedSlot={deliverySlot}
+                  selectedSlot={deliverySlotId}
                   onDateChange={setDeliveryDate}
-                  onSlotChange={setDeliverySlot}
+                  onSlotChange={(id, name, charge) => {
+                    setDeliverySlotId(id)
+                    setDeliverySlotName(name)
+                    setDeliverySlotCharge(charge)
+                  }}
                 />
               </div>
             </div>
