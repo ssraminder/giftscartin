@@ -13,7 +13,12 @@ export async function GET() {
     const settings = await prisma.platformSetting.findMany({
       select: { key: true, value: true, updatedAt: true },
     })
-    const result: Record<string, string | null> = {}
+    // Always return safe defaults for expected keys
+    const result: Record<string, string | null> = {
+      logo_url: null,
+      site_name: null,
+      favicon_url: null,
+    }
     for (const s of settings) {
       result[s.key] = s.value
     }
