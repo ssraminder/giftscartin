@@ -1,11 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useRef } from "react"
 import Link from "next/link"
 import useSWR from "swr"
-import { ArrowRight, ChefHat, Clock, HeadphonesIcon, RotateCcw } from "lucide-react"
+import {
+  ArrowRight,
+  ChefHat,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  HeadphonesIcon,
+  RotateCcw,
+} from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import { ProductCard } from "@/components/product/product-card"
 import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
 import { CityGate } from "@/components/providers/city-gate"
@@ -17,25 +24,29 @@ const WHY_CHOOSE = [
   {
     icon: ChefHat,
     title: "Freshly Prepared",
-    description: "Every cake and bouquet is prepared fresh on the day of delivery",
+    description:
+      "Every cake and bouquet is prepared fresh on the day of delivery",
     color: "bg-pink-50 text-pink-600",
   },
   {
     icon: Clock,
     title: "On-Time Delivery",
-    description: "We guarantee delivery in your chosen time slot, every time",
+    description:
+      "We guarantee delivery in your chosen time slot, every time",
     color: "bg-blue-50 text-blue-600",
   },
   {
     icon: RotateCcw,
     title: "Easy Returns",
-    description: "Not satisfied? Get a full refund or replacement — no questions asked",
+    description:
+      "Not satisfied? Get a full refund or replacement — no questions asked",
     color: "bg-green-50 text-green-600",
   },
   {
     icon: HeadphonesIcon,
     title: "24/7 Support",
-    description: "Our friendly team is always here to help with your orders",
+    description:
+      "Our friendly team is always here to help with your orders",
     color: "bg-purple-50 text-purple-600",
   },
 ]
@@ -51,9 +62,11 @@ function TrendingSkeleton() {
           <div className="mt-4 h-4 w-64 bg-gray-200 rounded animate-shimmer" />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <ProductCardSkeleton key={i} />
+      <div className="flex gap-4 overflow-hidden">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex-shrink-0 w-52 md:w-60">
+            <ProductCardSkeleton />
+          </div>
         ))}
       </div>
     </section>
@@ -61,32 +74,45 @@ function TrendingSkeleton() {
 }
 
 function TrendingProductsInner() {
-  const [showAll, setShowAll] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const { citySlug } = useCity()
   const { partner } = usePartner()
 
-  const vendorParam = partner?.defaultVendorId ? `&vendorId=${partner.defaultVendorId}` : ""
+  const vendorParam = partner?.defaultVendorId
+    ? `&vendorId=${partner.defaultVendorId}`
+    : ""
   const url = `/api/products?sortBy=rating&pageSize=10${citySlug ? `&citySlug=${citySlug}` : ""}${vendorParam}`
 
   const { data, isLoading } = useSWR(url, fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 60000, // 1 minute cache
+    dedupingInterval: 60000,
   })
+
+  const scroll = (direction: "left" | "right") => {
+    if (!scrollRef.current) return
+    const scrollAmount = 260
+    scrollRef.current.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
+    })
+  }
 
   if (isLoading) {
     return (
       <section className="container mx-auto px-4 py-12 md:py-16">
         <div className="flex items-end justify-between mb-8">
           <div>
-            <h2 className="section-title">Bestsellers</h2>
+            <h2 className="section-title">Today&apos;s Best Sellers</h2>
             <p className="mt-4 text-muted-foreground">
               Our most popular picks this week
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <ProductCardSkeleton key={i} />
+        <div className="flex gap-4 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex-shrink-0 w-52 md:w-60">
+              <ProductCardSkeleton />
+            </div>
           ))}
         </div>
       </section>
@@ -94,13 +120,13 @@ function TrendingProductsInner() {
   }
 
   const products: Product[] = data?.data?.items || data?.data || []
-  const displayedProducts = showAll ? products : products.slice(0, 8)
 
   return (
     <section className="container mx-auto px-4 py-12 md:py-16">
+      {/* Section header */}
       <div className="flex items-end justify-between mb-8">
         <div>
-          <h2 className="section-title">Bestsellers</h2>
+          <h2 className="section-title">Today&apos;s Best Sellers</h2>
           <p className="mt-4 text-muted-foreground">
             Our most popular picks this week
           </p>
@@ -115,28 +141,54 @@ function TrendingProductsInner() {
       </div>
 
       {products.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-          {displayedProducts.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
+        <div className="relative">
+          {/* Left arrow — desktop only */}
+          <button
+            onClick={() => scroll("left")}
+            className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 h-10 w-10 items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 transition-colors"
+            aria-label="Scroll left"
+          >
+            <ChevronLeft className="h-5 w-5 text-gray-700" />
+          </button>
+
+          {/* Scroll row */}
+          <div
+            ref={scrollRef}
+            className="flex flex-row gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide"
+          >
+            {products.map((product) => (
+              <div
+                key={product.id}
+                className="flex-shrink-0 w-52 md:w-60 snap-start"
+              >
+                <ProductCard
+                  id={product.id}
+                  name={product.name}
+                  slug={product.slug}
+                  basePrice={Number(product.basePrice)}
+                  images={product.images}
+                  avgRating={product.avgRating}
+                  totalReviews={product.totalReviews}
+                  weight={product.weight ?? undefined}
+                  tags={product.tags}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Right arrow — desktop only */}
+          <button
+            onClick={() => scroll("right")}
+            className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 h-10 w-10 items-center justify-center rounded-full bg-white shadow-md hover:bg-gray-50 transition-colors"
+            aria-label="Scroll right"
+          >
+            <ChevronRight className="h-5 w-5 text-gray-700" />
+          </button>
         </div>
       ) : (
         <p className="text-center text-muted-foreground py-10">
           No products available yet. Check back soon!
         </p>
-      )}
-
-      {!showAll && products.length > 8 && (
-        <div className="mt-8 text-center">
-          <Button
-            variant="outline"
-            size="lg"
-            className="rounded-xl border-2 border-pink-200 text-[#E91E63] hover:bg-pink-50 px-8"
-            onClick={() => setShowAll(true)}
-          >
-            Load More
-          </Button>
-        </div>
       )}
 
       {/* Mobile View All */}

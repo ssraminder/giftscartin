@@ -547,7 +547,17 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:gap-5">
                 {products.map((product) => (
                   <div key={product.id} className="hover-lift">
-                    <ProductCard product={product} />
+                    <ProductCard
+                      id={product.id}
+                      name={product.name}
+                      slug={product.slug}
+                      basePrice={Number(product.basePrice)}
+                      images={product.images}
+                      avgRating={product.avgRating}
+                      totalReviews={product.totalReviews}
+                      weight={product.weight ?? undefined}
+                      tags={product.tags}
+                    />
                   </div>
                 ))}
               </div>
