@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import {
@@ -30,7 +31,7 @@ import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
 import { CitySearch } from "@/components/location/city-search"
 import { POPULAR_CITIES } from "@/lib/cities-data"
-import { MegaMenu, MobileMegaMenu } from "@/components/layout/mega-menu"
+import { MegaMenu, MobileMegaMenu, type MenuNode } from "@/components/layout/mega-menu"
 
 const INTERNAL_HOSTS_HEADER = [
   'giftscart.netlify.app',
@@ -50,12 +51,16 @@ function getInitials(name: string | null | undefined): string {
     .slice(0, 2)
 }
 
-export function Header() {
+interface HeaderProps {
+  logoUrl?: string | null
+  menuItems?: MenuNode[]
+}
+
+export function Header({ logoUrl, menuItems }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
-  const [platformLogoUrl, setPlatformLogoUrl] = useState<string | null>(null)
   const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
@@ -76,18 +81,6 @@ export function Header() {
 
   useEffect(() => {
     setMounted(true)
-  }, [])
-
-  // Fetch platform logo
-  useEffect(() => {
-    fetch("/api/admin/settings/logo")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data?.logo_url) {
-          setPlatformLogoUrl(json.data.logo_url)
-        }
-      })
-      .catch(() => {})
   }, [])
 
   // Close city dropdown on outside click
@@ -187,11 +180,14 @@ export function Header() {
                   </span>
                 )}
               </div>
-            ) : platformLogoUrl ? (
-              <img
-                src={platformLogoUrl}
-                alt="Gifts Cart India"
-                className="max-h-10 object-contain"
+            ) : logoUrl ? (
+              <Image
+                src={logoUrl}
+                alt="Gifts Cart"
+                width={140}
+                height={40}
+                className="object-contain"
+                priority
               />
             ) : (
               <>
@@ -357,9 +353,9 @@ export function Header() {
 
       {/* ROW 3: Mega menu (desktop) + mobile menu trigger */}
       <div className="relative">
-        <MegaMenu />
+        <MegaMenu serverMenuItems={menuItems} />
         <div className="md:hidden bg-white border-b border-gray-200 px-4">
-          <MobileMegaMenu />
+          <MobileMegaMenu serverMenuItems={menuItems} />
         </div>
       </div>
     </header>

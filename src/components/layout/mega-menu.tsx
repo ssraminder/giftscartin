@@ -8,7 +8,7 @@ import { usePartner } from "@/hooks/use-partner"
 
 // ─── API Menu Types ──────────────────────────────────────────────────────────
 
-interface MenuNode {
+export interface MenuNode {
   id: string
   label: string
   slug: string | null
@@ -99,28 +99,32 @@ function fetchMenuData(): Promise<MenuNode[]> {
   return cachedMenuPromise
 }
 
-function useMenuItems(): MenuNode[] {
-  const [items, setItems] = useState<MenuNode[]>([])
+function applyMenuFilters(data: MenuNode[]): MenuNode[] {
+  const visible = filterVisible(data)
+  return visible.filter((item) => {
+    const type = getMenuType(item)
+    if (type === "standard") {
+      const hasVisibleLinks = item.children.some((group) =>
+        group.children.some((link) => link.isVisible)
+      )
+      return hasVisibleLinks || item.children.length === 0
+    }
+    return item.children.length > 0
+  })
+}
+
+function useMenuItems(serverMenuItems?: MenuNode[]): MenuNode[] {
+  const [items, setItems] = useState<MenuNode[]>(
+    serverMenuItems && serverMenuItems.length > 0 ? applyMenuFilters(serverMenuItems) : []
+  )
 
   useEffect(() => {
+    // Skip client-side fetch if server provided menu items
+    if (serverMenuItems && serverMenuItems.length > 0) return
     fetchMenuData().then((data) => {
-      const visible = filterVisible(data)
-      // Hide top-level items that have no visible children (except occasions/sameday which have direct children)
-      const filtered = visible.filter((item) => {
-        const type = getMenuType(item)
-        if (type === "standard") {
-          // Standard items: hide if no groups have visible link children
-          const hasVisibleLinks = item.children.some((group) =>
-            group.children.some((link) => link.isVisible)
-          )
-          return hasVisibleLinks || item.children.length === 0
-        }
-        // Occasions/sameday: hide if no children at all
-        return item.children.length > 0
-      })
-      setItems(filtered)
+      setItems(applyMenuFilters(data))
     })
-  }, [])
+  }, [serverMenuItems])
 
   return items
 }
@@ -213,8 +217,8 @@ function SameDayDropdown({ item, refCode }: { item: MenuNode; refCode?: string }
 
 // ─── Desktop Mega Menu ───────────────────────────────────────────────────────
 
-export function MegaMenu() {
-  const menuItems = useMenuItems()
+export function MegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) {
+  const menuItems = useMenuItems(serverMenuItems)
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { partner } = usePartner()
@@ -301,8 +305,8 @@ export function MegaMenu() {
 
 // ─── Mobile Mega Menu (Sheet with Accordion) ────────────────────────────────
 
-export function MobileMegaMenu() {
-  const menuItems = useMenuItems()
+export function MobileMegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) {
+  const menuItems = useMenuItems(serverMenuItems)
   const [open, setOpen] = useState(false)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
   const { partner } = usePartner()
