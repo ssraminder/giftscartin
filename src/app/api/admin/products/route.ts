@@ -12,8 +12,11 @@ export const dynamic = 'force-dynamic'
 const listSchema = z.object({
   search: z.string().optional(),
   category: z.string().optional(),
+  categorySlug: z.string().optional(),
   type: z.enum(['SIMPLE', 'VARIABLE']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
+  isActive: z.enum(['true', 'false']).optional(),
+  isSameDayEligible: z.enum(['true', 'false']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 })
@@ -30,26 +33,32 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const params = listSchema.parse(Object.fromEntries(searchParams))
-    const { search, category, type, status, page, pageSize } = params
+    const { search, category, categorySlug, type, status, isActive, isSameDayEligible, page, pageSize } = params
 
     const where: Record<string, unknown> = {}
 
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { slug: { contains: search, mode: 'insensitive' } },
-      ]
+      where.name = { contains: search, mode: 'insensitive' }
     }
     if (category) {
       where.categoryId = category
     }
+    if (categorySlug) {
+      where.category = { slug: categorySlug }
+    }
     if (type) {
       where.productType = type
     }
-    if (status === 'active') {
+    // Support both status enum and isActive boolean string
+    if (status === 'active' || isActive === 'true') {
       where.isActive = true
-    } else if (status === 'inactive') {
+    } else if (status === 'inactive' || isActive === 'false') {
       where.isActive = false
+    }
+    if (isSameDayEligible === 'true') {
+      where.isSameDayEligible = true
+    } else if (isSameDayEligible === 'false') {
+      where.isSameDayEligible = false
     }
 
     const [items, total] = await Promise.all([
@@ -59,8 +68,8 @@ export async function GET(request: NextRequest) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
-          category: { select: { id: true, name: true } },
-          _count: { select: { variations: true } },
+          category: { select: { id: true, name: true, slug: true } },
+          _count: { select: { vendorProducts: true, variations: true } },
         },
       }),
       prisma.product.count({ where }),
@@ -73,6 +82,7 @@ export async function GET(request: NextRequest) {
       productType: item.productType,
       basePrice: Number(item.basePrice),
       isActive: item.isActive,
+      isSameDayEligible: item.isSameDayEligible,
       images: item.images,
       category: item.category,
       _count: item._count,
@@ -144,12 +154,12 @@ const variationSchema = z.object({
 
 const createProductSchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1),
+  slug: z.string().optional(),
   description: z.string().nullable().optional(),
   shortDesc: z.string().nullable().optional(),
   categoryId: z.string().min(1),
   productType: z.enum(['SIMPLE', 'VARIABLE']).default('SIMPLE'),
-  basePrice: z.number().min(0).default(0),
+  basePrice: z.number().min(0.01, 'Base price must be greater than 0'),
   salePrice: z.number().nullable().optional(),
   saleFrom: z.string().nullable().optional(),
   saleTo: z.string().nullable().optional(),
@@ -159,6 +169,7 @@ const createProductSchema = z.object({
   weight: z.string().nullable().optional(),
   isVeg: z.boolean().default(true),
   isActive: z.boolean().default(true),
+  isSameDayEligible: z.boolean().default(false),
   sku: z.string().nullable().optional(),
   stockQty: z.number().int().nullable().optional(),
   dailyLimit: z.number().int().nullable().optional(),
@@ -197,13 +208,32 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data
 
+    // Auto-generate slug if not provided
+    let slug = data.slug
+    if (!slug) {
+      slug = data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+    }
+
+    // Ensure slug is unique
+    let finalSlug = slug
+    let suffix = 2
+    while (await prisma.product.findUnique({ where: { slug: finalSlug } })) {
+      finalSlug = `${slug}-${suffix}`
+      suffix++
+    }
+
     // Sequential queries (no interactive transaction — pgbouncer compatible)
 
     // Create the product
     const product = await prisma.product.create({
       data: {
         name: data.name,
-        slug: data.slug,
+        slug: finalSlug,
         description: data.description ?? null,
         shortDesc: data.shortDesc ?? null,
         categoryId: data.categoryId,
@@ -215,6 +245,7 @@ export async function POST(request: NextRequest) {
         weight: data.weight ?? null,
         isVeg: data.isVeg,
         isActive: data.isActive,
+        isSameDayEligible: data.isSameDayEligible,
         metaTitle: data.metaTitle ?? null,
         metaDescription: data.metaDescription ?? null,
         metaKeywords: data.metaKeywords,
