@@ -79,11 +79,12 @@ export const useCart = create<CartStore>()(
         }))
 
         set((state) => {
+          const currentItems = Array.isArray(state.items) ? state.items : []
           // For legacy calls, match by productId (simple dedup)
-          const existing = state.items.find((i) => i.productId === normalizedProduct.id)
+          const existing = currentItems.find((i) => i.productId === normalizedProduct.id)
           if (existing) {
             return {
-              items: state.items.map((i) =>
+              items: currentItems.map((i) =>
                 i.id === existing.id
                   ? { ...i, quantity: i.quantity + quantity }
                   : i
@@ -92,7 +93,7 @@ export const useCart = create<CartStore>()(
           }
           return {
             items: [
-              ...state.items,
+              ...currentItems,
               {
                 id: generateCartItemId(),
                 productId: normalizedProduct.id,
@@ -117,31 +118,34 @@ export const useCart = create<CartStore>()(
       addItemAdvanced: ({ product, quantity, price, variationId, selectedAttributes, addonSelections }) => {
         const normalizedProduct = { ...product, basePrice: Number(product.basePrice) }
 
-        set((state) => ({
-          items: [
-            ...state.items,
-            {
-              id: generateCartItemId(),
-              productId: normalizedProduct.id,
-              productName: normalizedProduct.name,
-              productSlug: normalizedProduct.slug,
-              image: normalizedProduct.images?.[0] || "/placeholder-product.svg",
-              quantity,
-              price: Number(price),
-              variationId,
-              selectedAttributes,
-              addonSelections,
-              deliveryDate: null,
-              deliverySlot: null,
-              product: normalizedProduct,
-            },
-          ],
-        }))
+        set((state) => {
+          const currentItems = Array.isArray(state.items) ? state.items : []
+          return {
+            items: [
+              ...currentItems,
+              {
+                id: generateCartItemId(),
+                productId: normalizedProduct.id,
+                productName: normalizedProduct.name,
+                productSlug: normalizedProduct.slug,
+                image: normalizedProduct.images?.[0] || "/placeholder-product.svg",
+                quantity,
+                price: Number(price),
+                variationId,
+                selectedAttributes,
+                addonSelections,
+                deliveryDate: null,
+                deliverySlot: null,
+                product: normalizedProduct,
+              },
+            ],
+          }
+        })
       },
 
       removeItem: (itemId) => {
         set((state) => ({
-          items: state.items.filter((i) => i.id !== itemId),
+          items: (Array.isArray(state.items) ? state.items : []).filter((i) => i.id !== itemId),
         }))
       },
 
@@ -151,7 +155,7 @@ export const useCart = create<CartStore>()(
           return
         }
         set((state) => ({
-          items: state.items.map((i) =>
+          items: (Array.isArray(state.items) ? state.items : []).map((i) =>
             i.id === itemId ? { ...i, quantity } : i
           ),
         }))
@@ -159,7 +163,7 @@ export const useCart = create<CartStore>()(
 
       updateDelivery: (itemId, date, slot) => {
         set((state) => ({
-          items: state.items.map((i) =>
+          items: (Array.isArray(state.items) ? state.items : []).map((i) =>
             i.id === itemId
               ? { ...i, deliveryDate: date, deliverySlot: slot }
               : i
@@ -172,13 +176,17 @@ export const useCart = create<CartStore>()(
       clearCart: () => set({ items: [], couponCode: null, couponDiscount: 0 }),
 
       getItemCount: () => {
-        return get().items.reduce((sum, i) => sum + i.quantity, 0)
+        const items = get().items
+        const itemsArray = Array.isArray(items) ? items : []
+        return itemsArray.reduce((sum, i) => sum + i.quantity, 0)
       },
 
       getSubtotal: () => {
-        return get().items.reduce((sum, item) => {
+        const items = get().items
+        const itemsArray = Array.isArray(items) ? items : []
+        return itemsArray.reduce((sum, item) => {
           const unitPrice = Number(item.price)
-          const addonTotal = calculateAddonTotal(item.addonSelections)
+          const addonTotal = calculateAddonTotal(item.addonSelections || [])
           return sum + (unitPrice + addonTotal) * item.quantity
         }, 0)
       },
@@ -186,6 +194,13 @@ export const useCart = create<CartStore>()(
     {
       name: "giftscart-cart",
       skipHydration: true,
+      merge: (persistedState: unknown, currentState: CartStore) => ({
+        ...currentState,
+        ...(persistedState as Partial<CartStore>),
+        items: Array.isArray((persistedState as Partial<CartStore>)?.items)
+          ? (persistedState as Partial<CartStore>).items!
+          : [],
+      }),
     }
   )
 )
