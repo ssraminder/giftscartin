@@ -3,14 +3,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { isAdminRole } from '@/lib/roles'
 import { prisma } from '@/lib/prisma'
-import { getSupabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml']
 const MAX_SIZE_BYTES = 2 * 1024 * 1024 // 2MB
 
 export async function GET() {
   try {
-    const settings = await prisma.platformSetting.findMany()
+    const settings = await prisma.platformSetting.findMany({
+      select: { key: true, value: true, updatedAt: true },
+    })
     const result: Record<string, string | null> = {}
     for (const s of settings) {
       result[s.key] = s.value
@@ -73,26 +75,46 @@ export async function POST(request: NextRequest) {
       const timestamp = Date.now()
       const filePath = `branding/logo-${timestamp}.${ext}`
 
-      const supabase = getSupabase()
+      // Use service role key for storage uploads (falls back to anon key)
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
       const buffer = Buffer.from(await file.arrayBuffer())
 
-      const { error: uploadError } = await supabase.storage
-        .from('products')
+      // Try platform-assets bucket first, then fall back to products bucket
+      let uploadBucket = 'platform-assets'
+      let uploadError = null
+
+      const { error: primaryError } = await supabase.storage
+        .from('platform-assets')
         .upload(filePath, buffer, {
           contentType: file.type,
           upsert: true,
         })
 
+      if (primaryError) {
+        console.warn('platform-assets bucket upload failed, trying products bucket:', primaryError.message)
+        uploadBucket = 'products'
+        const { error: fallbackError } = await supabase.storage
+          .from('products')
+          .upload(filePath, buffer, {
+            contentType: file.type,
+            upsert: true,
+          })
+        uploadError = fallbackError
+      }
+
       if (uploadError) {
-        console.error('Supabase upload error:', uploadError)
+        console.error('Supabase upload error (both buckets failed):', uploadError)
         return NextResponse.json(
-          { success: false, error: 'Failed to upload file' },
+          { success: false, error: 'File upload failed. Use JSON body with { "logoUrl": "https://..." } instead.' },
           { status: 500 }
         )
       }
 
       const { data: publicUrlData } = supabase.storage
-        .from('products')
+        .from(uploadBucket)
         .getPublicUrl(filePath)
 
       logoUrl = publicUrlData.publicUrl
@@ -125,11 +147,11 @@ export async function POST(request: NextRequest) {
       logoUrl = url
     }
 
-    // Upsert into platform_settings
+    // Upsert into platform_settings (updatedAt is auto-set by @updatedAt)
     await prisma.platformSetting.upsert({
       where: { key: 'logo_url' },
-      update: { value: logoUrl, updatedBy: session.user.id },
-      create: { key: 'logo_url', value: logoUrl, updatedBy: session.user.id },
+      update: { value: logoUrl, updatedBy: session.user.id, updatedAt: new Date() },
+      create: { key: 'logo_url', value: logoUrl, updatedBy: session.user.id, updatedAt: new Date() },
     })
 
     return NextResponse.json({
