@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { LogoUpload } from "@/components/admin/logo-upload"
+import { MenuManager } from "@/components/admin/menu-manager"
 
 type Tab = "branding" | "navigation" | "delivery"
 
@@ -282,21 +283,8 @@ export default function AdminSettingsPage() {
             </div>
           )}
 
-          {/* Navigation Tab (placeholder) */}
-          {activeTab === "navigation" && (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-              <Navigation className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Navigation Menu
-              </h3>
-              <p className="text-sm text-gray-500">
-                Configure header navigation links and category menu ordering.
-              </p>
-              <span className="inline-block mt-4 px-3 py-1 rounded-full bg-gray-100 text-xs font-medium text-gray-500">
-                Coming soon
-              </span>
-            </div>
-          )}
+          {/* Navigation Tab */}
+          {activeTab === "navigation" && <MenuManager />}
 
           {/* Delivery Tab (placeholder) */}
           {activeTab === "delivery" && (
