@@ -10,6 +10,7 @@ import { TrustStrip } from "@/components/home/trust-strip"
 import { Testimonials } from "@/components/home/testimonials"
 import { CityBanner } from "@/components/home/city-banner"
 import { SeoTextBlock } from "@/components/home/seo-text-block"
+import { RecentlyViewed } from "@/components/product/recently-viewed"
 
 export const metadata: Metadata = {
   title: 'Gifts Cart India — Same Day Cake, Flower & Gift Delivery',
@@ -66,7 +67,10 @@ export default function HomePage() {
       {/* 8. Cities Banner */}
       <CityBanner />
 
-      {/* 9. SEO Text Block */}
+      {/* 9. Recently Viewed */}
+      <RecentlyViewed />
+
+      {/* 10. SEO Text Block */}
       <SeoTextBlock />
     </>
   )
