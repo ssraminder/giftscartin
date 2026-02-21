@@ -1035,6 +1035,18 @@ model ImageGenerationJob {
   @@map("image_generation_jobs")
 }
 
+// ==================== PLATFORM SETTINGS ====================
+
+model PlatformSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("platform_settings")
+}
+
 // ==================== CATALOG IMPORTS ====================
 
 enum ImportStatus {
