@@ -43,6 +43,7 @@
 - **Fixed all Netlify API 500 errors** — Root cause: Netlify's `npx prisma generate` resolved to Prisma v7 (latest) instead of the project's v5.22.0. Prisma v7 dropped support for `url`/`directUrl` in datasource, breaking the generated client. Fix: pinned `prisma` and `@prisma/client` to exact `5.22.0` (removed `^` caret), changed build script to `npx prisma@5.22.0 generate && next build`. Also restored city/resolve route from diagnostic stub back to full implementation. All 24+ API routes should now work correctly on Netlify.
 - **Mobile viewport zoom fix** — Added `viewport` export to layout.tsx with `maximumScale: 1, userScalable: false` to prevent iOS Safari zoom on input focus. Changed all input/select/textarea elements to `text-base` (16px minimum) to avoid iOS auto-zoom trigger. Updated `input.tsx`, `select.tsx`, login page, checkout textareas, and city-search notify input.
 - **Skeleton loaders** — Created reusable `ProductCardSkeleton` and `ProductGridSkeleton` components. Added `TrendingSkeleton` and `CategoryGridSkeleton` for homepage sections. Wired skeletons into trending-products (loading state), category page (both initial load and product fetch), and updated existing inline skeletons to use shared components. Added shimmer CSS animation to globals.css. Updated base `Skeleton` component to use `bg-gray-200`.
+- **City modal instant chips + API optimization** — City chips now use static hardcoded data from `src/lib/cities-data.ts` — zero API calls for chip selection. CitySearch does local-first filtering for popular cities before hitting the API. Search debounce increased to 400ms, partial pincodes (1-3 digits) skip API calls. Header dropdown shows popular city chips immediately when opened. API pre-warmed on page load to prevent cold start latency. City resolve responses cached at CDN edge (5 min s-maxage, 10 min stale-while-revalidate).
 
 ### What's NOT Done (Priority Order)
 
@@ -214,6 +215,7 @@
 | `src/lib/utils.ts` | Yes | Yes | ✅ cn(), formatPrice(), generateOrderNumber() |
 | `src/lib/validations.ts` | Yes | Yes | ✅ All Zod schemas implemented |
 | `src/lib/seo.ts` | Yes (Phase B) | Yes | ✅ Metadata + JSON-LD utility functions |
+| `src/lib/cities-data.ts` | Yes (Perf) | Yes | ✅ Static popular cities data for instant chip selection |
 
 ### Source — Other
 

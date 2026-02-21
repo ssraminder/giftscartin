@@ -5,13 +5,14 @@ import { Search, MapPin, CheckCircle2, Clock, Bell, Loader2 } from "lucide-react
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { POPULAR_CITIES } from "@/lib/cities-data"
 import type { CitySelection } from "@/components/providers/city-provider"
 
 interface CityMatch {
   cityId: string
   cityName: string
   citySlug: string
-  state: string
+  state?: string
   pincode?: string
   areaName?: string | null
   isActive: boolean
@@ -48,6 +49,33 @@ export function CitySearch({
       return
     }
 
+    // Skip API for 1-3 character partial pincodes (digits only)
+    const isPartialPincode = /^\d{1,3}$/.test(searchQuery)
+    if (isPartialPincode) {
+      setResults([])
+      setShowDropdown(false)
+      return
+    }
+
+    // Check if query matches a popular city name — use static data first
+    const localMatch = POPULAR_CITIES.filter(c =>
+      c.cityName.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    if (localMatch.length > 0) {
+      setResults(localMatch.map(c => ({
+        cityId: c.cityId,
+        cityName: c.cityName,
+        citySlug: c.citySlug,
+        pincode: undefined,
+        areaName: null,
+        isActive: c.isActive,
+        isComingSoon: c.isComingSoon,
+      })))
+      setShowDropdown(true)
+      setShowNotify(false)
+      return // skip API call
+    }
+
     setLoading(true)
     try {
       const res = await fetch("/api/city/resolve", {
@@ -78,7 +106,7 @@ export function CitySearch({
     if (query.length >= 2) {
       debounceRef.current = setTimeout(() => {
         fetchResults(query)
-      }, 300)
+      }, 400)
     } else {
       setResults([])
       setShowDropdown(false)
@@ -189,9 +217,11 @@ export function CitySearch({
                         ? `${match.pincode} — ${match.areaName || match.cityName}`
                         : match.cityName}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      {match.pincode ? `${match.cityName}, ${match.state}` : match.state}
-                    </p>
+                    {match.state && (
+                      <p className="text-xs text-gray-500">
+                        {match.pincode ? `${match.cityName}, ${match.state}` : match.state}
+                      </p>
+                    )}
                   </div>
                   {match.isComingSoon ? (
                     <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">

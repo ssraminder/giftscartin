@@ -10,6 +10,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: [] })
     }
 
+    const cacheHeaders = {
+      'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+    }
+
     // Exact 6-digit pincode
     if (/^\d{6}$/.test(query)) {
       const pin = await prisma.pincodeCityMap.findUnique({
@@ -28,9 +32,9 @@ export async function POST(request: NextRequest) {
             isActive: pin.city.isActive,
             isComingSoon: pin.city.isComingSoon,
           }],
-        })
+        }, { headers: cacheHeaders })
       }
-      return NextResponse.json({ success: true, data: [] })
+      return NextResponse.json({ success: true, data: [] }, { headers: cacheHeaders })
     }
 
     // Partial pincode (2-5 digits)
@@ -56,7 +60,7 @@ export async function POST(request: NextRequest) {
           isActive: p.city.isActive,
           isComingSoon: p.city.isComingSoon,
         }))
-      return NextResponse.json({ success: true, data })
+      return NextResponse.json({ success: true, data }, { headers: cacheHeaders })
     }
 
     // City name text search
@@ -76,7 +80,7 @@ export async function POST(request: NextRequest) {
       isComingSoon: c.isComingSoon,
     }))
 
-    return NextResponse.json({ success: true, data })
+    return NextResponse.json({ success: true, data }, { headers: cacheHeaders })
 
   } catch (err) {
     console.error('[city/resolve] error:', err)
