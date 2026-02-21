@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks/use-cart"
 import { useCurrency } from "@/hooks/use-currency"
 import { usePartner } from "@/hooks/use-partner"
+import { useReferral } from "@/components/providers/referral-provider"
 import { SenderDetailsStep, type SenderDetails } from "@/components/checkout/sender-details-step"
 
 // ─── Types ───
@@ -153,6 +154,7 @@ export default function CheckoutPage() {
   const { data: session, status: authStatus } = useSession()
   const { formatPrice } = useCurrency()
   const { partner } = usePartner()
+  const { clearReferral } = useReferral()
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
   const clearCart = useCart((s) => s.clearCart)
@@ -427,6 +429,9 @@ export default function CheckoutPage() {
 
       const orderId = orderJson.data.id
       const orderNumber = orderJson.data.orderNumber
+
+      // Order created successfully — clear referral attribution
+      clearReferral()
 
       // Step 2: Create payment based on selected gateway
       const paymentRes = await fetch("/api/payments/create-order", {

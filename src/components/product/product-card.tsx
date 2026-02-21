@@ -71,8 +71,8 @@ export function ProductCard({
   }, [])
 
   const discount =
-    mrp && mrp > basePrice
-      ? Math.round((1 - basePrice / mrp) * 100)
+    mrp && Number(mrp) > Number(basePrice)
+      ? Math.round((1 - Number(basePrice) / Number(mrp)) * 100)
       : 0
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -173,7 +173,7 @@ export function ProductCard({
         {(totalReviews ?? 0) > 0 && (
           <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
             <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-            <span>{(avgRating ?? 0).toFixed(1)}</span>
+            <span>{Number(avgRating ?? 0).toFixed(1)}</span>
             <span>&middot;</span>
             <span>{totalReviews} reviews</span>
           </div>

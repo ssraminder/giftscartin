@@ -3,6 +3,7 @@ import { Footer } from "@/components/layout/footer"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { CityGate } from "@/components/location/city-gate"
 import { AnnouncementBar } from "@/components/layout/announcement-bar"
+import { ReferralProvider } from "@/components/providers/referral-provider"
 
 export default function ShopLayout({
   children,
@@ -10,17 +11,19 @@ export default function ShopLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Announcement bar scrolls away with page */}
-      <AnnouncementBar />
-      {/* Header is sticky */}
-      <div className="sticky top-0 z-50">
-        <Header />
+    <ReferralProvider>
+      <div className="flex min-h-screen flex-col">
+        {/* Announcement bar scrolls away with page */}
+        <AnnouncementBar />
+        {/* Header is sticky */}
+        <div className="sticky top-0 z-50">
+          <Header />
+        </div>
+        <main className="flex-1">{children}</main>
+        <Footer />
+        <BottomNav />
+        <CityGate />
       </div>
-      <main className="flex-1">{children}</main>
-      <Footer />
-      <BottomNav />
-      <CityGate />
-    </div>
+    </ReferralProvider>
   )
 }
