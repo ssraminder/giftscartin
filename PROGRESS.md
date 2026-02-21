@@ -14,7 +14,7 @@
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
 |Current Phase  |Phase A + B + C + D + E + F + Sprint 1 complete. Phase 3 ongoing.|
-|Last Updated   |2026-02-20                                                                        |
+|Last Updated   |2026-02-21                                                                        |
 
 ### What's Done
 
@@ -44,6 +44,7 @@
 - **Mobile viewport zoom fix** — Added `viewport` export to layout.tsx with `maximumScale: 1, userScalable: false` to prevent iOS Safari zoom on input focus. Changed all input/select/textarea elements to `text-base` (16px minimum) to avoid iOS auto-zoom trigger. Updated `input.tsx`, `select.tsx`, login page, checkout textareas, and city-search notify input.
 - **Skeleton loaders** — Created reusable `ProductCardSkeleton` and `ProductGridSkeleton` components. Added `TrendingSkeleton` and `CategoryGridSkeleton` for homepage sections. Wired skeletons into trending-products (loading state), category page (both initial load and product fetch), and updated existing inline skeletons to use shared components. Added shimmer CSS animation to globals.css. Updated base `Skeleton` component to use `bg-gray-200`.
 - **City modal instant chips + API optimization** — City chips now use static hardcoded data from `src/lib/cities-data.ts` — zero API calls for chip selection. CitySearch does local-first filtering for popular cities before hitting the API. Search debounce increased to 400ms, partial pincodes (1-3 digits) skip API calls. Header dropdown shows popular city chips immediately when opened. API pre-warmed on page load to prevent cold start latency. City resolve responses cached at CDN edge (5 min s-maxage, 10 min stale-while-revalidate).
+- **City-aware lazy loading + SWR caching** — isHydrating flag added to CityProvider (true until localStorage read completes). CityGate component gates product fetches until city context is confirmed from localStorage. SWR added for product fetching (trending products + category page) with 1-minute client-side deduplication cache — second visits and back-navigation show cached products instantly. CDN cache headers added to products API (60s s-maxage, 5min stale-while-revalidate). Category links prefetch on hover via Next.js router.prefetch. Checkout step buttons have loading/spinner state to prevent double-clicks.
 
 ### What's NOT Done (Priority Order)
 
@@ -364,7 +365,7 @@ All 32 components exist. Flagged items:
 
 | Component | Issue |
 |-----------|-------|
-| `components/home/trending-products.tsx` | ✅ Now fetches from `/api/products` API |
+| `components/home/trending-products.tsx` | ✅ SWR fetch from `/api/products`, gated by CityGate |
 | `components/cart/coupon-input.tsx` | Coupon validation is client-side only |
 | `components/product/product-card.tsx` | Falls back to `/placeholder-product.svg` |
 | `components/product/addon-selector.tsx` | Falls back to `/placeholder-product.svg` |

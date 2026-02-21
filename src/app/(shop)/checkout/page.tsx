@@ -181,6 +181,9 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<GatewayId>("razorpay")
   const [razorpayLoaded, setRazorpayLoaded] = useState(false)
 
+  // Step transitions
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
   // Order placement
   const [placing, setPlacing] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
@@ -349,13 +352,26 @@ export default function CheckoutPage() {
     return true
   }
 
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (currentStep === 1) {
       if (!validateAddress()) return
-      setCurrentStep(2)
+      setIsSubmitting(true)
+      try {
+        // Small delay to give visual feedback of processing
+        await new Promise((r) => setTimeout(r, 300))
+        setCurrentStep(2)
+      } finally {
+        setIsSubmitting(false)
+      }
     } else if (currentStep === 2) {
       if (!selectedDate || !selectedSlot) return
-      setCurrentStep(3)
+      setIsSubmitting(true)
+      try {
+        await new Promise((r) => setTimeout(r, 300))
+        setCurrentStep(3)
+      } finally {
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -749,10 +765,19 @@ export default function CheckoutPage() {
                     <Button
                       onClick={handleNextStep}
                       className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-8"
-                      disabled={!serviceability?.isServiceable}
+                      disabled={!serviceability?.isServiceable || isSubmitting}
                     >
-                      Continue to Delivery
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                      {isSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing...
+                        </span>
+                      ) : (
+                        <>
+                          Continue to Delivery
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -948,10 +973,19 @@ export default function CheckoutPage() {
                   <Button
                     onClick={handleNextStep}
                     className="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white px-8"
-                    disabled={!selectedDate || !selectedSlot}
+                    disabled={!selectedDate || !selectedSlot || isSubmitting}
                   >
-                    Review Order
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Processing...
+                      </span>
+                    ) : (
+                      <>
+                        Review Order
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

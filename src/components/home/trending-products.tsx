@@ -1,14 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
+import useSWR from "swr"
 import { ArrowRight, ChefHat, Clock, HeadphonesIcon, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { ProductCard } from "@/components/product/product-card"
 import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
+import { CityGate } from "@/components/providers/city-gate"
 import { useCity } from "@/hooks/use-city"
-import type { Product, ApiResponse, PaginatedData } from "@/types"
+import type { Product } from "@/types"
 
 const WHY_CHOOSE = [
   {
@@ -37,36 +39,39 @@ const WHY_CHOOSE = [
   },
 ]
 
-export function TrendingProducts() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
+function TrendingSkeleton() {
+  return (
+    <section className="container mx-auto px-4 py-12 md:py-16">
+      <div className="flex items-end justify-between mb-8">
+        <div>
+          <div className="h-7 w-48 bg-gray-200 rounded animate-shimmer" />
+          <div className="mt-4 h-4 w-64 bg-gray-200 rounded animate-shimmer" />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <ProductCardSkeleton key={i} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function TrendingProductsInner() {
   const [showAll, setShowAll] = useState(false)
   const { citySlug } = useCity()
 
-  useEffect(() => {
-    async function fetchTrending() {
-      try {
-        const params = new URLSearchParams({ sortBy: "rating", pageSize: "10" })
-        if (citySlug) params.set("citySlug", citySlug)
-        const res = await fetch(`/api/products?${params.toString()}`)
-        const json: ApiResponse<PaginatedData<Product>> = await res.json()
-        if (json.success && json.data) {
-          setProducts(json.data.items)
-        }
-      } catch {
-        // Fetch failed silently
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchTrending()
-  }, [citySlug])
+  const url = `/api/products?sortBy=rating&pageSize=10${citySlug ? `&citySlug=${citySlug}` : ""}`
 
-  const displayedProducts = showAll ? products : products.slice(0, 8)
+  const { data, isLoading } = useSWR(url, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60000, // 1 minute cache
+  })
 
-  return (
-    <>
-      {/* Bestsellers Section */}
+  if (isLoading) {
+    return (
       <section className="container mx-auto px-4 py-12 md:py-16">
         <div className="flex items-end justify-between mb-8">
           <div>
@@ -75,57 +80,82 @@ export function TrendingProducts() {
               Our most popular picks this week
             </p>
           </div>
-          <Link
-            href="/category/cakes"
-            className="hidden sm:flex items-center gap-1 text-sm font-semibold text-[#E91E63] hover:underline"
-          >
-            View All
-            <ArrowRight className="h-4 w-4" />
-          </Link>
         </div>
-
-        {loading ? (
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <ProductCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : products.length > 0 ? (
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-            {displayedProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-center text-muted-foreground py-10">
-            No products available yet. Check back soon!
-          </p>
-        )}
-
-        {!loading && !showAll && products.length > 8 && (
-          <div className="mt-8 text-center">
-            <Button
-              variant="outline"
-              size="lg"
-              className="rounded-xl border-2 border-pink-200 text-[#E91E63] hover:bg-pink-50 px-8"
-              onClick={() => setShowAll(true)}
-            >
-              Load More
-            </Button>
-          </div>
-        )}
-
-        {/* Mobile View All */}
-        <div className="mt-6 text-center sm:hidden">
-          <Link
-            href="/category/cakes"
-            className="inline-flex items-center gap-1 text-sm font-semibold text-[#E91E63]"
-          >
-            View All Products
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <ProductCardSkeleton key={i} />
+          ))}
         </div>
       </section>
+    )
+  }
+
+  const products: Product[] = data?.data?.items || data?.data || []
+  const displayedProducts = showAll ? products : products.slice(0, 8)
+
+  return (
+    <section className="container mx-auto px-4 py-12 md:py-16">
+      <div className="flex items-end justify-between mb-8">
+        <div>
+          <h2 className="section-title">Bestsellers</h2>
+          <p className="mt-4 text-muted-foreground">
+            Our most popular picks this week
+          </p>
+        </div>
+        <Link
+          href="/category/cakes"
+          className="hidden sm:flex items-center gap-1 text-sm font-semibold text-[#E91E63] hover:underline"
+        >
+          View All
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+
+      {products.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+          {displayedProducts.map((product) => (
+            <ProductCard key={product.id} product={product} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-center text-muted-foreground py-10">
+          No products available yet. Check back soon!
+        </p>
+      )}
+
+      {!showAll && products.length > 8 && (
+        <div className="mt-8 text-center">
+          <Button
+            variant="outline"
+            size="lg"
+            className="rounded-xl border-2 border-pink-200 text-[#E91E63] hover:bg-pink-50 px-8"
+            onClick={() => setShowAll(true)}
+          >
+            Load More
+          </Button>
+        </div>
+      )}
+
+      {/* Mobile View All */}
+      <div className="mt-6 text-center sm:hidden">
+        <Link
+          href="/category/cakes"
+          className="inline-flex items-center gap-1 text-sm font-semibold text-[#E91E63]"
+        >
+          View All Products
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </section>
+  )
+}
+
+export function TrendingProducts() {
+  return (
+    <>
+      <CityGate fallback={<TrendingSkeleton />}>
+        <TrendingProductsInner />
+      </CityGate>
 
       {/* Why Choose Gifts Cart India */}
       <section className="bg-gradient-to-b from-[#FFF5F0] to-white py-12 md:py-16">

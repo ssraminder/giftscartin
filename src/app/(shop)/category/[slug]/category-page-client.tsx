@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import useSWR from "swr"
 import { SlidersHorizontal, X, Sparkles } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -18,7 +19,7 @@ import { ProductCard } from "@/components/product/product-card"
 import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { useCity } from "@/hooks/use-city"
-import type { Product, Category, ApiResponse, PaginatedData } from "@/types"
+import type { Product, Category } from "@/types"
 
 const OCCASIONS = ["birthday", "anniversary", "valentines-day", "congratulations", "housewarming", "thank-you", "diwali"]
 
@@ -35,20 +36,12 @@ function sortOptionToApi(sort: SortOption): string {
   }
 }
 
+const fetcher = (url: string) => fetch(url).then((r) => r.json())
+
 export default function CategoryPageClient({ slug }: { slug: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { citySlug } = useCity()
-
-  // State for category info
-  const [categoryData, setCategoryData] = useState<(Category & { children?: Category[] }) | null>(null)
-  const [parentCategory, setParentCategory] = useState<(Category & { children?: Category[] }) | null>(null)
-  const [categoryLoading, setCategoryLoading] = useState(true)
-
-  // State for products
-  const [products, setProducts] = useState<Product[]>([])
-  const [total, setTotal] = useState(0)
-  const [productsLoading, setProductsLoading] = useState(true)
 
   // Filters from URL search params
   const [sortBy, setSortBy] = useState<SortOption>((searchParams.get("sortBy") as SortOption) || "popularity")
@@ -62,73 +55,60 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
   const [currentPage, setCurrentPage] = useState(Number(searchParams.get("page")) || 1)
   const [showFilters, setShowFilters] = useState(false)
 
-  // Fetch categories to find current category info
-  useEffect(() => {
-    async function fetchCategories() {
-      setCategoryLoading(true)
-      try {
-        const res = await fetch("/api/categories")
-        const json: ApiResponse<(Category & { children?: Category[] })[]> = await res.json()
-        if (json.success && json.data) {
-          const allCategories = json.data
-          // Check if slug matches a parent category
-          const found = allCategories.find((c) => c.slug === slug)
-          if (found) {
-            setCategoryData(found)
-            setParentCategory(null)
-          } else {
-            // Check subcategories
-            for (const parent of allCategories) {
-              const child = parent.children?.find((c) => c.slug === slug)
-              if (child) {
-                setCategoryData(child)
-                setParentCategory(parent)
-                break
-              }
-            }
-          }
-        }
-      } catch {
-        // Category fetch failed
-      } finally {
-        setCategoryLoading(false)
+  // SWR for categories
+  const { data: categoriesData, isLoading: categoryLoading } = useSWR(
+    "/api/categories",
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
+  )
+
+  // Derive category info from the fetched categories
+  const { categoryData, parentCategory } = useMemo(() => {
+    if (!categoriesData?.success || !categoriesData?.data) {
+      return { categoryData: null, parentCategory: null }
+    }
+    const allCategories = categoriesData.data as (Category & { children?: Category[] })[]
+    // Check if slug matches a parent category
+    const found = allCategories.find((c) => c.slug === slug)
+    if (found) {
+      return { categoryData: found, parentCategory: null }
+    }
+    // Check subcategories
+    for (const parent of allCategories) {
+      const child = parent.children?.find((c) => c.slug === slug)
+      if (child) {
+        return { categoryData: child, parentCategory: parent }
       }
     }
-    fetchCategories()
-  }, [slug])
+    return { categoryData: null, parentCategory: null }
+  }, [categoriesData, slug])
 
-  // Fetch products from API
-  const fetchProducts = useCallback(async () => {
-    setProductsLoading(true)
-    try {
-      const params = new URLSearchParams()
-      params.set("categorySlug", slug)
-      params.set("page", String(currentPage))
-      params.set("pageSize", String(PAGE_SIZE))
-      params.set("sortBy", sortOptionToApi(sortBy))
+  // Build products URL for SWR
+  const productsUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set("categorySlug", slug)
+    params.set("page", String(currentPage))
+    params.set("pageSize", String(PAGE_SIZE))
+    params.set("sortBy", sortOptionToApi(sortBy))
 
-      if (citySlug) params.set("citySlug", citySlug)
-      if (priceRange[0] > 0) params.set("minPrice", String(priceRange[0]))
-      if (priceRange[1] < 5000) params.set("maxPrice", String(priceRange[1]))
-      if (vegOnly) params.set("isVeg", "true")
-      if (selectedOccasion) params.set("occasion", selectedOccasion)
+    if (citySlug) params.set("citySlug", citySlug)
+    if (priceRange[0] > 0) params.set("minPrice", String(priceRange[0]))
+    if (priceRange[1] < 5000) params.set("maxPrice", String(priceRange[1]))
+    if (vegOnly) params.set("isVeg", "true")
+    if (selectedOccasion) params.set("occasion", selectedOccasion)
 
-      const res = await fetch(`/api/products?${params.toString()}`)
-      const json: ApiResponse<PaginatedData<Product>> = await res.json()
-      if (json.success && json.data) {
-        setProducts(json.data.items)
-        setTotal(json.data.total)
-      }
-    } catch {
-      // Product fetch failed
-    } finally {
-      setProductsLoading(false)
-    }
+    return `/api/products?${params.toString()}`
   }, [slug, currentPage, sortBy, priceRange, vegOnly, selectedOccasion, citySlug])
 
-  useEffect(() => {
-    fetchProducts()
-  }, [fetchProducts])
+  // SWR for products
+  const { data: productsData, isLoading: productsLoading } = useSWR(
+    productsUrl,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
+  )
+
+  const products: Product[] = productsData?.data?.items || []
+  const total: number = productsData?.data?.total || 0
 
   // Update URL search params when filters change
   useEffect(() => {

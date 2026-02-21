@@ -21,6 +21,7 @@ export interface CityContextValue {
   zoneId: string | null
   zoneName: string | null
   isSelected: boolean
+  isHydrating: boolean  // true until localStorage has been read
   setCity: (city: CitySelection) => void
   clearCity: () => void
 }
@@ -45,6 +46,7 @@ export const CityContext = createContext<CityContextValue>({
   zoneId: null,
   zoneName: null,
   isSelected: false,
+  isHydrating: true,
   setCity: () => {},
   clearCity: () => {},
 })
@@ -112,6 +114,7 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     zoneId: selection?.zoneId ?? null,
     zoneName: selection?.zoneName ?? null,
     isSelected: loaded && selection !== null,
+    isHydrating: !loaded,
     setCity,
     clearCity,
   }
