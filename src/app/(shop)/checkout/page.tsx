@@ -1,15 +1,16 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Check, Loader2, Plus } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Loader2, Plus } from "lucide-react"
 
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { useCurrency } from "@/hooks/use-currency"
+import { useReferral } from "@/components/providers/referral-provider"
 
 type StepNumber = 1 | 2 | 3
 
@@ -20,6 +21,24 @@ const STEPS: { number: StepNumber; label: string; emoji: string }[] = [
   { number: 2, label: "Date & Time", emoji: "\uD83D\uDCC5" },
   { number: 3, label: "Payment", emoji: "\uD83D\uDCB3" },
 ]
+
+// ─── Delivery Slots ───
+
+const DELIVERY_SLOTS = [
+  { slug: "standard", emoji: "🕘", name: "Standard Delivery", time: "9 AM – 9 PM", charge: 0 },
+  { slug: "morning", emoji: "🕑", name: "Morning Slot", time: "9 AM – 11 AM", charge: 75 },
+  { slug: "afternoon", emoji: "☀️", name: "Afternoon Slot", time: "12 PM – 2 PM", charge: 50 },
+  { slug: "evening", emoji: "🌆", name: "Evening Slot", time: "6 PM – 8 PM", charge: 100 },
+  { slug: "midnight", emoji: "🌙", name: "Midnight Delivery", time: "11 PM – 11:59 PM", charge: 199 },
+  { slug: "express", emoji: "⚡", name: "Express Delivery", time: "Within 3 Hours", charge: 249 },
+]
+
+// ─── Hardcoded Coupons (placeholder) ───
+
+const COUPONS: Record<string, { type: "percent" | "flat"; value: number }> = {
+  WELCOME20: { type: "percent", value: 20 },
+  CAKE50: { type: "flat", value: 50 },
+}
 
 // ─── Types ───
 
@@ -35,6 +54,27 @@ interface SavedAddress {
   isDefault: boolean
 }
 
+// ─── Helper: generate next 7 days ───
+
+function getNext7Days(): { date: Date; iso: string; dayAbbr: string; dateNum: number; isToday: boolean }[] {
+  const days: { date: Date; iso: string; dayAbbr: string; dateNum: number; isToday: boolean }[] = []
+  const today = new Date()
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today)
+    d.setDate(today.getDate() + i)
+    days.push({
+      date: d,
+      iso: d.toISOString().split("T")[0],
+      dayAbbr: dayNames[d.getDay()],
+      dateNum: d.getDate(),
+      isToday: i === 0,
+    })
+  }
+  return days
+}
+
 // ─── Component ───
 
 export default function CheckoutPage() {
@@ -42,10 +82,11 @@ export default function CheckoutPage() {
   const { data: session } = useSession()
   const { formatPrice } = useCurrency()
   const { cityName } = useCity()
+  const { clearReferral } = useReferral()
 
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
-  const couponDiscount = useCart((s) => s.couponDiscount)
+  const clearCart = useCart((s) => s.clearCart)
 
   const [currentStep, setCurrentStep] = useState<StepNumber>(1)
 
@@ -55,6 +96,7 @@ export default function CheckoutPage() {
   const [addressesLoading, setAddressesLoading] = useState(false)
 
   const [formData, setFormData] = useState({
+    // Step 1
     selectedAddressId: null as string | null,
     recipientName: "",
     recipientPhone: "",
@@ -65,7 +107,32 @@ export default function CheckoutPage() {
     saveAddress: true,
     pincodeStatus: "idle" as "idle" | "checking" | "valid" | "invalid",
     showNewAddressForm: false,
+
+    // Step 2
+    deliveryDate: null as string | null,
+    deliverySlot: null as string | null,
+    slotCharge: 0,
+    giftMessage: "",
+    specialInstructions: "",
+
+    // Step 3
+    paymentMethod: null as "upi" | "card" | "netbanking" | "cod" | null,
+    couponCode: "",
+    couponDiscount: 0,
+    couponApplied: false,
   })
+
+  // Step 3 extra state
+  const [codFee, setCodFee] = useState(0)
+  const [upiId, setUpiId] = useState("")
+  const [cardNumber, setCardNumber] = useState("")
+  const [cardExpiry, setCardExpiry] = useState("")
+  const [cardCvv, setCardCvv] = useState("")
+  const [selectedBank, setSelectedBank] = useState("")
+  const [couponExpanded, setCouponExpanded] = useState(false)
+  const [couponError, setCouponError] = useState("")
+  const [placingOrder, setPlacingOrder] = useState(false)
+  const [orderError, setOrderError] = useState("")
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -123,9 +190,6 @@ export default function CheckoutPage() {
     }
   }, [currentStep, goToStep, router])
 
-  // Expose helpers for step components (will be passed as props)
-  void goBack
-
   // ─── Pincode Check ───
 
   const checkPincode = useCallback(async (pincode: string) => {
@@ -159,7 +223,7 @@ export default function CheckoutPage() {
   // ─── Form Helpers ───
 
   const updateField = useCallback(
-    (field: string, value: string | boolean) => {
+    (field: string, value: string | boolean | number) => {
       setFormData((prev) => ({ ...prev, [field]: value }))
       // Clear error when user types
       if (typeof value === "string" && value.trim()) {
@@ -233,11 +297,136 @@ export default function CheckoutPage() {
     }
   }, [validateStep1, goToStep])
 
+  // ─── Step 2 Helpers ───
+
+  const next7Days = useMemo(() => getNext7Days(), [])
+
+  const handleContinueStep2 = useCallback(() => {
+    if (formData.deliveryDate && formData.deliverySlot) {
+      goToStep(3)
+    }
+  }, [formData.deliveryDate, formData.deliverySlot, goToStep])
+
+  const selectedSlotObj = useMemo(
+    () => DELIVERY_SLOTS.find((s) => s.slug === formData.deliverySlot),
+    [formData.deliverySlot]
+  )
+
+  // ─── Step 3 Helpers ───
+
+  const handlePaymentMethodChange = useCallback((method: "upi" | "card" | "netbanking" | "cod") => {
+    setFormData((prev) => ({ ...prev, paymentMethod: method }))
+    setCodFee(method === "cod" ? 50 : 0)
+  }, [])
+
+  const handleApplyCoupon = useCallback(() => {
+    const code = formData.couponCode.trim().toUpperCase()
+    if (!code) return
+
+    const coupon = COUPONS[code]
+    if (!coupon) {
+      setCouponError("Invalid or expired coupon")
+      setFormData((prev) => ({ ...prev, couponDiscount: 0, couponApplied: false }))
+      return
+    }
+
+    const sub = getSubtotal()
+    const discount = coupon.type === "percent" ? Math.round(sub * coupon.value / 100) : coupon.value
+    setFormData((prev) => ({ ...prev, couponDiscount: discount, couponApplied: true }))
+    setCouponError("")
+  }, [formData.couponCode, getSubtotal])
+
+  // ─── Address display helpers ───
+
+  const getAddressDisplay = useCallback(() => {
+    if (formData.selectedAddressId) {
+      const addr = savedAddresses.find((a) => a.id === formData.selectedAddressId)
+      if (addr) return { name: addr.name, address: `${addr.address}, ${addr.pincode}`, pincode: addr.pincode }
+    }
+    return {
+      name: formData.recipientName,
+      address: `${formData.address}, ${formData.pincode}`,
+      pincode: formData.pincode,
+    }
+  }, [formData.selectedAddressId, formData.recipientName, formData.address, formData.pincode, savedAddresses])
+
+  const getFormattedDate = useCallback(() => {
+    if (!formData.deliveryDate) return ""
+    const d = new Date(formData.deliveryDate + "T00:00:00")
+    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })
+  }, [formData.deliveryDate])
+
+  // ─── Place Order ───
+
+  const handlePlaceOrder = useCallback(async () => {
+    if (!formData.paymentMethod) {
+      setOrderError("Please select a payment method")
+      return
+    }
+
+    setPlacingOrder(true)
+    setOrderError("")
+
+    try {
+      const addrDisplay = getAddressDisplay()
+      const body: Record<string, unknown> = {
+        items: items.map((item) => ({
+          productId: item.productId,
+          variationId: item.variationId,
+          quantity: item.quantity,
+          price: item.price,
+          addonSelections: item.addonSelections,
+        })),
+        addressId: formData.selectedAddressId || null,
+        newAddress: formData.selectedAddressId
+          ? null
+          : {
+              name: formData.recipientName,
+              phone: formData.recipientPhone,
+              address: formData.address,
+              city: formData.city,
+              pincode: formData.pincode,
+              landmark: formData.landmark || null,
+              save: formData.saveAddress,
+            },
+        deliveryDate: formData.deliveryDate,
+        deliverySlot: formData.deliverySlot,
+        giftMessage: formData.giftMessage || null,
+        specialInstructions: formData.specialInstructions || null,
+        couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : null,
+        paymentMethod: formData.paymentMethod,
+      }
+
+      // Suppress unused variable warning — addrDisplay used for potential future logging
+      void addrDisplay
+
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json()
+
+      if (data.success && data.data?.order) {
+        clearReferral()
+        clearCart()
+        router.push(`/orders/${data.data.order.id}/confirmation`)
+      } else {
+        setOrderError(data.error || "Failed to place order. Please try again.")
+      }
+    } catch {
+      setOrderError("Something went wrong. Please try again.")
+    } finally {
+      setPlacingOrder(false)
+    }
+  }, [formData, items, getAddressDisplay, clearReferral, clearCart, router])
+
   // ─── Derived Values ───
 
   const subtotal = getSubtotal()
-  const deliveryCharge = 0 // Calculated once slot is selected in step 2
-  const total = subtotal + deliveryCharge - couponDiscount
+  const deliveryCharge = 0 // From city config — placeholder
+  const total = subtotal + deliveryCharge + formData.slotCharge + codFee - formData.couponDiscount
 
   const isNewAddressFormVisible =
     formData.showNewAddressForm || savedAddresses.length === 0
@@ -322,6 +511,8 @@ export default function CheckoutPage() {
         <div className="lg:flex gap-8">
           {/* Left Column — Step Content */}
           <div className="lg:w-[65%]">
+
+            {/* ═══════════════════════ STEP 1 ═══════════════════════ */}
             {currentStep === 1 && (
               <div>
                 <h1 className="text-xl font-semibold mb-6">
@@ -578,9 +769,467 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {currentStep !== 1 && (
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center text-gray-500">
-                Step {currentStep} content goes here
+            {/* ═══════════════════════ STEP 2 ═══════════════════════ */}
+            {currentStep === 2 && (
+              <div>
+                {/* Back link */}
+                <button
+                  onClick={goBack}
+                  className="text-sm text-gray-500 hover:text-gray-700 mb-4 inline-flex items-center gap-1"
+                >
+                  &larr; Back
+                </button>
+
+                {/* 1. Delivery Date */}
+                <h2 className="font-semibold mb-3">Select Delivery Date</h2>
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {next7Days.map((day) => {
+                    const isSelected = formData.deliveryDate === day.iso
+                    return (
+                      <button
+                        key={day.iso}
+                        onClick={() => updateField("deliveryDate", day.iso)}
+                        className={`flex-none w-16 rounded-xl border-2 py-2 text-center cursor-pointer transition-all ${
+                          isSelected
+                            ? "border-pink-500 bg-pink-500 text-white"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className={`text-xs ${isSelected ? "text-white" : "text-gray-500"}`}>
+                          {day.dayAbbr}
+                        </div>
+                        <div className={`text-lg font-bold ${isSelected ? "text-white" : ""}`}>
+                          {day.dateNum}
+                        </div>
+                        {day.isToday && (
+                          <div className={`text-xs ${isSelected ? "text-white" : "text-pink-500"}`}>
+                            Today
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* 2. Delivery Time Slot */}
+                <h2 className="font-semibold mb-3 mt-6">Select Time Slot</h2>
+                <div>
+                  {DELIVERY_SLOTS.map((slot) => {
+                    const isSelected = formData.deliverySlot === slot.slug
+                    return (
+                      <div
+                        key={slot.slug}
+                        onClick={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            deliverySlot: slot.slug,
+                            slotCharge: slot.charge,
+                          }))
+                        }}
+                        className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer mb-2 transition-all ${
+                          isSelected
+                            ? "border-pink-500 bg-pink-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Radio dot */}
+                          <div
+                            className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                              isSelected ? "border-pink-500" : "border-gray-300"
+                            }`}
+                          >
+                            {isSelected && (
+                              <div className="h-2 w-2 rounded-full bg-pink-500" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="font-medium">
+                              {slot.emoji} {slot.name}
+                            </p>
+                            <p className="text-sm text-gray-500">{slot.time}</p>
+                          </div>
+                        </div>
+                        <span
+                          className={`font-semibold ${
+                            slot.charge === 0 ? "text-green-600" : "text-pink-600"
+                          }`}
+                        >
+                          {slot.charge === 0 ? "FREE" : `+₹${slot.charge}`}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* 3. Gift Message */}
+                <div className="mt-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Add a Personal Message (optional)
+                  </label>
+                  <textarea
+                    rows={3}
+                    maxLength={200}
+                    value={formData.giftMessage}
+                    onChange={(e) => updateField("giftMessage", e.target.value)}
+                    placeholder="Write your heartfelt message here..."
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none resize-none"
+                  />
+                  <p className="text-xs text-gray-400 text-right mt-0.5">
+                    {formData.giftMessage.length}/200 characters
+                  </p>
+                </div>
+
+                {/* 4. Special Instructions */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Special Instructions (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.specialInstructions}
+                    onChange={(e) => updateField("specialInstructions", e.target.value)}
+                    placeholder="Any instructions? (e.g., Call before delivery)"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                  />
+                </div>
+
+                {/* 5. Continue Button */}
+                <button
+                  onClick={handleContinueStep2}
+                  disabled={!formData.deliveryDate || !formData.deliverySlot}
+                  className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl text-base font-semibold transition-colors"
+                >
+                  Continue to Payment &rarr;
+                </button>
+              </div>
+            )}
+
+            {/* ═══════════════════════ STEP 3 ═══════════════════════ */}
+            {currentStep === 3 && (
+              <div>
+                {/* Back link */}
+                <button
+                  onClick={goBack}
+                  className="text-sm text-gray-500 hover:text-gray-700 mb-4 inline-flex items-center gap-1"
+                >
+                  &larr; Back
+                </button>
+
+                {/* 1. Order Review */}
+                <div className="rounded-xl bg-gray-50 p-4 mb-6">
+                  {/* Address row */}
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-sm text-gray-700">
+                      📍 {getAddressDisplay().name}, {getAddressDisplay().address}
+                    </p>
+                    <button
+                      onClick={() => goToStep(1)}
+                      className="text-xs text-pink-500 hover:text-pink-600 font-medium shrink-0 ml-2"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {/* Date/slot row */}
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="text-sm text-gray-700">
+                      📅 {getFormattedDate()} | {selectedSlotObj?.name || formData.deliverySlot}
+                    </p>
+                    <button
+                      onClick={() => goToStep(2)}
+                      className="text-xs text-pink-500 hover:text-pink-600 font-medium shrink-0 ml-2"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  {/* Gift message row */}
+                  {formData.giftMessage && (
+                    <p className="text-sm text-gray-500">
+                      💌 {formData.giftMessage.length > 50
+                        ? formData.giftMessage.slice(0, 50) + "..."
+                        : formData.giftMessage}
+                    </p>
+                  )}
+                </div>
+
+                {/* 2. Payment Method */}
+                <h2 className="font-semibold mb-3">Choose Payment Method</h2>
+                <div className="space-y-2">
+                  {/* UPI */}
+                  <div>
+                    <div
+                      onClick={() => handlePaymentMethodChange("upi")}
+                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                        formData.paymentMethod === "upi"
+                          ? "border-pink-500 bg-pink-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            formData.paymentMethod === "upi" ? "border-pink-500" : "border-gray-300"
+                          }`}
+                        >
+                          {formData.paymentMethod === "upi" && (
+                            <div className="h-2 w-2 rounded-full bg-pink-500" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium">⚡ UPI</p>
+                          <span className="text-xs text-green-600 font-medium">Instant · Most Preferred</span>
+                        </div>
+                      </div>
+                    </div>
+                    {formData.paymentMethod === "upi" && (
+                      <div className="mt-2 ml-7 mr-4">
+                        <input
+                          type="text"
+                          value={upiId}
+                          onChange={(e) => setUpiId(e.target.value)}
+                          placeholder="yourname@upi"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        />
+                        <p className="text-sm text-gray-500 mt-1">Enter your UPI ID to pay</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card */}
+                  <div>
+                    <div
+                      onClick={() => handlePaymentMethodChange("card")}
+                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                        formData.paymentMethod === "card"
+                          ? "border-pink-500 bg-pink-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            formData.paymentMethod === "card" ? "border-pink-500" : "border-gray-300"
+                          }`}
+                        >
+                          {formData.paymentMethod === "card" && (
+                            <div className="h-2 w-2 rounded-full bg-pink-500" />
+                          )}
+                        </div>
+                        <p className="font-medium">💳 Credit or Debit Card</p>
+                      </div>
+                    </div>
+                    {formData.paymentMethod === "card" && (
+                      <div className="mt-2 ml-7 mr-4 grid grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, "").slice(0, 16))}
+                          placeholder="Card Number"
+                          maxLength={16}
+                          className="col-span-3 sm:col-span-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        />
+                        <input
+                          type="text"
+                          value={cardExpiry}
+                          onChange={(e) => {
+                            let val = e.target.value.replace(/[^\d/]/g, "")
+                            if (val.length === 2 && !val.includes("/") && cardExpiry.length < val.length) {
+                              val = val + "/"
+                            }
+                            setCardExpiry(val.slice(0, 5))
+                          }}
+                          placeholder="MM/YY"
+                          maxLength={5}
+                          className="rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        />
+                        <input
+                          type="password"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                          placeholder="CVV"
+                          maxLength={3}
+                          className="rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Net Banking */}
+                  <div>
+                    <div
+                      onClick={() => handlePaymentMethodChange("netbanking")}
+                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                        formData.paymentMethod === "netbanking"
+                          ? "border-pink-500 bg-pink-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            formData.paymentMethod === "netbanking" ? "border-pink-500" : "border-gray-300"
+                          }`}
+                        >
+                          {formData.paymentMethod === "netbanking" && (
+                            <div className="h-2 w-2 rounded-full bg-pink-500" />
+                          )}
+                        </div>
+                        <p className="font-medium">🏦 Net Banking</p>
+                      </div>
+                    </div>
+                    {formData.paymentMethod === "netbanking" && (
+                      <div className="mt-2 ml-7 mr-4">
+                        <select
+                          value={selectedBank}
+                          onChange={(e) => setSelectedBank(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                        >
+                          <option value="">Select your bank</option>
+                          <option value="sbi">SBI</option>
+                          <option value="hdfc">HDFC</option>
+                          <option value="icici">ICICI</option>
+                          <option value="axis">Axis</option>
+                          <option value="kotak">Kotak</option>
+                          <option value="pnb">Punjab National Bank</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* COD */}
+                  <div>
+                    <div
+                      onClick={() => handlePaymentMethodChange("cod")}
+                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                        formData.paymentMethod === "cod"
+                          ? "border-pink-500 bg-pink-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                            formData.paymentMethod === "cod" ? "border-pink-500" : "border-gray-300"
+                          }`}
+                        >
+                          {formData.paymentMethod === "cod" && (
+                            <div className="h-2 w-2 rounded-full bg-pink-500" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">🤝 Cash on Delivery</p>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">₹50 COD fee</span>
+                        </div>
+                      </div>
+                    </div>
+                    {formData.paymentMethod === "cod" && (
+                      <p className="text-sm text-gray-500 mt-2 ml-7 mr-4">
+                        Please keep exact change ready. COD fee of ₹50 is non-refundable.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. Coupon Code */}
+                {!formData.couponApplied && (
+                  <div className="mt-6">
+                    <button
+                      onClick={() => setCouponExpanded(!couponExpanded)}
+                      className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800"
+                    >
+                      🏷️ Have a promo code?
+                      {couponExpanded ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </button>
+                    {couponExpanded && (
+                      <div className="flex gap-2 mt-2">
+                        <input
+                          type="text"
+                          value={formData.couponCode}
+                          onChange={(e) => {
+                            updateField("couponCode", e.target.value)
+                            setCouponError("")
+                          }}
+                          placeholder="Enter coupon code"
+                          className="flex-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        />
+                        <button
+                          onClick={handleApplyCoupon}
+                          className="bg-pink-500 hover:bg-pink-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    )}
+                    {couponError && (
+                      <p className="text-sm text-red-500 mt-1">❌ {couponError}</p>
+                    )}
+                  </div>
+                )}
+
+                {formData.couponApplied && (
+                  <p className="text-sm text-green-600 mt-4">
+                    ✅ Coupon applied! You saved {formatPrice(formData.couponDiscount)}
+                  </p>
+                )}
+
+                {/* 4. Price Breakdown */}
+                <div className="border-t pt-4 mt-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span>{formatPrice(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Delivery charge</span>
+                    <span>{deliveryCharge === 0 ? <span className="text-green-600">Free</span> : formatPrice(deliveryCharge)}</span>
+                  </div>
+                  {formData.slotCharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Slot charge</span>
+                      <span>{formatPrice(formData.slotCharge)}</span>
+                    </div>
+                  )}
+                  {formData.couponDiscount > 0 && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Coupon</span>
+                      <span>-{formatPrice(formData.couponDiscount)}</span>
+                    </div>
+                  )}
+                  {codFee > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">COD fee</span>
+                      <span>+{formatPrice(codFee)}</span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2 mt-2 flex justify-between font-bold text-xl">
+                    <span>Total</span>
+                    <span>{formatPrice(total)}</span>
+                  </div>
+                </div>
+
+                {/* Order error */}
+                {orderError && (
+                  <p className="text-sm text-red-500 mt-3">{orderError}</p>
+                )}
+
+                {/* 5. Place Order */}
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={!formData.paymentMethod || placingOrder}
+                  className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-4 rounded-xl text-base font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  {placingOrder ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Placing Order...
+                    </>
+                  ) : (
+                    "Place Order →"
+                  )}
+                </button>
               </div>
             )}
           </div>
@@ -661,14 +1310,36 @@ export default function CheckoutPage() {
                 {/* Delivery */}
                 <div className="flex justify-between text-sm mt-1.5">
                   <span className="text-gray-600">Delivery</span>
-                  <span className="text-gray-400 text-xs">Calculated in next step</span>
+                  {deliveryCharge === 0 ? (
+                    <span className="text-gray-400 text-xs">
+                      {currentStep >= 2 ? "Free" : "Calculated in next step"}
+                    </span>
+                  ) : (
+                    <span className="text-gray-800">{formatPrice(deliveryCharge)}</span>
+                  )}
                 </div>
 
+                {/* Slot charge */}
+                {formData.slotCharge > 0 && (
+                  <div className="flex justify-between text-sm mt-1.5">
+                    <span className="text-gray-600">Slot charge</span>
+                    <span className="text-gray-800">{formatPrice(formData.slotCharge)}</span>
+                  </div>
+                )}
+
                 {/* Coupon discount */}
-                {couponDiscount > 0 && (
+                {formData.couponDiscount > 0 && (
                   <div className="flex justify-between text-sm mt-1.5 text-green-600">
                     <span>Discount</span>
-                    <span>-{formatPrice(couponDiscount)}</span>
+                    <span>-{formatPrice(formData.couponDiscount)}</span>
+                  </div>
+                )}
+
+                {/* COD fee */}
+                {codFee > 0 && (
+                  <div className="flex justify-between text-sm mt-1.5">
+                    <span className="text-gray-600">COD fee</span>
+                    <span className="text-gray-800">+{formatPrice(codFee)}</span>
                   </div>
                 )}
 
