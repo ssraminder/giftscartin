@@ -32,6 +32,7 @@ import {
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { CitySearch } from "@/components/location/city-search"
+import { POPULAR_CITIES } from "@/lib/cities-data"
 import { MobileNav } from "./mobile-nav"
 
 const CATEGORY_LINKS = [
@@ -202,6 +203,27 @@ export function Header() {
                     autoFocus
                     placeholder="Search city or pincode..."
                   />
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-xs text-gray-400 mb-2">Popular Cities</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {POPULAR_CITIES.filter(c => !c.isComingSoon).map((city) => (
+                        <button
+                          key={city.citySlug}
+                          onClick={() => {
+                            setCity({
+                              cityId: city.cityId,
+                              cityName: city.cityName,
+                              citySlug: city.citySlug,
+                            })
+                            setCityDropdownOpen(false)
+                          }}
+                          className="px-2.5 py-1 rounded-full border border-gray-200 text-xs font-medium text-gray-600 hover:border-[#E91E63] hover:text-[#E91E63] hover:bg-pink-50 transition-colors"
+                        >
+                          {city.cityName}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

@@ -4,19 +4,8 @@ import { useState } from "react"
 import { Gift, MapPin } from "lucide-react"
 import { useCity } from "@/hooks/use-city"
 import { CitySearch } from "./city-search"
+import { POPULAR_CITIES } from "@/lib/cities-data"
 import type { CitySelection } from "@/components/providers/city-provider"
-
-// Popular cities for quick selection (hardcoded from seeded data)
-const POPULAR_CITIES: Array<CitySelection & { state: string }> = [
-  { cityId: "city_chandigarh", cityName: "Chandigarh", citySlug: "chandigarh", state: "Chandigarh" },
-  { cityId: "city_mohali", cityName: "Mohali", citySlug: "mohali", state: "Punjab" },
-  { cityId: "city_panchkula", cityName: "Panchkula", citySlug: "panchkula", state: "Haryana" },
-  { cityId: "city_ludhiana", cityName: "Ludhiana", citySlug: "ludhiana", state: "Punjab" },
-  { cityId: "city_patiala", cityName: "Patiala", citySlug: "patiala", state: "Punjab" },
-  { cityId: "city_bathinda", cityName: "Bathinda", citySlug: "bathinda", state: "Punjab" },
-  { cityId: "city_jalandhar", cityName: "Jalandhar", citySlug: "jalandhar", state: "Punjab" },
-  { cityId: "city_amritsar", cityName: "Amritsar", citySlug: "amritsar", state: "Punjab" },
-]
 
 export function CityModal() {
   const { setCity } = useCity()
@@ -30,11 +19,13 @@ export function CityModal() {
     }, 150)
   }
 
-  function handleChipSelect(city: typeof POPULAR_CITIES[number]) {
+  function handleCityChipClick(city: typeof POPULAR_CITIES[number]) {
     handleSelect({
       cityId: city.cityId,
       cityName: city.cityName,
       citySlug: city.citySlug,
+      pincode: undefined,
+      areaName: undefined,
     })
   }
 
@@ -88,7 +79,7 @@ export function CityModal() {
             {POPULAR_CITIES.map((city) => (
               <button
                 key={city.citySlug}
-                onClick={() => handleChipSelect(city)}
+                onClick={() => handleCityChipClick(city)}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-all hover:border-[#E91E63] hover:bg-pink-50 hover:text-[#E91E63] active:scale-95"
               >
                 <MapPin className="h-3.5 w-3.5" />

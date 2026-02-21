@@ -69,6 +69,19 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     setLoaded(true)
   }, [])
 
+  // Pre-warm the city resolve serverless function after 2 seconds
+  // This prevents cold start latency for the first real user search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetch('/api/city/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Ch' }),
+      }).catch(() => {}) // silently ignore errors
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
   const setCity = useCallback((city: CitySelection) => {
     setSelection(city)
     try {
