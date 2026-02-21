@@ -31,9 +31,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
+import { usePartner } from "@/hooks/use-partner"
 import { CitySearch } from "@/components/location/city-search"
 import { POPULAR_CITIES } from "@/lib/cities-data"
 import { MobileNav } from "./mobile-nav"
+
+const INTERNAL_HOSTS_HEADER = [
+  'giftscart.netlify.app',
+  'giftscart.in',
+  'www.giftscart.in',
+  'localhost',
+]
 
 const CATEGORY_LINKS = [
   { href: "/category/cakes", label: "Cakes", icon: Cake },
@@ -71,6 +79,17 @@ export function Header() {
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
   const { cityName, pincode, isSelected, setCity } = useCity()
+  const { partner } = usePartner()
+
+  // Append ?ref= to navigation links on the main domain
+  const withRef = (path: string) => {
+    if (!partner?.refCode) return path
+    const onPartnerDomain = typeof window !== 'undefined' &&
+      !INTERNAL_HOSTS_HEADER.some(h => window.location.hostname.includes(h))
+    if (onPartnerDomain) return path
+    const sep = path.includes('?') ? '&' : '?'
+    return `${path}${sep}ref=${partner.refCode}`
+  }
 
   const user = session?.user as { id?: string; name?: string | null; phone?: string; role?: string } | undefined
 
@@ -126,7 +145,7 @@ export function Header() {
           <MobileNav />
 
           {/* Logo */}
-          <Link href="/" className="flex items-center shrink-0 gap-1">
+          <Link href={withRef("/")} className="flex items-center shrink-0 gap-1">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
               <Gift className="h-4 w-4 text-white" />
             </div>
@@ -318,7 +337,7 @@ export function Header() {
               return (
                 <Link
                   key={link.href}
-                  href={link.href}
+                  href={withRef(link.href)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 transition-all duration-200 hover:text-[#E91E63] rounded-full hover:bg-pink-50"
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -334,7 +353,7 @@ export function Header() {
             {OCCASION_LINKS.map((link) => (
               <Link
                 key={link.href}
-                href={link.href}
+                href={withRef(link.href)}
                 className="px-3 py-1.5 text-sm text-gray-500 transition-all duration-200 hover:text-[#E91E63] rounded-full hover:bg-pink-50"
               >
                 {link.label}

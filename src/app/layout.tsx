@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
+import { PartnerProvider } from "@/components/providers/partner-provider"
 import { CityProvider } from "@/components/providers/city-provider"
 import { CurrencyProvider } from "@/components/providers/currency-provider"
 import { CartHydration } from "@/components/providers/cart-provider"
@@ -36,10 +37,12 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <SessionProvider>
           <CurrencyProvider>
-            <CityProvider>
-              <CartHydration />
-              {children}
-            </CityProvider>
+            <PartnerProvider>
+              <CityProvider>
+                <CartHydration />
+                {children}
+              </CityProvider>
+            </PartnerProvider>
           </CurrencyProvider>
         </SessionProvider>
       </body>

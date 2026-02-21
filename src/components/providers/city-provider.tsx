@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useEffect, useState } from "react"
+import { usePartner } from "@/components/providers/partner-provider"
 
 export interface CitySelection {
   cityId: string
@@ -10,6 +11,7 @@ export interface CitySelection {
   areaName?: string
   zoneId?: string
   zoneName?: string
+  source?: string
 }
 
 export interface CityContextValue {
@@ -22,6 +24,7 @@ export interface CityContextValue {
   zoneName: string | null
   isSelected: boolean
   isHydrating: boolean  // true until localStorage has been read
+  shouldShowCityModal: boolean
   setCity: (city: CitySelection) => void
   clearCity: () => void
 }
@@ -47,6 +50,7 @@ export const CityContext = createContext<CityContextValue>({
   zoneName: null,
   isSelected: false,
   isHydrating: true,
+  shouldShowCityModal: false,
   setCity: () => {},
   clearCity: () => {},
 })
@@ -54,8 +58,27 @@ export const CityContext = createContext<CityContextValue>({
 export function CityProvider({ children }: { children: React.ReactNode }) {
   const [selection, setSelection] = useState<CitySelection | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const { partner, isLoading: partnerLoading } = usePartner()
 
   useEffect(() => {
+    if (partnerLoading) return  // wait for partner to resolve first
+
+    if (partner?.defaultCityId && partner?.defaultCitySlug) {
+      // Partner has a default city — set silently, skip modal
+      setSelection({
+        cityId: partner.defaultCityId,
+        cityName: partner.defaultCityName || '',
+        citySlug: partner.defaultCitySlug,
+        pincode: undefined,
+        areaName: undefined,
+        source: 'partner',
+      })
+      setCookie(COOKIE_NAME, partner.defaultCitySlug)
+      setLoaded(true)
+      return
+    }
+
+    // Normal flow — read from localStorage
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
       if (stored) {
@@ -69,7 +92,7 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
       // localStorage may be unavailable
     }
     setLoaded(true)
-  }, [])
+  }, [partnerLoading, partner])
 
   // Pre-warm the city resolve serverless function after 2 seconds
   // This prevents cold start latency for the first real user search
@@ -105,6 +128,12 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   // Don't render until loaded to prevent hydration mismatch
+  const isSelected = loaded && selection !== null
+  const shouldShowCityModal =
+    !isSelected &&
+    loaded &&
+    !partner?.defaultCityId
+
   const contextValue: CityContextValue = {
     cityId: selection?.cityId ?? null,
     cityName: selection?.cityName ?? null,
@@ -113,8 +142,9 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     areaName: selection?.areaName ?? null,
     zoneId: selection?.zoneId ?? null,
     zoneName: selection?.zoneName ?? null,
-    isSelected: loaded && selection !== null,
+    isSelected,
     isHydrating: !loaded,
+    shouldShowCityModal,
     setCity,
     clearCity,
   }
