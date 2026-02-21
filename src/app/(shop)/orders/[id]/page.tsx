@@ -10,7 +10,6 @@ import {
   Circle,
   Clock,
   MapPin,
-  MessageSquare,
   Package,
   PartyPopper,
   Truck,
@@ -341,17 +340,23 @@ export default function OrderDetailPage() {
         </div>
       </Card>
 
-      {/* Gift message */}
-      {order.giftMessage && (
-        <Card className="p-4">
-          <div className="flex gap-2">
-            <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-            <div>
-              <h2 className="text-sm font-semibold mb-1">Gift Message</h2>
-              <p className="text-sm text-muted-foreground">{order.giftMessage}</p>
+      {/* Gift details */}
+      {(order.occasion || order.giftMessage) && (
+        <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
+          <h3 className="font-semibold text-gray-900 mb-3">Gift Details</h3>
+          {order.occasion && (
+            <div className="flex gap-3 mb-2">
+              <span className="text-sm text-gray-500 w-20 shrink-0">Occasion</span>
+              <span className="text-sm font-medium">{order.occasion}</span>
             </div>
-          </div>
-        </Card>
+          )}
+          {order.giftMessage && (
+            <div className="flex gap-3">
+              <span className="text-sm text-gray-500 w-20 shrink-0">Message</span>
+              <span className="text-sm italic text-gray-700">&ldquo;{order.giftMessage}&rdquo;</span>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Contact support */}

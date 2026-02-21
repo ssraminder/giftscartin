@@ -582,6 +582,11 @@ model Order {
   specialInstructions String?
   couponCode      String?
 
+  senderName    String?
+  senderPhone   String?
+  senderEmail   String?
+  occasion      String?
+
   businessModel   BusinessModel @default(MODEL_A)
   vendorCost      Decimal?     @db.Decimal(10, 2)
   commissionAmount Decimal?    @db.Decimal(10, 2)
