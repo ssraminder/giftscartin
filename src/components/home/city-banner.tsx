@@ -9,16 +9,12 @@ const CITIES = [
 
 export function CityBanner() {
   return (
-    <section className="py-12 md:py-16">
-      <div className="container mx-auto px-4">
-        <div className="text-center mb-10">
-          <h2 className="section-title">We Deliver Across India</h2>
-          <p className="mt-4 text-muted-foreground">
-            Choose your city and start shopping
-          </p>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3 md:gap-6 max-w-3xl mx-auto">
+    <section className="py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900 text-center mb-6">
+          We Deliver Across India
+        </h2>
+        <div className="grid gap-4 md:grid-cols-3 max-w-3xl mx-auto">
           {CITIES.map((city) => (
             <Link
               key={city.slug}

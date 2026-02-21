@@ -1,155 +1,110 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import {
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  Gift,
-  ShieldCheck,
-  Truck,
-} from "lucide-react"
-
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+
+const SLIDES = [
+  {
+    gradient: "from-pink-500 via-pink-600 to-purple-700",
+    heading: "Fresh Cakes Delivered Today",
+    subtext: "Handcrafted by local bakers, delivered to your doorstep",
+    cta: "Order Now",
+    href: "/category/cakes",
+  },
+  {
+    gradient: "from-green-500 via-emerald-600 to-teal-700",
+    heading: "Beautiful Flowers for Every Occasion",
+    subtext: "Farm-fresh bouquets arranged with love",
+    cta: "Shop Flowers",
+    href: "/category/flowers",
+  },
+  {
+    gradient: "from-orange-500 via-amber-600 to-red-700",
+    heading: "Midnight Surprise Delivery",
+    subtext: "Make their birthday extra special at 12 AM",
+    cta: "Book Midnight",
+    href: "/category/cakes?slot=midnight",
+  },
+]
 
 export function HeroBanner() {
-  const [pincode, setPincode] = useState("")
+  const [current, setCurrent] = useState(0)
+
+  const next = useCallback(() => {
+    setCurrent((prev) => (prev + 1) % SLIDES.length)
+  }, [])
+
+  const prev = useCallback(() => {
+    setCurrent((prev) => (prev - 1 + SLIDES.length) % SLIDES.length)
+  }, [])
+
+  useEffect(() => {
+    const timer = setInterval(next, 4000)
+    return () => clearInterval(timer)
+  }, [next])
 
   return (
-    <section className="relative overflow-hidden">
-      {/* Background with warm gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1A1A2E] via-[#2D1B3D] to-[#1A1A2E]" />
-
-      {/* Decorative elements */}
-      <div className="absolute inset-0">
-        <div className="absolute -left-20 -top-20 h-80 w-80 rounded-full bg-pink-500/10 blur-3xl" />
-        <div className="absolute right-0 top-0 h-96 w-96 rounded-full bg-purple-500/10 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-pink-400/8 blur-3xl" />
-        {/* Subtle grid pattern */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{
-          backgroundImage: `radial-gradient(circle, white 1px, transparent 1px)`,
-          backgroundSize: '32px 32px'
-        }} />
-      </div>
-
-      <div className="container relative mx-auto px-4 py-14 md:py-20 lg:py-28">
-        <div className="max-w-2xl">
-          <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-sm font-medium text-pink-300 backdrop-blur-sm border border-white/10">
-            <Gift className="h-4 w-4" />
-            Now delivering in Chandigarh, Mohali & Panchkula
-          </span>
-
-          <h1 className="mt-6 text-4xl font-bold leading-[1.1] text-white sm:text-5xl md:text-6xl lg:text-7xl tracking-tight">
-            Make Every{" "}
-            <span className="bg-gradient-to-r from-pink-400 to-rose-300 bg-clip-text text-transparent">
-              Moment
-            </span>{" "}
-            Special
-          </h1>
-
-          <p className="mt-5 text-lg text-gray-300 sm:text-xl leading-relaxed max-w-lg">
-            Fresh Cakes, Flowers & Gifts — Delivered Today to your loved ones
-          </p>
-
-          {/* Pincode Input */}
-          <div className="mt-8 flex items-center gap-2 max-w-md">
-            <div className="relative flex-1">
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="Enter Delivery Pincode"
-                value={pincode}
-                onChange={(e) => setPincode(e.target.value.replace(/\D/g, ""))}
-                className="h-12 pl-4 pr-4 rounded-xl bg-white/95 border-0 text-gray-800 placeholder:text-gray-400 text-base shadow-lg"
-              />
-            </div>
-            <Button className="h-12 px-6 rounded-xl btn-gradient text-base shadow-lg">
-              Check
-            </Button>
-          </div>
-
-          <div className="mt-4 flex items-center gap-4 text-sm text-gray-400">
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-green-400" />
-              Delivering to 3 cities
-            </span>
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-green-400" />
-              Same Day Available
-            </span>
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button
-              size="lg"
-              className="btn-gradient px-8 h-12 text-base rounded-xl shadow-lg"
-              asChild
-            >
-              <Link href="/category/cakes">
-                Order Now
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-white/20 text-white hover:bg-white/10 hover:text-white h-12 rounded-xl backdrop-blur-sm"
-              asChild
-            >
-              <Link href="/category/flowers">
-                Send Flowers
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Trust Badges Row */}
-      <div className="relative border-t border-white/10 bg-white/5 backdrop-blur-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20">
-                <Clock className="h-5 w-5 text-pink-300" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">Same Day Delivery</p>
-                <p className="text-xs text-gray-400">Order before 4 PM</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/20">
-                <CheckCircle2 className="h-5 w-5 text-green-300" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">100% Fresh</p>
-                <p className="text-xs text-gray-400">Guaranteed quality</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-500/20">
-                <ShieldCheck className="h-5 w-5 text-blue-300" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">Safe Payments</p>
-                <p className="text-xs text-gray-400">100% secure checkout</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-500/20">
-                <Truck className="h-5 w-5 text-purple-300" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">500+ Products</p>
-                <p className="text-xs text-gray-400">Wide selection</p>
-              </div>
+    <section className="relative w-full h-[240px] md:h-[420px] overflow-hidden">
+      {SLIDES.map((slide, index) => (
+        <div
+          key={index}
+          className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+            index === current ? "opacity-100 z-10" : "opacity-0 z-0"
+          }`}
+        >
+          <div
+            className={`absolute inset-0 bg-gradient-to-br ${slide.gradient}`}
+          />
+          <div className="relative h-full max-w-7xl mx-auto px-4 flex items-center">
+            <div className="max-w-xl">
+              <h2 className="text-3xl md:text-5xl font-bold text-white leading-tight">
+                {slide.heading}
+              </h2>
+              <p className="mt-3 text-lg text-white/90">{slide.subtext}</p>
+              <Button
+                size="lg"
+                className="mt-6 bg-white text-gray-900 hover:bg-gray-100 font-semibold rounded-full px-8"
+                asChild
+              >
+                <Link href={slide.href}>{slide.cta}</Link>
+              </Button>
             </div>
           </div>
         </div>
+      ))}
+
+      {/* Navigation arrows */}
+      <button
+        onClick={prev}
+        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-black/20 flex items-center justify-center text-white opacity-60 hover:opacity-100 transition-opacity"
+        aria-label="Previous slide"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      <button
+        onClick={next}
+        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-black/20 flex items-center justify-center text-white opacity-60 hover:opacity-100 transition-opacity"
+        aria-label="Next slide"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+
+      {/* Dots */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+        {SLIDES.map((_, index) => (
+          <button
+            key={index}
+            onClick={() => setCurrent(index)}
+            className={`h-2.5 rounded-full transition-all ${
+              index === current
+                ? "w-7 bg-white"
+                : "w-2.5 bg-white/50 hover:bg-white/70"
+            }`}
+            aria-label={`Go to slide ${index + 1}`}
+          />
+        ))}
       </div>
     </section>
   )

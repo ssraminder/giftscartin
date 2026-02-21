@@ -26,57 +26,41 @@ const TESTIMONIALS = [
 
 export function Testimonials() {
   return (
-    <section className="py-12 md:py-16 bg-gradient-to-b from-white to-[#FFF9F5]">
-      <div className="container mx-auto px-4">
-        <div className="text-center mb-10">
-          <h2 className="section-title">What Our Customers Say</h2>
-          <p className="mt-4 text-muted-foreground">
-            Real reviews from real celebrations
-          </p>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3 md:gap-6 max-w-5xl mx-auto">
-          {TESTIMONIALS.map((testimonial) => (
+    <section className="py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4">
+        <h2 className="text-xl md:text-2xl font-bold text-gray-900 text-center mb-6">
+          What Our Customers Say
+        </h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          {TESTIMONIALS.map((t) => (
             <div
-              key={testimonial.id}
-              className="card-premium p-6 relative group hover-lift"
+              key={t.id}
+              className="border border-gray-200 rounded-xl p-4"
             >
-              {/* Quote mark */}
-              <div className="absolute top-4 right-4 text-4xl text-pink-100 font-serif leading-none">
-                &ldquo;
-              </div>
-
-              {/* Stars */}
-              <div className="flex items-center gap-0.5 mb-4">
+              <div className="flex items-center gap-0.5 mb-2">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star
                     key={i}
-                    className={`h-4 w-4 ${
-                      i < testimonial.rating
+                    className={`h-3.5 w-3.5 ${
+                      i < t.rating
                         ? "fill-amber-400 text-amber-400"
                         : "fill-gray-200 text-gray-200"
                     }`}
                   />
                 ))}
               </div>
-
-              {/* Review text */}
-              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                {testimonial.text}
+              <p className="text-sm text-gray-600 italic line-clamp-3 leading-relaxed">
+                &ldquo;{t.text}&rdquo;
               </p>
-
-              {/* Customer info */}
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full gradient-primary text-white font-semibold text-sm">
-                  {testimonial.name.charAt(0)}
+              <div className="mt-3 flex items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center text-xs font-bold">
+                  {t.name.charAt(0)}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {testimonial.name}
+                  <p className="text-sm font-semibold text-gray-800">
+                    {t.name}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {testimonial.city}
-                  </p>
+                  <p className="text-xs text-gray-500">{t.city}</p>
                 </div>
               </div>
             </div>
