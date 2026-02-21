@@ -122,10 +122,14 @@ export async function GET(request: NextRequest) {
       prisma.product.count({ where }),
     ])
 
-    return NextResponse.json({
-      success: true,
-      data: { items, total, page, pageSize },
-    })
+    return NextResponse.json(
+      { success: true, data: { items, total, page, pageSize } },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        },
+      }
+    )
   } catch (error) {
     console.error('GET /api/products error:', error)
     return NextResponse.json(

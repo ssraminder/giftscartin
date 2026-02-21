@@ -1,4 +1,7 @@
+"use client"
+
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Cake, Flower2, Gift, TreePine, Package } from "lucide-react"
 
 const CATEGORIES = [
@@ -50,6 +53,8 @@ const CATEGORIES = [
 ]
 
 export function CategoryGrid() {
+  const router = useRouter()
+
   return (
     <section className="container mx-auto px-4 py-12 md:py-16">
       <div className="text-center mb-10">
@@ -68,6 +73,7 @@ export function CategoryGrid() {
                 key={category.slug}
                 href={`/category/${category.slug}`}
                 className="group flex flex-col items-center text-center"
+                onMouseEnter={() => router.prefetch(`/category/${category.slug}`)}
               >
                 <div
                   className={`relative flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center rounded-full bg-gradient-to-br ${category.gradient} transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg`}
