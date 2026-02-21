@@ -6,306 +6,34 @@ import { ChevronDown, ChevronRight, Clock, Cake, Flower2, TreePine, Package } fr
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { usePartner } from "@/hooks/use-partner"
 
-// ─── Menu Data ───────────────────────────────────────────────────────────────
+// ─── API Menu Types ──────────────────────────────────────────────────────────
 
-interface SubcategoryGroup {
-  heading: string
-  links: { label: string; slug: string }[]
-}
-
-interface FeaturedCard {
-  title: string
-  products: string[]
-  viewAllLabel: string
-  viewAllSlug: string
-}
-
-interface StandardMenuData {
-  type: "standard"
-  columns: SubcategoryGroup[]
-  featured: FeaturedCard
-}
-
-interface OccasionPill {
-  icon: string
+interface MenuNode {
+  id: string
   label: string
-  slug: string
+  slug: string | null
+  href: string | null
+  icon: string | null
+  isVisible: boolean
+  itemType: string
+  sortOrder: number
+  children: MenuNode[]
 }
 
-interface OccasionMenuData {
-  type: "occasions"
-  pills: OccasionPill[]
-}
+// ─── Fallback menu (minimal) in case API fails ──────────────────────────────
 
-interface SameDayCategory {
-  icon: React.ReactNode
-  label: string
-  slug: string
-}
-
-interface SameDayMenuData {
-  type: "sameday"
-  heading: string
-  categories: SameDayCategory[]
-}
-
-type MenuData = StandardMenuData | OccasionMenuData | SameDayMenuData
-
-interface MenuItem {
-  label: string
-  slug: string
-  data: MenuData
-}
-
-const MENU_ITEMS: MenuItem[] = [
+const FALLBACK_MENU: MenuNode[] = [
   {
-    label: "Cakes",
-    slug: "cakes",
-    data: {
-      type: "standard",
-      columns: [
-        {
-          heading: "By Flavour",
-          links: [
-            { label: "Chocolate Cakes", slug: "chocolate-cakes" },
-            { label: "Red Velvet Cakes", slug: "red-velvet-cakes" },
-            { label: "Black Forest Cakes", slug: "black-forest-cakes" },
-            { label: "Butterscotch Cakes", slug: "butterscotch-cakes" },
-            { label: "Vanilla Cakes", slug: "vanilla-cakes" },
-            { label: "Pineapple Cakes", slug: "pineapple-cakes" },
-          ],
-        },
-        {
-          heading: "By Type",
-          links: [
-            { label: "Photo Cakes", slug: "photo-cakes" },
-            { label: "Designer Cakes", slug: "designer-cakes" },
-            { label: "Eggless Cakes", slug: "eggless-cakes" },
-            { label: "Tier Cakes", slug: "tier-cakes" },
-            { label: "Jar Cakes", slug: "jar-cakes" },
-            { label: "Cup Cakes", slug: "cup-cakes" },
-          ],
-        },
-        {
-          heading: "By Occasion",
-          links: [
-            { label: "Birthday Cakes", slug: "birthday-cakes" },
-            { label: "Anniversary Cakes", slug: "anniversary-cakes" },
-            { label: "Wedding Cakes", slug: "wedding-cakes" },
-            { label: "Baby Shower Cakes", slug: "baby-shower-cakes" },
-            { label: "Farewell Cakes", slug: "farewell-cakes" },
-            { label: "Congratulations Cakes", slug: "congratulations-cakes" },
-          ],
-        },
-      ],
-      featured: {
-        title: "Best Sellers this Week",
-        products: ["Chocolate Truffle Cake", "Red Velvet Heart Cake", "Black Forest Classic"],
-        viewAllLabel: "View All Cakes",
-        viewAllSlug: "cakes",
-      },
-    },
+    id: "fb_cakes", label: "Cakes", slug: "cakes", href: null, icon: null,
+    isVisible: true, itemType: "top_level", sortOrder: 1, children: [],
   },
   {
-    label: "Flowers",
-    slug: "flowers",
-    data: {
-      type: "standard",
-      columns: [
-        {
-          heading: "By Flower",
-          links: [
-            { label: "Red Roses", slug: "red-roses" },
-            { label: "Mixed Roses", slug: "mixed-roses" },
-            { label: "Sunflowers", slug: "sunflowers" },
-            { label: "Lilies", slug: "lilies" },
-            { label: "Orchids", slug: "orchids" },
-            { label: "Carnations", slug: "carnations" },
-          ],
-        },
-        {
-          heading: "By Arrangement",
-          links: [
-            { label: "Bouquets", slug: "bouquets" },
-            { label: "Flower Boxes", slug: "flower-boxes" },
-            { label: "Vase Arrangements", slug: "vase-arrangements" },
-            { label: "Hand-Tied Bunches", slug: "hand-tied-bunches" },
-            { label: "Table Arrangements", slug: "table-arrangements" },
-          ],
-        },
-        {
-          heading: "By Occasion",
-          links: [
-            { label: "Valentine's Day Flowers", slug: "valentines-day-flowers" },
-            { label: "Mother's Day Flowers", slug: "mothers-day-flowers" },
-            { label: "Birthday Flowers", slug: "birthday-flowers" },
-            { label: "Anniversary Flowers", slug: "anniversary-flowers" },
-            { label: "Sympathy Flowers", slug: "sympathy-flowers" },
-          ],
-        },
-      ],
-      featured: {
-        title: "Trending Bouquets",
-        products: ["Premium Red Rose Bouquet", "Sunflower Delight", "Mixed Flower Box"],
-        viewAllLabel: "View All Flowers",
-        viewAllSlug: "flowers",
-      },
-    },
+    id: "fb_flowers", label: "Flowers", slug: "flowers", href: null, icon: null,
+    isVisible: true, itemType: "top_level", sortOrder: 2, children: [],
   },
   {
-    label: "Combos & Hampers",
-    slug: "combos",
-    data: {
-      type: "standard",
-      columns: [
-        {
-          heading: "Cake Combos",
-          links: [
-            { label: "Cake + Flowers", slug: "cake-flowers-combo" },
-            { label: "Cake + Chocolate", slug: "cake-chocolate-combo" },
-            { label: "Cake + Teddy", slug: "cake-teddy-combo" },
-            { label: "Cake + Card", slug: "cake-card-combo" },
-            { label: "Cake + Balloon", slug: "cake-balloon-combo" },
-          ],
-        },
-        {
-          heading: "Gift Hampers",
-          links: [
-            { label: "Chocolate Hampers", slug: "chocolate-hampers" },
-            { label: "Dry Fruit Hampers", slug: "dry-fruit-hampers" },
-            { label: "Spa Hampers", slug: "spa-hampers" },
-            { label: "Corporate Hampers", slug: "corporate-hampers" },
-          ],
-        },
-        {
-          heading: "Occasion Bundles",
-          links: [
-            { label: "Birthday Bundles", slug: "birthday-bundles" },
-            { label: "Anniversary Packages", slug: "anniversary-packages" },
-            { label: "Festival Specials", slug: "festival-specials" },
-            { label: "New Baby Hampers", slug: "new-baby-hampers" },
-          ],
-        },
-      ],
-      featured: {
-        title: "Popular Combos",
-        products: ["Cake & Roses Combo", "Premium Gift Hamper", "Birthday Surprise Box"],
-        viewAllLabel: "View All Combos",
-        viewAllSlug: "combos",
-      },
-    },
-  },
-  {
-    label: "Plants",
-    slug: "plants",
-    data: {
-      type: "standard",
-      columns: [
-        {
-          heading: "Indoor Plants",
-          links: [
-            { label: "Money Plant", slug: "money-plant" },
-            { label: "Peace Lily", slug: "peace-lily" },
-            { label: "Snake Plant", slug: "snake-plant" },
-            { label: "Jade Plant", slug: "jade-plant" },
-            { label: "Bamboo", slug: "bamboo" },
-          ],
-        },
-        {
-          heading: "Flowering Plants",
-          links: [
-            { label: "Adenium", slug: "adenium" },
-            { label: "Hibiscus", slug: "hibiscus" },
-            { label: "Bougainvillea", slug: "bougainvillea" },
-            { label: "Rose Plant", slug: "rose-plant" },
-          ],
-        },
-      ],
-      featured: {
-        title: "Top Picks",
-        products: ["Lucky Bamboo Set", "Peace Lily in Ceramic Pot", "Money Plant Golden"],
-        viewAllLabel: "View All Plants",
-        viewAllSlug: "plants",
-      },
-    },
-  },
-  {
-    label: "Gifts",
-    slug: "gifts",
-    data: {
-      type: "standard",
-      columns: [
-        {
-          heading: "By Category",
-          links: [
-            { label: "Chocolates", slug: "chocolates" },
-            { label: "Dry Fruits", slug: "dry-fruits" },
-            { label: "Soft Toys", slug: "soft-toys" },
-            { label: "Mugs & Cushions", slug: "mugs-cushions" },
-            { label: "Personalised Gifts", slug: "personalised-gifts" },
-          ],
-        },
-        {
-          heading: "By Recipient",
-          links: [
-            { label: "Gifts for Him", slug: "gifts-for-him" },
-            { label: "Gifts for Her", slug: "gifts-for-her" },
-            { label: "Gifts for Kids", slug: "gifts-for-kids" },
-            { label: "Gifts for Parents", slug: "gifts-for-parents" },
-          ],
-        },
-        {
-          heading: "By Price",
-          links: [
-            { label: "Under \u20B9499", slug: "gifts?maxPrice=499" },
-            { label: "\u20B9500 - \u20B9999", slug: "gifts?minPrice=500&maxPrice=999" },
-            { label: "\u20B91000 - \u20B91999", slug: "gifts?minPrice=1000&maxPrice=1999" },
-            { label: "Above \u20B92000", slug: "gifts?minPrice=2000" },
-          ],
-        },
-      ],
-      featured: {
-        title: "Best Gift Ideas",
-        products: ["Personalised Photo Frame", "Premium Chocolate Box", "Spa Gift Set"],
-        viewAllLabel: "View All Gifts",
-        viewAllSlug: "gifts",
-      },
-    },
-  },
-  {
-    label: "Occasions",
-    slug: "occasions",
-    data: {
-      type: "occasions",
-      pills: [
-        { icon: "\u{1F382}", label: "Birthday", slug: "gifts?occasion=birthday" },
-        { icon: "\u{1F48D}", label: "Anniversary", slug: "gifts?occasion=anniversary" },
-        { icon: "\u{1F49D}", label: "Valentine's Day", slug: "gifts?occasion=valentines-day" },
-        { icon: "\u{1F469}", label: "Mother's Day", slug: "gifts?occasion=mothers-day" },
-        { icon: "\u{1F468}", label: "Father's Day", slug: "gifts?occasion=fathers-day" },
-        { icon: "\u{1F393}", label: "Graduation", slug: "gifts?occasion=graduation" },
-        { icon: "\u{1F490}", label: "Farewell", slug: "gifts?occasion=farewell" },
-        { icon: "\u{1F476}", label: "Baby Shower", slug: "gifts?occasion=baby-shower" },
-        { icon: "\u{1F4BC}", label: "Corporate", slug: "gifts?occasion=corporate" },
-        { icon: "\u{1FA94}", label: "Diwali", slug: "gifts?occasion=diwali" },
-        { icon: "\u{1F384}", label: "Christmas", slug: "gifts?occasion=christmas" },
-        { icon: "\u{1F38A}", label: "New Year", slug: "gifts?occasion=new-year" },
-      ],
-    },
-  },
-  {
-    label: "Same Day Delivery",
-    slug: "same-day-delivery",
-    data: {
-      type: "sameday",
-      heading: "Order by 3 PM for Same Day Delivery",
-      categories: [
-        { icon: <Cake className="h-6 w-6" />, label: "Cakes", slug: "cakes?delivery=same-day" },
-        { icon: <Flower2 className="h-6 w-6" />, label: "Flowers", slug: "flowers?delivery=same-day" },
-        { icon: <TreePine className="h-6 w-6" />, label: "Plants", slug: "plants?delivery=same-day" },
-        { icon: <Package className="h-6 w-6" />, label: "Combos", slug: "combos?delivery=same-day" },
-      ],
-    },
+    id: "fb_gifts", label: "Gifts", slug: "gifts", href: null, icon: null,
+    isVisible: true, itemType: "top_level", sortOrder: 3, children: [],
   },
 ]
 
@@ -318,8 +46,9 @@ const INTERNAL_HOSTS = [
   "localhost",
 ]
 
-function buildHref(slug: string, refCode?: string): string {
-  const base = `/category/${slug}`
+function buildHref(rawHref: string, refCode?: string): string {
+  // If href already starts with /, use it directly; otherwise prefix with /category/
+  const base = rawHref.startsWith("/") ? rawHref : `/category/${rawHref}`
   if (!refCode) return base
   if (typeof window !== "undefined" && !INTERNAL_HOSTS.some((h) => window.location.hostname.includes(h))) {
     return base
@@ -328,25 +57,94 @@ function buildHref(slug: string, refCode?: string): string {
   return `${base}${sep}ref=${refCode}`
 }
 
-// ─── Desktop Mega Menu ──────────────────────────────────────────────────────
+/** Filter the tree to only visible items, recursively. */
+function filterVisible(nodes: MenuNode[]): MenuNode[] {
+  return nodes
+    .filter((n) => n.isVisible)
+    .map((n) => ({ ...n, children: filterVisible(n.children) }))
+}
 
-function StandardDropdown({ data, refCode }: { data: StandardMenuData; refCode?: string }) {
-  const gridCols = data.columns.length + 1 // +1 for featured card
+/** Determine the menu "type" based on the top-level slug */
+function getMenuType(item: MenuNode): "standard" | "occasions" | "sameday" {
+  if (item.slug === "occasions") return "occasions"
+  if (item.slug === "same-day") return "sameday"
+  return "standard"
+}
+
+// Icon map for same-day items
+const SAMEDAY_ICONS: Record<string, React.ReactNode> = {
+  cake: <Cake className="h-6 w-6" />,
+  flower: <Flower2 className="h-6 w-6" />,
+  plant: <TreePine className="h-6 w-6" />,
+  package: <Package className="h-6 w-6" />,
+}
+
+// ─── Hook: Fetch menu from API ──────────────────────────────────────────────
+
+let cachedMenuPromise: Promise<MenuNode[]> | null = null
+
+function fetchMenuData(): Promise<MenuNode[]> {
+  if (cachedMenuPromise) return cachedMenuPromise
+  cachedMenuPromise = fetch("/api/admin/menu")
+    .then((res) => res.json())
+    .then((json) => {
+      if (json.success && Array.isArray(json.data)) {
+        return json.data as MenuNode[]
+      }
+      return FALLBACK_MENU
+    })
+    .catch(() => FALLBACK_MENU)
+  // Clear the cached promise after 60 seconds so it refetches
+  setTimeout(() => { cachedMenuPromise = null }, 60_000)
+  return cachedMenuPromise
+}
+
+function useMenuItems(): MenuNode[] {
+  const [items, setItems] = useState<MenuNode[]>([])
+
+  useEffect(() => {
+    fetchMenuData().then((data) => {
+      const visible = filterVisible(data)
+      // Hide top-level items that have no visible children (except occasions/sameday which have direct children)
+      const filtered = visible.filter((item) => {
+        const type = getMenuType(item)
+        if (type === "standard") {
+          // Standard items: hide if no groups have visible link children
+          const hasVisibleLinks = item.children.some((group) =>
+            group.children.some((link) => link.isVisible)
+          )
+          return hasVisibleLinks || item.children.length === 0
+        }
+        // Occasions/sameday: hide if no children at all
+        return item.children.length > 0
+      })
+      setItems(filtered)
+    })
+  }, [])
+
+  return items
+}
+
+// ─── Desktop Dropdown Renderers ──────────────────────────────────────────────
+
+function StandardDropdown({ item, refCode }: { item: MenuNode; refCode?: string }) {
+  const groups = item.children.filter((c) => c.children.length > 0)
+  const gridCols = groups.length || 1
   return (
     <div
       className="max-w-7xl mx-auto px-6 py-6 grid gap-6"
       style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
     >
-      {data.columns.map((col) => (
-        <div key={col.heading}>
+      {groups.map((group) => (
+        <div key={group.id}>
           <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
-            {col.heading}
+            {group.label}
           </h4>
           <ul className="space-y-0.5">
-            {col.links.map((link) => (
-              <li key={link.slug}>
+            {group.children.map((link) => (
+              <li key={link.id}>
                 <Link
-                  href={buildHref(link.slug, refCode)}
+                  href={buildHref(link.href || link.slug || "", refCode)}
                   className="text-sm text-gray-700 hover:text-pink-600 hover:translate-x-1 transition-all block py-1"
                 >
                   {link.label}
@@ -356,37 +154,21 @@ function StandardDropdown({ data, refCode }: { data: StandardMenuData; refCode?:
           </ul>
         </div>
       ))}
-      <div className="bg-pink-50 border border-pink-100 rounded-xl p-4 flex flex-col">
-        <div className="h-32 rounded-lg bg-gray-100 mb-2" />
-        <h4 className="font-semibold text-sm text-gray-900 mb-1">{data.featured.title}</h4>
-        <ul className="space-y-0.5 flex-1">
-          {data.featured.products.map((name) => (
-            <li key={name} className="text-xs text-gray-500">{name}</li>
-          ))}
-        </ul>
-        <Link
-          href={buildHref(data.featured.viewAllSlug, refCode)}
-          className="mt-3 text-sm font-medium text-pink-600 hover:text-pink-700 inline-flex items-center gap-1"
-        >
-          {data.featured.viewAllLabel}
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
     </div>
   )
 }
 
-function OccasionDropdown({ data, refCode }: { data: OccasionMenuData; refCode?: string }) {
+function OccasionDropdown({ item, refCode }: { item: MenuNode; refCode?: string }) {
   return (
     <div className="max-w-4xl mx-auto px-6 py-6">
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {data.pills.map((pill) => (
+        {item.children.map((pill) => (
           <Link
-            key={pill.slug}
-            href={buildHref(pill.slug, refCode)}
+            key={pill.id}
+            href={buildHref(pill.href || pill.slug || "", refCode)}
             className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-gray-100 hover:border-pink-200 hover:bg-pink-50 transition-all group"
           >
-            <span className="text-xl">{pill.icon}</span>
+            {pill.icon && <span className="text-xl">{pill.icon}</span>}
             <span className="text-sm font-medium text-gray-700 group-hover:text-pink-600 transition-colors">
               {pill.label}
             </span>
@@ -397,22 +179,24 @@ function OccasionDropdown({ data, refCode }: { data: OccasionMenuData; refCode?:
   )
 }
 
-function SameDayDropdown({ data, refCode }: { data: SameDayMenuData; refCode?: string }) {
+function SameDayDropdown({ item, refCode }: { item: MenuNode; refCode?: string }) {
   return (
     <div className="max-w-3xl mx-auto px-6 py-6">
       <div className="flex items-center gap-2 mb-5">
         <Clock className="h-5 w-5 text-pink-600" />
-        <h3 className="text-base font-semibold text-gray-900">{data.heading}</h3>
+        <h3 className="text-base font-semibold text-gray-900">
+          Order by 3 PM for Same Day Delivery
+        </h3>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {data.categories.map((cat) => (
+        {item.children.map((cat) => (
           <Link
-            key={cat.slug}
-            href={buildHref(cat.slug, refCode)}
+            key={cat.id}
+            href={buildHref(cat.href || cat.slug || "", refCode)}
             className="flex flex-col items-center gap-3 p-5 rounded-xl border border-gray-100 hover:border-pink-200 hover:bg-pink-50 hover:shadow-sm transition-all group"
           >
             <div className="text-gray-500 group-hover:text-pink-600 transition-colors">
-              {cat.icon}
+              {cat.icon && SAMEDAY_ICONS[cat.icon] ? SAMEDAY_ICONS[cat.icon] : <Package className="h-6 w-6" />}
             </div>
             <span className="text-sm font-medium text-gray-700 group-hover:text-pink-600 transition-colors">
               {cat.label}
@@ -427,7 +211,10 @@ function SameDayDropdown({ data, refCode }: { data: SameDayMenuData; refCode?: s
   )
 }
 
+// ─── Desktop Mega Menu ───────────────────────────────────────────────────────
+
 export function MegaMenu() {
+  const menuItems = useMenuItems()
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { partner } = usePartner()
@@ -448,9 +235,9 @@ export function MegaMenu() {
   }, [clearCloseTimer])
 
   const handleNavEnter = useCallback(
-    (slug: string) => {
+    (id: string) => {
       clearCloseTimer()
-      setActiveMenu(slug)
+      setActiveMenu(id)
     },
     [clearCloseTimer]
   )
@@ -459,28 +246,27 @@ export function MegaMenu() {
     clearCloseTimer()
   }, [clearCloseTimer])
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
     }
   }, [])
 
-  const activeItem = MENU_ITEMS.find((item) => item.slug === activeMenu)
+  const activeItem = menuItems.find((item) => item.id === activeMenu)
+  const activeType = activeItem ? getMenuType(activeItem) : null
 
   return (
     <>
-      {/* Desktop mega menu */}
       <nav className="hidden md:block bg-white border-b border-gray-200" onMouseLeave={scheduleClose}>
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-center">
-            {MENU_ITEMS.map((item) => (
+            {menuItems.map((item) => (
               <button
-                key={item.slug}
-                onMouseEnter={() => handleNavEnter(item.slug)}
-                onClick={() => setActiveMenu(activeMenu === item.slug ? null : item.slug)}
+                key={item.id}
+                onMouseEnter={() => handleNavEnter(item.id)}
+                onClick={() => setActiveMenu(activeMenu === item.id ? null : item.id)}
                 className={`px-4 py-3 text-sm font-medium cursor-pointer transition-colors border-b-2 whitespace-nowrap ${
-                  activeMenu === item.slug
+                  activeMenu === item.id
                     ? "text-pink-600 border-pink-500"
                     : "text-gray-600 border-transparent hover:text-pink-600 hover:border-pink-300"
                 }`}
@@ -491,21 +277,20 @@ export function MegaMenu() {
           </div>
         </div>
 
-        {/* Dropdown panel */}
         {activeItem && (
           <div
             className="absolute left-0 right-0 bg-white shadow-lg z-50 border-t border-gray-100"
             onMouseEnter={handlePanelEnter}
             onMouseLeave={scheduleClose}
           >
-            {activeItem.data.type === "standard" && (
-              <StandardDropdown data={activeItem.data} refCode={refCode} />
+            {activeType === "standard" && (
+              <StandardDropdown item={activeItem} refCode={refCode} />
             )}
-            {activeItem.data.type === "occasions" && (
-              <OccasionDropdown data={activeItem.data} refCode={refCode} />
+            {activeType === "occasions" && (
+              <OccasionDropdown item={activeItem} refCode={refCode} />
             )}
-            {activeItem.data.type === "sameday" && (
-              <SameDayDropdown data={activeItem.data} refCode={refCode} />
+            {activeType === "sameday" && (
+              <SameDayDropdown item={activeItem} refCode={refCode} />
             )}
           </div>
         )}
@@ -517,30 +302,32 @@ export function MegaMenu() {
 // ─── Mobile Mega Menu (Sheet with Accordion) ────────────────────────────────
 
 export function MobileMegaMenu() {
+  const menuItems = useMenuItems()
   const [open, setOpen] = useState(false)
   const [expandedItem, setExpandedItem] = useState<string | null>(null)
   const { partner } = usePartner()
   const refCode = partner?.refCode
 
-  function toggleItem(slug: string) {
-    setExpandedItem(expandedItem === slug ? null : slug)
+  function toggleItem(id: string) {
+    setExpandedItem(expandedItem === id ? null : id)
   }
 
-  function renderMobileContent(item: MenuItem) {
-    const { data } = item
-    if (data.type === "standard") {
+  function renderMobileContent(item: MenuNode) {
+    const type = getMenuType(item)
+
+    if (type === "standard") {
       return (
         <div className="pl-4 pb-3 space-y-3">
-          {data.columns.map((col) => (
-            <div key={col.heading}>
+          {item.children.map((group) => (
+            <div key={group.id}>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">
-                {col.heading}
+                {group.label}
               </p>
               <ul className="space-y-0.5">
-                {col.links.map((link) => (
-                  <li key={link.slug}>
+                {group.children.map((link) => (
+                  <li key={link.id}>
                     <Link
-                      href={buildHref(link.slug, refCode)}
+                      href={buildHref(link.href || link.slug || "", refCode)}
                       className="text-sm text-gray-700 hover:text-pink-600 block py-1 pl-1"
                       onClick={() => setOpen(false)}
                     >
@@ -551,29 +338,32 @@ export function MobileMegaMenu() {
               </ul>
             </div>
           ))}
-          <Link
-            href={buildHref(data.featured.viewAllSlug, refCode)}
-            className="text-sm font-medium text-pink-600 hover:text-pink-700 inline-flex items-center gap-1 pt-1"
-            onClick={() => setOpen(false)}
-          >
-            {data.featured.viewAllLabel}
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
+          {item.slug && (
+            <Link
+              href={buildHref(item.slug, refCode)}
+              className="text-sm font-medium text-pink-600 hover:text-pink-700 inline-flex items-center gap-1 pt-1"
+              onClick={() => setOpen(false)}
+            >
+              View All {item.label}
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          )}
         </div>
       )
     }
-    if (data.type === "occasions") {
+
+    if (type === "occasions") {
       return (
         <div className="pl-4 pb-3">
           <div className="grid grid-cols-2 gap-2">
-            {data.pills.map((pill) => (
+            {item.children.map((pill) => (
               <Link
-                key={pill.slug}
-                href={buildHref(pill.slug, refCode)}
+                key={pill.id}
+                href={buildHref(pill.href || pill.slug || "", refCode)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-100 hover:border-pink-200 hover:bg-pink-50 text-sm text-gray-700"
                 onClick={() => setOpen(false)}
               >
-                <span>{pill.icon}</span>
+                {pill.icon && <span>{pill.icon}</span>}
                 <span>{pill.label}</span>
               </Link>
             ))}
@@ -581,22 +371,25 @@ export function MobileMegaMenu() {
         </div>
       )
     }
-    if (data.type === "sameday") {
+
+    if (type === "sameday") {
       return (
         <div className="pl-4 pb-3 space-y-2">
           <p className="text-xs text-gray-500 flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" />
-            {data.heading}
+            Order by 3 PM for Same Day Delivery
           </p>
           <div className="grid grid-cols-2 gap-2">
-            {data.categories.map((cat) => (
+            {item.children.map((cat) => (
               <Link
-                key={cat.slug}
-                href={buildHref(cat.slug, refCode)}
+                key={cat.id}
+                href={buildHref(cat.href || cat.slug || "", refCode)}
                 className="flex items-center gap-2 p-3 rounded-lg border border-gray-100 hover:border-pink-200 hover:bg-pink-50"
                 onClick={() => setOpen(false)}
               >
-                <span className="text-gray-500">{cat.icon}</span>
+                <span className="text-gray-500">
+                  {cat.icon && SAMEDAY_ICONS[cat.icon] ? SAMEDAY_ICONS[cat.icon] : <Package className="h-5 w-5" />}
+                </span>
                 <span className="text-sm font-medium text-gray-700">{cat.label}</span>
               </Link>
             ))}
@@ -604,6 +397,7 @@ export function MobileMegaMenu() {
         </div>
       )
     }
+
     return null
   }
 
@@ -625,12 +419,12 @@ export function MobileMegaMenu() {
           <SheetTitle className="text-left text-base">Browse Categories</SheetTitle>
         </SheetHeader>
         <div className="py-2">
-          {MENU_ITEMS.map((item) => {
-            const isExpanded = expandedItem === item.slug
+          {menuItems.map((item) => {
+            const isExpanded = expandedItem === item.id
             return (
-              <div key={item.slug} className="border-b border-gray-50">
+              <div key={item.id} className="border-b border-gray-50">
                 <button
-                  onClick={() => toggleItem(item.slug)}
+                  onClick={() => toggleItem(item.id)}
                   className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <span>{item.label}</span>

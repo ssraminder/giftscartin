@@ -1072,3 +1072,24 @@ model CatalogImport {
 
   @@map("catalog_imports")
 }
+
+// ==================== MENU ITEMS ====================
+
+model MenuItem {
+  id        String   @id @default(cuid())
+  parentId  String?
+  label     String
+  slug      String?
+  href      String?
+  icon      String?
+  sortOrder Int      @default(0)
+  isVisible Boolean  @default(true)
+  itemType  String   @default("link")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent    MenuItem?  @relation("MenuTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  MenuItem[] @relation("MenuTree")
+
+  @@map("menu_items")
+}
