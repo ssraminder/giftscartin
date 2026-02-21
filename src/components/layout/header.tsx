@@ -68,6 +68,7 @@ export function Header() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
+  const [platformLogoUrl, setPlatformLogoUrl] = useState<string | null>(null)
   const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
@@ -89,6 +90,18 @@ export function Header() {
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // Fetch platform logo
+  useEffect(() => {
+    fetch("/api/admin/settings/logo")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data?.logo_url) {
+          setPlatformLogoUrl(json.data.logo_url)
+        }
+      })
+      .catch(() => {})
   }, [])
 
   // Close city dropdown on outside click
@@ -197,6 +210,12 @@ export function Header() {
                   </span>
                 )}
               </div>
+            ) : platformLogoUrl ? (
+              <img
+                src={platformLogoUrl}
+                alt="Gifts Cart India"
+                className="max-h-10 object-contain"
+              />
             ) : (
               <>
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
