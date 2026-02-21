@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
-  Package, CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
+  CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
   MessageSquare,
 } from "lucide-react"
 
@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import { ProductGallery } from "@/components/product/product-gallery"
 import { DeliverySlotPicker, type DeliverySelection } from "@/components/product/delivery-slot-picker"
 import { VariationSelector } from "@/components/product/variation-selector"
@@ -34,8 +33,6 @@ import type {
   Review,
   AddonGroupSelection,
   AddonSelectionRecord,
-  ApiResponse,
-  PaginatedData,
 } from "@/types"
 
 // -- Helper: render star rating ------------------------------------------------
@@ -60,35 +57,7 @@ function StarRating({ rating, size = "sm" }: { rating: number; size?: "sm" | "md
   )
 }
 
-// -- Loading Skeleton ----------------------------------------------------------
-
-function ProductDetailSkeleton() {
-  return (
-    <div className="bg-white min-h-screen">
-      <div className="container mx-auto px-4 py-3">
-        <Skeleton className="h-4 w-64" />
-      </div>
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid gap-8 lg:grid-cols-12">
-          <div className="lg:col-span-7">
-            <Skeleton className="aspect-square w-full rounded-lg" />
-          </div>
-          <div className="lg:col-span-5 space-y-4">
-            <Skeleton className="h-8 w-3/4" />
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-12 w-full rounded-xl" />
-            <Skeleton className="h-12 w-full rounded-xl" />
-            <Skeleton className="h-40 w-full rounded-xl" />
-            <Skeleton className="h-14 w-full rounded-xl" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// -- Types for API response ---------------------------------------------------
+// -- Types for product data (passed from server component) --------------------
 
 interface ProductDetail extends Omit<Product, 'category'> {
   productType: "SIMPLE" | "VARIABLE"
@@ -210,7 +179,15 @@ function calculateAddonPrice(
 
 // -- Component -----------------------------------------------------------------
 
-export default function ProductDetailClient({ slug }: { slug: string }) {
+interface ProductDetailClientProps {
+  initialProduct: ProductDetail
+  initialRelatedProducts: Product[]
+}
+
+export default function ProductDetailClient({
+  initialProduct,
+  initialRelatedProducts,
+}: ProductDetailClientProps) {
   const router = useRouter()
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
@@ -218,11 +195,9 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const { pincode: cityPincode, cityId } = useCity()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
-  // State for fetched data
-  const [product, setProduct] = useState<ProductDetail | null>(null)
-  const [relatedProducts, setRelatedProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
+  // Product data — initialized from server (no client-side fetch needed)
+  const product = initialProduct
+  const relatedProducts = initialRelatedProducts
 
   // UI state
   const [quantity, setQuantity] = useState(1)
@@ -248,77 +223,43 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     }
   }, [cityPincode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch product by slug
+  // Initialize addon selections on mount
   useEffect(() => {
-    async function fetchProduct() {
-      setLoading(true)
-      setNotFound(false)
-      try {
-        const res = await fetch(`/api/products/${encodeURIComponent(slug)}`)
-        const json: ApiResponse<ProductDetail> = await res.json()
-        if (json.success && json.data) {
-          setProduct(json.data)
-          // Fetch related products from same category
-          if (json.data.category?.slug) {
-            const vendorParam = partner?.defaultVendorId ? `&vendorId=${partner.defaultVendorId}` : ""
-            const relRes = await fetch(`/api/products?categorySlug=${json.data.category.slug}&pageSize=5&sortBy=rating${vendorParam}`)
-            const relJson: ApiResponse<PaginatedData<Product>> = await relRes.json()
-            if (relJson.success && relJson.data) {
-              setRelatedProducts(relJson.data.items.filter((p) => p.id !== json.data!.id).slice(0, 4))
-            }
-          }
-        } else {
-          setNotFound(true)
-        }
-      } catch {
-        setNotFound(true)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchProduct()
-  }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Initialize addon selections when product loads
-  useEffect(() => {
-    if (product?.addonGroups && product.addonGroups.length > 0) {
+    if (product.addonGroups && product.addonGroups.length > 0) {
       const initial = new Map<string, AddonGroupSelection>()
       for (const group of product.addonGroups) {
         initial.set(group.id, getDefaultAddonSelection(group))
       }
       setAddonSelections(initial)
     }
-  }, [product])
-
-  // Initialize weight selection
-  useEffect(() => {
-    if (product?.weight) {
+    // Initialize weight selection
+    if (product.weight) {
       const opts = parseWeightOptions(product.weight)
       if (opts && opts.length > 0) {
         setSelectedWeight(opts[0].label)
       }
     }
-  }, [product?.weight])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Match variation from selected options
   const matchedVariation = useMemo(() => {
-    if (!product?.variations || Object.keys(selectedOptions).length === 0) return null
+    if (!product.variations || Object.keys(selectedOptions).length === 0) return null
     return product.variations.find((v) => {
       const attrs = v.attributes as Record<string, string>
       return Object.entries(selectedOptions).every(
         ([slug, value]) => attrs[slug] === value
       )
     }) ?? null
-  }, [product?.variations, selectedOptions])
+  }, [product.variations, selectedOptions])
 
   // Computed values
-  const isVariable = product?.productType === "VARIABLE"
-  const attributes = product?.attributes || []
-  const variations = useMemo(() => product?.variations || [], [product?.variations])
-  const addonGroups = useMemo(() => product?.addonGroups || [], [product?.addonGroups])
-  const upsells = product?.upsells || []
-  const reviews = product?.reviews || []
-  const weightOptions = useMemo(() => parseWeightOptions(product?.weight ?? null), [product?.weight])
+  const isVariable = product.productType === "VARIABLE"
+  const attributes = product.attributes || []
+  const variations = useMemo(() => product.variations || [], [product.variations])
+  const addonGroups = useMemo(() => product.addonGroups || [], [product.addonGroups])
+  const upsells = product.upsells || []
+  const reviews = product.reviews || []
+  const weightOptions = useMemo(() => parseWeightOptions(product.weight ?? null), [product.weight])
 
   // Get min variation price for "From X" display
   const minVariationPrice = useMemo(() => {
@@ -352,7 +293,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   // Unit price (variation or base, with weight multiplier)
   const baseUnitPrice = isVariable
     ? (variationDisplayPrice ?? 0)
-    : Number(product?.basePrice ?? 0)
+    : Number(product.basePrice ?? 0)
   const unitPrice = baseUnitPrice * weightMultiplier
 
   const addonTotal = calculateAddonPrice(addonGroups, addonSelections)
@@ -438,7 +379,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   }, [addonGroups, addonSelections])
 
   const handleAddToCart = useCallback(() => {
-    if (!product) return
+    if (!product) return // defensive guard
 
     // Validate: delivery selection required
     if (!deliverySelection) {
@@ -516,32 +457,6 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     } finally {
       setPincodeChecking(false)
     }
-  }
-
-  if (loading) {
-    return <ProductDetailSkeleton />
-  }
-
-  if (notFound || !product) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center px-4 py-20">
-        <div className="text-center">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[#FFF0F5]">
-            <Package className="h-10 w-10 text-[#E91E63]" />
-          </div>
-          <h1 className="text-2xl font-bold text-[#1A1A2E]">Product Not Found</h1>
-          <p className="mt-2 text-muted-foreground max-w-md">
-            We couldn&apos;t find the product you&apos;re looking for. It may have been removed or the link might be incorrect.
-          </p>
-          <Link
-            href="/"
-            className="mt-6 inline-flex items-center gap-2 btn-gradient px-6 py-3 rounded-lg text-sm"
-          >
-            Back to Home
-          </Link>
-        </div>
-      </div>
-    )
   }
 
   const categorySlug = product.category?.slug || ""
