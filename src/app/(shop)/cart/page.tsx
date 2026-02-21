@@ -9,8 +9,9 @@ import { Separator } from "@/components/ui/separator"
 import { CartItem } from "@/components/cart/cart-item"
 import { CartSummary } from "@/components/cart/cart-summary"
 import { CouponInput } from "@/components/cart/coupon-input"
-import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
+import { DeliverySlotPicker, type DeliverySelection } from "@/components/product/delivery-slot-picker"
 import { useCart } from "@/hooks/use-cart"
+import { useCity } from "@/hooks/use-city"
 
 const BASE_DELIVERY_CHARGE = 49
 const FREE_DELIVERY_ABOVE = 499
@@ -29,11 +30,11 @@ export default function CartPage() {
   const [couponLoading, setCouponLoading] = useState(false)
   const [couponError, setCouponError] = useState<string | null>(null)
 
+  // City context
+  const { cityId } = useCity()
+
   // Delivery slot state
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null)
-  const [, setSelectedSlotName] = useState('')
-  const [selectedSlotCharge, setSelectedSlotCharge] = useState(0)
+  const [deliverySelection, setDeliverySelection] = useState<DeliverySelection | null>(null)
 
   // Hydration guard for Zustand persisted store
   const [mounted, setMounted] = useState(false)
@@ -60,8 +61,9 @@ export default function CartPage() {
 
   const subtotal = getSubtotal()
   const baseDeliveryCharge = subtotal >= FREE_DELIVERY_ABOVE ? 0 : BASE_DELIVERY_CHARGE
-  const deliveryCharge = baseDeliveryCharge + selectedSlotCharge
-  const cartProductIds = items.map(item => item.productId)
+  const slotCharge = deliverySelection?.price ?? 0
+  const deliveryCharge = baseDeliveryCharge + slotCharge
+  const firstProductId = items.length > 0 ? items[0].productId : null
 
   const handleApplyCoupon = async (code: string) => {
     setCouponLoading(true)
@@ -198,17 +200,18 @@ export default function CartPage() {
                 </div>
               </div>
               <div className="p-4 sm:p-5">
-                <DeliverySlotPicker
-                  productIds={cartProductIds}
-                  selectedDate={selectedDate}
-                  selectedSlot={selectedSlotId}
-                  onDateChange={setSelectedDate}
-                  onSlotChange={(id, name, charge) => {
-                    setSelectedSlotId(id)
-                    setSelectedSlotName(name)
-                    setSelectedSlotCharge(charge)
-                  }}
-                />
+                {firstProductId && cityId ? (
+                  <DeliverySlotPicker
+                    productId={firstProductId}
+                    cityId={cityId}
+                    onSelect={setDeliverySelection}
+                    initialSelection={deliverySelection ?? undefined}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    Select a city to see delivery options
+                  </p>
+                )}
               </div>
             </div>
 

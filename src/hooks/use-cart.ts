@@ -17,6 +17,8 @@ export interface CartItemState {
   addonSelections: AddonSelectionRecord[]
   deliveryDate: string | null
   deliverySlot: string | null
+  deliveryWindow: string | null
+  deliveryCharge: number
   product: Product
 }
 
@@ -35,7 +37,7 @@ interface CartStore {
   }) => void
   removeItem: (itemId: string) => void
   updateQuantity: (itemId: string, quantity: number) => void
-  updateDelivery: (itemId: string, date: string | null, slot: string | null) => void
+  updateDelivery: (itemId: string, date: string | null, slot: string | null, window?: string | null, charge?: number) => void
   setCoupon: (code: string | null, discount: number) => void
   clearCart: () => void
   getItemCount: () => number
@@ -107,6 +109,8 @@ export const useCart = create<CartStore>()(
                 addonSelections,
                 deliveryDate: null,
                 deliverySlot: null,
+                deliveryWindow: null,
+                deliveryCharge: 0,
                 product: normalizedProduct,
               },
             ],
@@ -136,6 +140,8 @@ export const useCart = create<CartStore>()(
                 addonSelections,
                 deliveryDate: null,
                 deliverySlot: null,
+                deliveryWindow: null,
+                deliveryCharge: 0,
                 product: normalizedProduct,
               },
             ],
@@ -161,11 +167,11 @@ export const useCart = create<CartStore>()(
         }))
       },
 
-      updateDelivery: (itemId, date, slot) => {
+      updateDelivery: (itemId, date, slot, window = null, charge = 0) => {
         set((state) => ({
           items: (Array.isArray(state.items) ? state.items : []).map((i) =>
             i.id === itemId
-              ? { ...i, deliveryDate: date, deliverySlot: slot }
+              ? { ...i, deliveryDate: date, deliverySlot: slot, deliveryWindow: window ?? null, deliveryCharge: charge }
               : i
           ),
         }))
