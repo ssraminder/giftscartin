@@ -104,10 +104,8 @@ function applyMenuFilters(data: MenuNode[]): MenuNode[] {
   return visible.filter((item) => {
     const type = getMenuType(item)
     if (type === "standard") {
-      const hasVisibleLinks = item.children.some((group) =>
-        group.children.some((link) => link.isVisible)
-      )
-      return hasVisibleLinks || item.children.length === 0
+      // Keep items with any children (grouped or flat) or no children (plain links)
+      return true
     }
     return item.children.length > 0
   })
@@ -264,20 +262,69 @@ export function MegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) 
       <nav className="hidden md:block bg-white border-b border-gray-200" onMouseLeave={scheduleClose}>
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-center">
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onMouseEnter={() => handleNavEnter(item.id)}
-                onClick={() => setActiveMenu(activeMenu === item.id ? null : item.id)}
-                className={`px-4 py-3 text-sm font-medium cursor-pointer transition-colors border-b-2 whitespace-nowrap ${
-                  activeMenu === item.id
-                    ? "text-pink-600 border-pink-500"
-                    : "text-gray-600 border-transparent hover:text-pink-600 hover:border-pink-300"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
+            {menuItems.map((item) => {
+              const hasGroupedChildren = item.children.some(c => c.children.length > 0)
+              const hasFlatChildren = item.children.length > 0 && !hasGroupedChildren
+
+              // No children → plain link
+              if (item.children.length === 0) {
+                return (
+                  <Link
+                    key={item.id}
+                    href={buildHref(item.slug || item.href || "", refCode)}
+                    onMouseEnter={() => setActiveMenu(null)}
+                    className="px-4 py-3 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-pink-600 hover:border-pink-300 transition-colors whitespace-nowrap"
+                  >
+                    {item.label}
+                  </Link>
+                )
+              }
+
+              // Flat children → simple CSS hover dropdown
+              if (hasFlatChildren) {
+                return (
+                  <div
+                    key={item.id}
+                    className="relative group"
+                    onMouseEnter={() => setActiveMenu(null)}
+                  >
+                    <button
+                      className="px-4 py-3 text-sm font-medium cursor-pointer transition-colors border-b-2 border-transparent text-gray-600 hover:text-pink-600 hover:border-pink-300 whitespace-nowrap inline-flex items-center gap-1"
+                    >
+                      {item.label}
+                      <ChevronDown className="h-3 w-3 transition-transform group-hover:rotate-180" />
+                    </button>
+                    <div className="absolute hidden group-hover:block top-full left-0 bg-white shadow-lg rounded-lg py-2 min-w-48 z-50 border border-gray-100">
+                      {item.children.map((child) => (
+                        <Link
+                          key={child.id}
+                          href={buildHref(child.href || child.slug || "", refCode)}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-pink-50 hover:text-pink-600 transition-colors"
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
+
+              // Grouped children → mega-menu (existing behavior)
+              return (
+                <button
+                  key={item.id}
+                  onMouseEnter={() => handleNavEnter(item.id)}
+                  onClick={() => setActiveMenu(activeMenu === item.id ? null : item.id)}
+                  className={`px-4 py-3 text-sm font-medium cursor-pointer transition-colors border-b-2 whitespace-nowrap ${
+                    activeMenu === item.id
+                      ? "text-pink-600 border-pink-500"
+                      : "text-gray-600 border-transparent hover:text-pink-600 hover:border-pink-300"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -320,9 +367,27 @@ export function MobileMegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode
     const type = getMenuType(item)
 
     if (type === "standard") {
+      const groups = item.children.filter(c => c.children.length > 0)
+      const flatLinks = item.children.filter(c => c.children.length === 0)
+
       return (
         <div className="pl-4 pb-3 space-y-3">
-          {item.children.map((group) => (
+          {flatLinks.length > 0 && (
+            <ul className="space-y-0.5">
+              {flatLinks.map((link) => (
+                <li key={link.id}>
+                  <Link
+                    href={buildHref(link.href || link.slug || "", refCode)}
+                    className="text-sm text-gray-700 hover:text-pink-600 block py-1 pl-1"
+                    onClick={() => setOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {groups.map((group) => (
             <div key={group.id}>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">
                 {group.label}
@@ -424,6 +489,21 @@ export function MobileMegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode
         </SheetHeader>
         <div className="py-2">
           {menuItems.map((item) => {
+            // No children → plain link
+            if (item.children.length === 0) {
+              return (
+                <div key={item.id} className="border-b border-gray-50">
+                  <Link
+                    href={buildHref(item.slug || item.href || "", refCode)}
+                    className="w-full flex items-center px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    onClick={() => setOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                </div>
+              )
+            }
+
             const isExpanded = expandedItem === item.id
             return (
               <div key={item.id} className="border-b border-gray-50">
