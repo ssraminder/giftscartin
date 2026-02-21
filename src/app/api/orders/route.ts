@@ -66,6 +66,98 @@ async function getSessionUser() {
   return session.user as { id: string; role: string; email: string }
 }
 
+// Smart vendor assignment — slot, capacity, hours, holiday aware
+async function findBestVendor(
+  cityId: string,
+  pincode: string,
+  productIds: string[],
+  slotId: string,
+  deliveryDate: Date,
+  requiredLeadTimeHours: number
+): Promise<string | null> {
+  const dayOfWeek = deliveryDate.getDay()
+  const dateOnly  = new Date(deliveryDate.toISOString().split('T')[0])
+
+  const vendorPincodes = await prisma.vendorPincode.findMany({
+    where: { pincode, isActive: true },
+    select: { vendorId: true },
+  })
+  const candidateIds = vendorPincodes.map(vp => vp.vendorId)
+  if (candidateIds.length === 0) return null
+
+  const vendors = await prisma.vendor.findMany({
+    where: {
+      id:      { in: candidateIds },
+      cityId,
+      status:  'APPROVED',
+      isOnline: true,
+      OR: [
+        { vacationStart: null },
+        { vacationEnd:   { lt: new Date() } },
+        { vacationStart: { gt: new Date() } },
+      ],
+    },
+    include: {
+      workingHours: { where: { dayOfWeek } },
+      slots:        { where: { slotId, isEnabled: true } },
+      holidays:     { where: { date: dateOnly } },
+      capacity:     { where: { date: dateOnly, slotId } },
+      products:     { where: { productId: { in: productIds }, isAvailable: true } },
+    },
+  })
+
+  const eligible = vendors.filter(vendor => {
+    // Must stock all ordered products
+    const vendorProductIds = vendor.products.map(vp => vp.productId)
+    if (!productIds.every(pid => vendorProductIds.includes(pid))) return false
+
+    // Must offer this slot
+    if (vendor.slots.length === 0) return false
+
+    // Must be open today
+    const workDay = vendor.workingHours[0]
+    if (!workDay || workDay.isClosed) return false
+
+    // Must not be on holiday for this slot
+    const holiday = vendor.holidays[0]
+    if (holiday) {
+      const overrides = (holiday.blockedSlots ?? []) as string[]
+      // blockedSlots = [] means full day blocked; otherwise check if slotId is listed
+      if (overrides.length === 0 || overrides.includes(slotId)) return false
+    }
+
+    // Must have capacity
+    const cap = vendor.capacity[0]
+    if (cap && cap.bookedOrders >= cap.maxOrders) return false
+
+    // Must meet product lead time
+    const maxPrep = Math.max(...vendor.products.map(vp => vp.preparationTime))
+    if (Math.ceil(maxPrep / 60) > requiredLeadTimeHours) return false
+
+    return true
+  })
+
+  if (eligible.length === 0) return null
+
+  // Rank: highest rating first, then fewest booked orders
+  eligible.sort((a, b) => {
+    const rDiff = Number(b.rating) - Number(a.rating)
+    if (rDiff !== 0) return rDiff
+    return (a.capacity[0]?.bookedOrders ?? 0) - (b.capacity[0]?.bookedOrders ?? 0)
+  })
+
+  const best = eligible[0]
+
+  // Increment booked orders atomically
+  await prisma.vendorCapacity.upsert({
+    where:  { vendorId_date_slotId: { vendorId: best.id, date: dateOnly, slotId } },
+    update: { bookedOrders: { increment: 1 } },
+    create: { vendorId: best.id, date: dateOnly, slotId, maxOrders: 10, bookedOrders: 1 },
+  })
+
+  return best.id
+}
+
 // GET: List user's orders
 export async function GET(request: NextRequest) {
   try {
@@ -358,51 +450,34 @@ export async function POST(request: NextRequest) {
     // Determine city code for order number
     const cityCode = zone?.city.slug.substring(0, 3).toUpperCase() || 'GEN'
 
-    // Find best available vendor using variation-level matching when available
+    // Derive effective lead time from ordered products
+    const orderedProducts = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { minLeadTimeHours: true },
+    })
+    const requiredLeadTimeHours = Math.max(...orderedProducts.map(p => p.minLeadTimeHours), 2)
+
+    // Find best vendor using smart assignment (slot, capacity, hours, holiday aware)
     let bestVendorId: string | null = null
 
-    // Collect unique variationIds from order items
-    const orderVariationIds = orderItems
-      .map((item) => item.variationId)
-      .filter((id): id is string => !!id)
-
-    if (orderVariationIds.length > 0) {
-      // Find vendors that serve this pincode AND have all required variations available
-      const vendorPincodes = await prisma.vendorPincode.findMany({
-        where: {
-          pincode: address.pincode,
-          isActive: true,
-          vendor: { status: 'APPROVED' },
-        },
-        include: {
-          vendor: {
-            include: {
-              productVariations: {
-                where: {
-                  variationId: { in: orderVariationIds },
-                  isAvailable: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { vendor: { rating: 'desc' } },
+    if (zone) {
+      // Look up the delivery slot record by slug to get its ID
+      const slotRecord = await prisma.deliverySlot.findUnique({
+        where: { slug: deliverySlot },
       })
-
-      // Find the first vendor who has ALL required variations available
-      for (const vp of vendorPincodes) {
-        const availableVariationIds = new Set(
-          vp.vendor.productVariations.map((pv) => pv.variationId)
+      if (slotRecord) {
+        bestVendorId = await findBestVendor(
+          zone.city.id,
+          address.pincode,
+          productIds,
+          slotRecord.id,
+          deliveryDateObj,
+          requiredLeadTimeHours
         )
-        const hasAll = orderVariationIds.every((vid) => availableVariationIds.has(vid))
-        if (hasAll) {
-          bestVendorId = vp.vendor.id
-          break
-        }
       }
     }
 
-    // Fallback: product-level vendor matching if no variation-level match
+    // Fallback: simple pincode-based vendor matching
     if (!bestVendorId) {
       const vendorPincode = await prisma.vendorPincode.findFirst({
         where: {

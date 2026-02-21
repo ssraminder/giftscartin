@@ -13,9 +13,9 @@
 | `addresses` | Address | id, userId, name, phone, address, city, state, pincode | → users, orders |
 | `cities` | City | id, name, slug, state, isActive, lat, lng, baseDeliveryCharge | → city_zones, vendors, city_delivery_configs, delivery_holidays |
 | `city_zones` | CityZone | id, cityId, name, pincodes[], extraCharge | → cities, vendor_zones |
-| `delivery_slots` | DeliverySlot | id, name, slug, startTime, endTime, baseCharge | → city_delivery_configs, vendor_slots |
+| `delivery_slots` | DeliverySlot | id, name, slug, startTime, endTime, baseCharge, cutoffHours, cutoffTime, slotGroup | → city_delivery_configs, vendor_slots |
 | `city_delivery_configs` | CityDeliveryConfig | id, cityId, slotId, isAvailable, chargeOverride | → cities, delivery_slots |
-| `delivery_holidays` | DeliveryHoliday | id, date, cityId, blockedSlots[], reason | → cities |
+| `delivery_holidays` | DeliveryHoliday | id, date, cityId, reason, customerMessage, mode (FULL_BLOCK/STANDARD_ONLY/CUSTOM), slotOverrides (JSONB) | → cities |
 | `delivery_surcharges` | DeliverySurcharge | id, name, startDate, endDate, amount, appliesTo | (standalone) |
 | `vendors` | Vendor | id, userId, businessName, cityId, status, commissionRate, rating | → cities, vendor_products, orders, vendor_working_hours, vendor_slots, vendor_holidays, vendor_pincodes, vendor_zones, vendor_capacity, vendor_payouts, vendor_product_variations |
 | `vendor_working_hours` | VendorWorkingHours | id, vendorId, dayOfWeek, openTime, closeTime, isClosed | → vendors |
@@ -25,7 +25,7 @@
 | `vendor_zones` | VendorZone | id, vendorId, zoneId, deliveryCharge, minOrder | → vendors, city_zones |
 | `vendor_capacity` | VendorCapacity | id, vendorId, date, slotId, maxOrders, bookedOrders | → vendors |
 | `categories` | Category | id, name, slug, description, image, parentId, sortOrder, metaTitle, metaDescription | → self (parent/children), products, category_addon_templates |
-| `products` | Product | id, name, slug, categoryId, basePrice, productType, metaTitle, metaDescription, images[], tags[], occasion[] | → categories, vendor_products, order_items, cart_items, reviews, product_addons, product_attributes, product_variations, product_addon_groups, product_upsells |
+| `products` | Product | id, name, slug, categoryId, basePrice, productType, metaTitle, metaDescription, images[], tags[], occasion[], minLeadTimeHours, leadTimeNote | → categories, vendor_products, order_items, cart_items, reviews, product_addons, product_attributes, product_variations, product_addon_groups, product_upsells |
 | `product_addons` | ProductAddon | id, productId, name, price, image | → products (legacy — being replaced by product_addon_groups) |
 | `product_attributes` | ProductAttribute | id, productId, name, slug, isForVariations | → products, product_attribute_options |
 | `product_attribute_options` | ProductAttributeOption | id, attributeId, value, sortOrder | → product_attributes |
@@ -71,6 +71,7 @@
 | Migration 002 — Schema sync | order_items: +variationId, +variationLabel; payments: +gateway (PaymentGateway enum), +stripe/paypal columns; cart_items: +variationId; currency_configs table | ⏳ **PENDING — Run `prisma/migrations/002_sync_schema.sql` in Supabase SQL Editor** |
 | Sprint 1 migration | pincode_city_map, city_notifications, product_relations (RelationType enum), image_generation_jobs (ImageJobStatus, ImageType enums), catalog_imports (ImportStatus enum). Cities table: +aliases, +display_name, +is_coming_soon, +notify_count, +pincode_prefix. | ✅ Executed (pre-run in Supabase) |
 | Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | ⏳ **PENDING — Run in Supabase SQL Editor** |
+| Delivery Slot System — Prompt 7 | Added min_lead_time_hours + lead_time_note to products; cutoff_hours + cutoff_time + slot_group to delivery_slots; replaced blocked_slots[] with mode + slot_overrides on delivery_holidays; seeded 6 fixed windows + Chandigarh city configs + example holidays | ⏳ **PENDING — Run `prisma/migrations/prompt7_delivery_slot_system.sql` in Supabase SQL Editor** |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 > Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
@@ -253,6 +254,7 @@ CREATE TYPE "PayoutStatus" AS ENUM ('PENDING', 'PROCESSING', 'PAID', 'FAILED');
 CREATE TYPE "ProductType" AS ENUM ('SIMPLE', 'VARIABLE');
 CREATE TYPE "AddonType" AS ENUM ('CHECKBOX', 'RADIO', 'SELECT', 'TEXT_INPUT', 'TEXTAREA', 'FILE_UPLOAD');
 CREATE TYPE "PaymentGateway" AS ENUM ('RAZORPAY', 'STRIPE', 'PAYPAL', 'COD');
+CREATE TYPE "HolidayMode" AS ENUM ('FULL_BLOCK', 'STANDARD_ONLY', 'CUSTOM');
 ```
 
 ### Users & Auth
@@ -342,6 +344,9 @@ CREATE TABLE delivery_slots (
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     base_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
+    cutoff_hours INTEGER NOT NULL DEFAULT 4,
+    cutoff_time TEXT,
+    slot_group TEXT NOT NULL DEFAULT 'standard',
     is_active BOOLEAN NOT NULL DEFAULT true
 );
 
@@ -358,8 +363,10 @@ CREATE TABLE delivery_holidays (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     date DATE NOT NULL,
     city_id TEXT REFERENCES cities(id) ON DELETE CASCADE,
-    blocked_slots TEXT[] NOT NULL,
-    reason TEXT NOT NULL
+    reason TEXT NOT NULL,
+    customer_message TEXT,
+    mode TEXT NOT NULL DEFAULT 'FULL_BLOCK',
+    slot_overrides JSONB
 );
 
 CREATE TABLE delivery_surcharges (
