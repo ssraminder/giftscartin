@@ -3,7 +3,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { MapPin, Minus, Plus, ShoppingCart, Star, Truck, Shield, Clock, Package, Info, CheckCircle } from "lucide-react"
+import {
+  MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock,
+  Package, CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
+  MessageSquare,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,10 +21,10 @@ import { AddonGroup } from "@/components/product/addon-group"
 import { UpsellProducts } from "@/components/product/upsell-products"
 import { ReviewList } from "@/components/product/review-list"
 import { ProductCard } from "@/components/product/product-card"
-import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import { usePartner } from "@/hooks/use-partner"
+import { useCity } from "@/hooks/use-city"
 import type {
   Product,
   ProductAttribute,
@@ -60,24 +64,21 @@ function StarRating({ rating, size = "sm" }: { rating: number; size?: "sm" | "md
 
 function ProductDetailSkeleton() {
   return (
-    <div className="bg-[#FAFAFA] min-h-screen">
-      <div className="bg-white border-b">
-        <div className="container mx-auto px-4 py-3">
-          <Skeleton className="h-4 w-64" />
-        </div>
+    <div className="bg-white min-h-screen">
+      <div className="container mx-auto px-4 py-3">
+        <Skeleton className="h-4 w-64" />
       </div>
-      <div className="container mx-auto px-4 py-6 lg:py-10">
-        <div className="grid gap-8 lg:grid-cols-[1fr_0.67fr] lg:gap-12">
-          <div className="card-premium p-4 sm:p-6">
+      <div className="container mx-auto px-4 py-6">
+        <div className="grid gap-8 lg:grid-cols-12">
+          <div className="lg:col-span-7">
             <Skeleton className="aspect-square w-full rounded-lg" />
           </div>
-          <div className="space-y-6">
-            <Skeleton className="h-6 w-24" />
+          <div className="lg:col-span-5 space-y-4">
             <Skeleton className="h-8 w-3/4" />
             <Skeleton className="h-5 w-48" />
             <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-12 w-full rounded-xl" />
+            <Skeleton className="h-12 w-full rounded-xl" />
             <Skeleton className="h-40 w-full rounded-xl" />
             <Skeleton className="h-14 w-full rounded-xl" />
           </div>
@@ -97,6 +98,63 @@ interface ProductDetail extends Omit<Product, 'category'> {
   addonGroups?: ProductAddonGroup[]
   upsells?: UpsellProduct[]
   reviews?: Review[]
+}
+
+// -- Description Accordion Item -----------------------------------------------
+
+function AccordionItem({
+  title,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className="border-b border-gray-200">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center justify-between py-4 text-left"
+      >
+        <span className="text-sm font-semibold text-gray-900">{title}</span>
+        {open ? (
+          <ChevronUp className="h-4 w-4 text-gray-500" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-gray-500" />
+        )}
+      </button>
+      {open && <div className="pb-4">{children}</div>}
+    </div>
+  )
+}
+
+// -- Weight variant helpers ---------------------------------------------------
+
+interface WeightOption {
+  label: string
+  multiplier: number
+}
+
+const WEIGHT_MULTIPLIERS: Record<string, number> = {
+  "500g": 1,
+  "1kg": 1.5,
+  "1.5kg": 2,
+  "2kg": 2.5,
+  "3kg": 3.5,
+}
+
+function parseWeightOptions(weight: string | null): WeightOption[] | null {
+  if (!weight) return null
+  const parts = weight.split(",").map((w) => w.trim()).filter(Boolean)
+  if (parts.length <= 1) return null
+  return parts.map((label) => ({
+    label,
+    multiplier: WEIGHT_MULTIPLIERS[label.toLowerCase()] ?? 1,
+  }))
 }
 
 // -- Default addon selection initializer --------------------------------------
@@ -146,7 +204,6 @@ function calculateAddonPrice(
         if (opt) total += Number(opt.price)
       }
     }
-    // TEXT, TEXTAREA, FILE_UPLOAD don't have prices
   }
   return total
 }
@@ -158,6 +215,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
   const { partner } = usePartner()
+  const { pincode: cityPincode } = useCity()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // State for fetched data
@@ -179,7 +237,18 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const [, setDeliverySlotCharge] = useState(0)
   const [pincode, setPincode] = useState("")
   const [pincodeChecked, setPincodeChecked] = useState(false)
-  const [activeTab, setActiveTab] = useState<"description" | "reviews" | "delivery">("description")
+  const [pincodeAvailable, setPincodeAvailable] = useState(true)
+  const [pincodeChecking, setPincodeChecking] = useState(false)
+  const [selectedWeight, setSelectedWeight] = useState<string | null>(null)
+  const [giftMessageOpen, setGiftMessageOpen] = useState(false)
+  const [giftMessage, setGiftMessage] = useState("")
+
+  // Pre-fill pincode from city context
+  useEffect(() => {
+    if (cityPincode && !pincode) {
+      setPincode(cityPincode)
+    }
+  }, [cityPincode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch product by slug
   useEffect(() => {
@@ -210,7 +279,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
       }
     }
     fetchProduct()
-  }, [slug])
+  }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize addon selections when product loads
   useEffect(() => {
@@ -222,6 +291,16 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
       setAddonSelections(initial)
     }
   }, [product])
+
+  // Initialize weight selection
+  useEffect(() => {
+    if (product?.weight) {
+      const opts = parseWeightOptions(product.weight)
+      if (opts && opts.length > 0) {
+        setSelectedWeight(opts[0].label)
+      }
+    }
+  }, [product?.weight])
 
   // Match variation from selected options
   const matchedVariation = useMemo(() => {
@@ -241,8 +320,9 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const addonGroups = useMemo(() => product?.addonGroups || [], [product?.addonGroups])
   const upsells = product?.upsells || []
   const reviews = product?.reviews || []
+  const weightOptions = useMemo(() => parseWeightOptions(product?.weight ?? null), [product?.weight])
 
-  // Get min variation price for "From ₹X" display
+  // Get min variation price for "From X" display
   const minVariationPrice = useMemo(() => {
     if (variations.length === 0) return null
     return Math.min(...variations.map((v) => {
@@ -264,13 +344,38 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     return Number(hasSale ? matchedVariation.salePrice : matchedVariation.price)
   }, [matchedVariation])
 
-  // Unit price (variation or base)
-  const unitPrice = isVariable
+  // Weight-based price calculation
+  const weightMultiplier = useMemo(() => {
+    if (!selectedWeight || !weightOptions) return 1
+    const opt = weightOptions.find((w) => w.label === selectedWeight)
+    return opt?.multiplier ?? 1
+  }, [selectedWeight, weightOptions])
+
+  // Unit price (variation or base, with weight multiplier)
+  const baseUnitPrice = isVariable
     ? (variationDisplayPrice ?? 0)
     : Number(product?.basePrice ?? 0)
+  const unitPrice = baseUnitPrice * weightMultiplier
 
   const addonTotal = calculateAddonPrice(addonGroups, addonSelections)
   const totalPrice = (unitPrice + addonTotal) * quantity
+
+  // MRP for discount display (when product has compareAtPrice or sale)
+  const mrpPrice = useMemo(() => {
+    if (isVariable && matchedVariation) {
+      const now = new Date()
+      const hasSale = matchedVariation.salePrice &&
+        (!matchedVariation.saleFrom || new Date(matchedVariation.saleFrom) <= now) &&
+        (!matchedVariation.saleTo || new Date(matchedVariation.saleTo) >= now)
+      if (hasSale) return Number(matchedVariation.price) * weightMultiplier
+    }
+    return null
+  }, [isVariable, matchedVariation, weightMultiplier])
+
+  const discountPercent = useMemo(() => {
+    if (!mrpPrice || mrpPrice <= unitPrice) return null
+    return Math.round(((mrpPrice - unitPrice) / mrpPrice) * 100)
+  }, [mrpPrice, unitPrice])
 
   const handleOptionChange = useCallback((attributeSlug: string, value: string) => {
     setSelectedOptions((prev) => ({ ...prev, [attributeSlug]: value }))
@@ -362,7 +467,6 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
     if (errors.size > 0) {
       setAddonErrors(errors)
-      // Scroll to first error
       addonSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
       return
     }
@@ -382,7 +486,6 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   const handleBuyNow = useCallback(() => {
     handleAddToCart()
-    // Only navigate if validation passed (addedToCart will be set)
     setTimeout(() => {
       if (!variationError && addonErrors.size === 0) {
         router.push("/cart")
@@ -390,9 +493,23 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     }, 100)
   }, [handleAddToCart, router, variationError, addonErrors])
 
-  const handleCheckPincode = () => {
-    if (pincode.length === 6) {
+  const handleCheckPincode = async () => {
+    if (pincode.length !== 6) return
+    setPincodeChecking(true)
+    try {
+      const res = await fetch("/api/city/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: pincode }),
+      })
+      const json = await res.json()
+      setPincodeAvailable(json.success && json.data?.cities?.length > 0)
       setPincodeChecked(true)
+    } catch {
+      setPincodeAvailable(false)
+      setPincodeChecked(true)
+    } finally {
+      setPincodeChecking(false)
     }
   }
 
@@ -425,472 +542,489 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const categorySlug = product.category?.slug || ""
   const categoryName = product.category?.name || ""
 
-  return (
-    <div className="bg-[#FAFAFA] min-h-screen">
-      {/* Breadcrumb */}
-      <div className="bg-white border-b">
-        <div className="container mx-auto px-4">
-          <Breadcrumb items={[
-            { label: categoryName, href: `/category/${categorySlug}` },
-            { label: product.name },
-          ]} />
-        </div>
+  // --- Shared sub-components rendered in different positions for mobile vs desktop ---
+
+  const productInfoBlock = (
+    <div>
+      {/* Badges */}
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        {product.tags.includes("bestseller") && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#E91E63] to-[#FF6B9D] px-3 py-1 text-xs font-semibold text-white">
+            Bestseller
+          </span>
+        )}
+        {product.occasion.map((occ) => (
+          <Badge key={occ} variant="outline" className="text-xs capitalize border-[#E91E63]/20 text-[#E91E63]/80 bg-[#FFF0F5]">
+            {occ.replace(/-/g, " ")}
+          </Badge>
+        ))}
       </div>
 
-      {/* Main product section */}
-      <div className="container mx-auto px-4 py-6 lg:py-10">
-        <div className="grid gap-8 lg:grid-cols-[1fr_0.67fr] lg:gap-12">
+      {/* Product Name */}
+      <h1 className="font-bold text-xl text-gray-900 leading-tight mb-1">
+        {product.name}
+      </h1>
 
-          {/* -- Left Column: Gallery (60%) -- */}
-          <div className="card-premium p-4 sm:p-6">
-            <ProductGallery images={product.images} name={product.name} />
-          </div>
+      {/* Rating Row */}
+      {product.totalReviews > 0 && (
+        <div className="flex items-center gap-2 mb-4">
+          <StarRating rating={Number(product.avgRating)} />
+          <span className="text-sm text-gray-500">
+            {Number(product.avgRating).toFixed(1)} ({product.totalReviews} {product.totalReviews === 1 ? "review" : "reviews"})
+          </span>
+        </div>
+      )}
 
-          {/* -- Right Column: Product Details (40%) -- */}
-          <div className="space-y-6">
-
-            {/* Badges row */}
-            <div className="flex flex-wrap items-center gap-2">
-              {product.tags.includes("bestseller") && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#E91E63] to-[#FF6B9D] px-3 py-1 text-xs font-semibold text-white">
-                  Bestseller
-                </span>
-              )}
-              {product.occasion.map((occ) => (
-                <Badge key={occ} variant="outline" className="text-xs capitalize border-[#E91E63]/20 text-[#E91E63]/80 bg-[#FFF0F5]">
-                  {occ.replace(/-/g, " ")}
-                </Badge>
-              ))}
-            </div>
-
-            {/* Product name */}
-            <div>
-              <h1 className="text-2xl font-bold text-[#1A1A2E] sm:text-3xl lg:text-[2rem] leading-tight">
-                {product.name}
-              </h1>
-              {product.weight && (
-                <p className="mt-1 text-sm text-muted-foreground">{product.weight}</p>
-              )}
-            </div>
-
-            {/* Star rating */}
-            {product.totalReviews > 0 && (
-              <div className="flex items-center gap-3">
-                <StarRating rating={Number(product.avgRating)} size="md" />
-                <span className="text-sm font-semibold text-[#1A1A2E]">
-                  {Number(product.avgRating).toFixed(1)}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  ({product.totalReviews} {product.totalReviews === 1 ? "review" : "reviews"})
-                </span>
-              </div>
-            )}
-
-            {/* Price display */}
-            <div>
-              {isVariable ? (
-                matchedVariation ? (
-                  // VariationSelector shows its own price, so just show "Inclusive of all taxes"
-                  <div />
-                ) : (
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm text-muted-foreground">From</span>
-                    <span className="text-3xl font-bold text-[#E91E63]">
-                      {minVariationPrice ? formatPrice(minVariationPrice) : ""}
-                    </span>
-                  </div>
-                )
-              ) : (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-[#E91E63]">
-                    {formatPrice(Number(product.basePrice))}
+      {/* Price Display */}
+      <div className="mb-4">
+        {isVariable ? (
+          matchedVariation ? (
+            <div className="flex items-baseline gap-2">
+              <span className="font-bold text-3xl text-gray-900">
+                {formatPrice(unitPrice)}
+              </span>
+              {mrpPrice && mrpPrice > unitPrice && (
+                <>
+                  <span className="text-gray-400 line-through text-lg">
+                    {formatPrice(mrpPrice)}
                   </span>
-                </div>
+                  <span className="text-sm font-semibold text-green-600">
+                    {discountPercent}% off
+                  </span>
+                </>
               )}
-              <p className="mt-0.5 text-xs text-muted-foreground">Inclusive of all taxes</p>
             </div>
-
-            {/* Veg/Non-veg indicator */}
-            <div className="flex items-center gap-2">
-              <div className={`flex h-5 w-5 items-center justify-center rounded-sm border-2 ${product.isVeg ? "border-green-600" : "border-red-600"}`}>
-                <div className={`h-2.5 w-2.5 rounded-full ${product.isVeg ? "bg-green-600" : "bg-red-600"}`} />
-              </div>
-              <span className="text-sm text-muted-foreground">
-                {product.isVeg ? "Vegetarian" : "Non-Vegetarian"}
+          ) : (
+            <div className="flex items-baseline gap-2">
+              <span className="text-sm text-gray-500">From</span>
+              <span className="font-bold text-3xl text-gray-900">
+                {minVariationPrice ? formatPrice(minVariationPrice) : ""}
               </span>
             </div>
+          )
+        ) : (
+          <div className="flex items-baseline gap-2">
+            <span className="font-bold text-3xl text-gray-900">
+              {formatPrice(unitPrice)}
+            </span>
+          </div>
+        )}
+        <p className="mt-0.5 text-xs text-gray-500">Inclusive of all taxes</p>
+      </div>
+    </div>
+  )
 
-            {/* Short description */}
-            {product.shortDesc && (
-              <p className="text-sm text-[#1A1A2E]/70 leading-relaxed">
-                {product.shortDesc}
-              </p>
-            )}
+  const weightSelectorBlock = weightOptions && weightOptions.length > 1 && (
+    <div className="mb-4">
+      <p className="font-medium text-sm text-gray-700 mb-2">Select Weight:</p>
+      <div className="flex flex-wrap gap-2">
+        {weightOptions.map((opt) => (
+          <button
+            key={opt.label}
+            onClick={() => setSelectedWeight(opt.label)}
+            className={`border rounded-lg px-4 py-2 text-sm cursor-pointer transition-all ${
+              selectedWeight === opt.label
+                ? "border-pink-600 bg-pink-50 text-pink-700 font-medium"
+                : "border-gray-300 text-gray-600 hover:border-pink-300"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
-            {/* -- Variation selector (VARIABLE products) -- */}
-            {isVariable && attributes.length > 0 && (
-              <>
-                {variationError && (
-                  <p className="text-sm text-red-500 font-medium">Please select all options</p>
-                )}
-                <VariationSelector
-                  attributes={attributes}
-                  variations={variations}
-                  selectedOptions={selectedOptions}
-                  onOptionChange={handleOptionChange}
-                  matchedVariation={matchedVariation}
-                />
-                <Separator />
-              </>
-            )}
+  const singleWeightDisplay = product.weight && !weightOptions && (
+    <p className="text-sm text-gray-500 mb-4">Weight: {product.weight}</p>
+  )
 
-            {/* -- Delivery section card -- */}
-            <div className="card-premium border border-gray-100 overflow-hidden">
-              <div className="bg-[#FFF9F5] px-4 py-3 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Truck className="h-5 w-5 text-[#E91E63]" />
-                  <h3 className="font-semibold text-[#1A1A2E]">Check Delivery Availability</h3>
-                </div>
+  const variationBlock = isVariable && attributes.length > 0 && (
+    <div className="mb-4">
+      {variationError && (
+        <p className="text-sm text-red-500 font-medium mb-2">Please select all options</p>
+      )}
+      <VariationSelector
+        attributes={attributes}
+        variations={variations}
+        selectedOptions={selectedOptions}
+        onOptionChange={handleOptionChange}
+        matchedVariation={matchedVariation}
+      />
+    </div>
+  )
+
+  const deliveryBlock = (
+    <div className="mb-4">
+      <DeliverySlotPicker
+        productIds={product ? [product.id] : []}
+        selectedDate={deliveryDate}
+        selectedSlot={deliverySlotId}
+        onDateChange={setDeliveryDate}
+        onSlotChange={(id, name, charge) => {
+          setDeliverySlotId(id)
+          setDeliverySlotName(name)
+          setDeliverySlotCharge(charge)
+        }}
+      />
+    </div>
+  )
+
+  const pincodeBlock = (
+    <div className="mb-4">
+      <p className="font-medium text-sm text-gray-700 mb-2">Deliver to:</p>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="Enter 6-digit pincode"
+            maxLength={6}
+            value={pincode}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              setPincode(e.target.value.replace(/\D/g, ""))
+              setPincodeChecked(false)
+            }}
+            className="pl-10 h-10 text-base"
+          />
+        </div>
+        <Button
+          variant="outline"
+          className="h-10 px-4 border-pink-600 text-pink-600 hover:bg-pink-50 hover:text-pink-600 font-semibold text-sm"
+          onClick={handleCheckPincode}
+          disabled={pincode.length !== 6 || pincodeChecking}
+        >
+          {pincodeChecking ? "..." : "Check"}
+        </Button>
+      </div>
+      {pincodeChecked && (
+        <p className={`mt-2 flex items-center gap-1.5 text-sm ${pincodeAvailable ? "text-green-600" : "text-red-500"}`}>
+          {pincodeAvailable ? (
+            <>
+              <CheckCircle className="h-4 w-4" />
+              Delivery available to {pincode}
+            </>
+          ) : (
+            <>
+              <span>Not serviceable at {pincode}</span>
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  )
+
+  const giftMessageBlock = (
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={() => setGiftMessageOpen(!giftMessageOpen)}
+        className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-pink-600 transition-colors"
+      >
+        <MessageSquare className="h-4 w-4" />
+        Add a Gift Message
+        {giftMessageOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+      {giftMessageOpen && (
+        <div className="mt-2">
+          <textarea
+            value={giftMessage}
+            onChange={(e) => setGiftMessage(e.target.value.slice(0, 150))}
+            placeholder="Write your message here..."
+            rows={3}
+            maxLength={150}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:border-pink-500 focus:ring-1 focus:ring-pink-500 resize-none text-base"
+          />
+          <p className="text-xs text-gray-400 text-right mt-1">{giftMessage.length}/150</p>
+        </div>
+      )}
+    </div>
+  )
+
+  const addonBlock = addonGroups.length > 0 && (
+    <div ref={addonSectionRef} className="mb-4">
+      <p className="font-medium text-sm text-gray-700 mb-3">Make it more special:</p>
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+        {addonGroups.map((group) => (
+          <div key={group.id} className="min-w-[200px] flex-shrink-0 lg:min-w-0 lg:flex-shrink">
+            <AddonGroup
+              group={group}
+              value={addonSelections.get(group.id) || getDefaultAddonSelection(group)}
+              onChange={(val) => handleAddonChange(group.id, val)}
+              hasError={addonErrors.has(group.id)}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  const quantityBlock = (
+    <div className="flex items-center gap-4 mb-4">
+      <span className="text-sm font-medium text-gray-700">Quantity</span>
+      <div className="flex items-center rounded-full border border-gray-200">
+        <button
+          className="flex h-9 w-9 items-center justify-center rounded-l-full text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-30"
+          onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+          disabled={quantity <= 1}
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <span className="flex h-9 w-10 items-center justify-center border-x border-gray-200 text-sm font-semibold text-gray-900">
+          {quantity}
+        </span>
+        <button
+          className="flex h-9 w-9 items-center justify-center rounded-r-full text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-30"
+          onClick={() => setQuantity((q) => Math.min(10, q + 1))}
+          disabled={quantity >= 10}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+
+  const actionButtons = (
+    <div className="space-y-2 mb-4">
+      <button
+        className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+        style={partner?.primaryColor ? { background: partner.primaryColor } : {}}
+        onClick={handleAddToCart}
+        disabled={isVariable && matchedVariation?.stockQty === 0}
+      >
+        {addedToCart ? (
+          <>
+            <CheckCircle className="h-5 w-5" />
+            Added to Cart!
+          </>
+        ) : (
+          <>
+            <ShoppingCart className="h-5 w-5" />
+            {unitPrice > 0
+              ? `ADD TO CART — ${formatPrice(totalPrice)}`
+              : "ADD TO CART"}
+          </>
+        )}
+      </button>
+      <button
+        className="w-full border-2 border-pink-600 text-pink-600 hover:bg-pink-50 py-3 rounded-xl font-semibold text-base transition-colors disabled:opacity-50"
+        onClick={handleBuyNow}
+        disabled={isVariable && matchedVariation?.stockQty === 0}
+      >
+        BUY NOW
+      </button>
+    </div>
+  )
+
+  const trustBadges = (
+    <div className="flex items-center justify-between text-xs text-gray-500 pt-2">
+      <div className="flex items-center gap-1">
+        <Lock className="h-3.5 w-3.5" />
+        <span>Secure Payment</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Leaf className="h-3.5 w-3.5" />
+        <span>100% Fresh</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <Truck className="h-3.5 w-3.5" />
+        <span>On-time</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <RotateCcw className="h-3.5 w-3.5" />
+        <span>Easy Returns</span>
+      </div>
+    </div>
+  )
+
+  const descriptionAccordion = (
+    <div className="border-t border-gray-200">
+      <AccordionItem title="Product Description" defaultOpen>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+            {product.description}
+          </p>
+          {product.weight && (
+            <div className="flex items-center gap-6 rounded-lg bg-gray-50 p-3">
+              <div>
+                <p className="text-xs text-gray-400">Weight</p>
+                <p className="text-sm font-medium text-gray-900">{product.weight}</p>
               </div>
-              <div className="p-4 space-y-4">
-                {/* Pincode input */}
-                <div>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        type="text"
-                        placeholder="Enter delivery pincode"
-                        maxLength={6}
-                        value={pincode}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          setPincode(e.target.value.replace(/\D/g, ""))
-                          setPincodeChecked(false)
-                        }}
-                        className="pl-10 h-11"
-                      />
-                    </div>
-                    <Button
-                      variant="outline"
-                      className="h-11 px-5 border-[#E91E63] text-[#E91E63] hover:bg-[#FFF0F5] hover:text-[#E91E63] font-semibold"
-                      onClick={handleCheckPincode}
-                      disabled={pincode.length !== 6}
-                    >
-                      Check
-                    </Button>
+              <div>
+                <p className="text-xs text-gray-400">Type</p>
+                <div className="flex items-center gap-1">
+                  <div className={`flex h-4 w-4 items-center justify-center rounded-sm border-2 ${product.isVeg ? "border-green-600" : "border-red-600"}`}>
+                    <div className={`h-2 w-2 rounded-full ${product.isVeg ? "bg-green-600" : "bg-red-600"}`} />
                   </div>
-                  {pincodeChecked && (
-                    <p className="mt-2 flex items-center gap-1.5 text-sm text-green-600">
-                      <Shield className="h-4 w-4" />
-                      Delivery available to {pincode}. Earliest delivery: Today
-                    </p>
-                  )}
+                  <p className="text-sm font-medium text-gray-900">{product.isVeg ? "Veg" : "Non-Veg"}</p>
                 </div>
-
-                {/* Delivery slot picker */}
-                <DeliverySlotPicker
-                  productIds={product ? [product.id] : []}
-                  selectedDate={deliveryDate}
-                  selectedSlot={deliverySlotId}
-                  onDateChange={setDeliveryDate}
-                  onSlotChange={(id, name, charge) => {
-                    setDeliverySlotId(id)
-                    setDeliverySlotName(name)
-                    setDeliverySlotCharge(charge)
-                  }}
-                />
               </div>
+              {categoryName && (
+                <div>
+                  <p className="text-xs text-gray-400">Category</p>
+                  <p className="text-sm font-medium text-gray-900">{categoryName}</p>
+                </div>
+              )}
             </div>
-
-            <Separator />
-
-            {/* -- Addon groups -- */}
-            {addonGroups.length > 0 && (
-              <div ref={addonSectionRef} className="space-y-4">
-                <h3 className="text-sm font-semibold text-[#1A1A2E]">Customise Your Order</h3>
-                {addonGroups.map((group) => (
-                  <AddonGroup
-                    key={group.id}
-                    group={group}
-                    value={addonSelections.get(group.id) || getDefaultAddonSelection(group)}
-                    onChange={(val) => handleAddonChange(group.id, val)}
-                    hasError={addonErrors.has(group.id)}
-                  />
-                ))}
-                <Separator />
-              </div>
-            )}
-
-            {/* -- Quantity selector -- */}
-            <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold text-[#1A1A2E]">Quantity</span>
-              <div className="flex items-center rounded-full border-2 border-gray-200">
-                <button
-                  className="flex h-10 w-10 items-center justify-center rounded-l-full text-[#1A1A2E] hover:bg-gray-50 transition-colors disabled:opacity-30"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1}
-                >
-                  <Minus className="h-4 w-4" />
-                </button>
-                <span className="flex h-10 w-12 items-center justify-center border-x-2 border-gray-200 text-sm font-bold text-[#1A1A2E]">
-                  {quantity}
-                </span>
-                <button
-                  className="flex h-10 w-10 items-center justify-center rounded-r-full text-[#1A1A2E] hover:bg-gray-50 transition-colors disabled:opacity-30"
-                  onClick={() => setQuantity((q) => Math.min(10, q + 1))}
-                  disabled={quantity >= 10}
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Price summary */}
-            {(addonTotal > 0 || quantity > 1 || matchedVariation) && unitPrice > 0 && (
-              <div className="rounded-xl bg-[#FFF9F5] border border-[#E91E63]/10 p-4 space-y-2 text-sm">
-                <div className="flex justify-between text-[#1A1A2E]/70">
-                  <span>
-                    {product.name}
-                    {matchedVariation && ` (${Object.values(matchedVariation.attributes as Record<string, string>).join(", ")})`}
-                    {" "}x {quantity}
+          )}
+          {product.occasion.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-1.5">Perfect for</p>
+              <div className="flex flex-wrap gap-1.5">
+                {product.occasion.map((occ) => (
+                  <span
+                    key={occ}
+                    className="inline-flex items-center rounded-full bg-pink-50 px-2.5 py-1 text-xs font-medium text-pink-700 capitalize"
+                  >
+                    {occ.replace(/-/g, " ")}
                   </span>
-                  <span className="font-medium">{formatPrice(unitPrice * quantity)}</span>
-                </div>
-                {addonGroups.map((group) => {
-                  const sel = addonSelections.get(group.id)
-                  if (!sel) return null
-                  let price = 0
-                  let label = ""
-                  if (sel.type === "CHECKBOX" && sel.selectedIds.length > 0) {
-                    const labels: string[] = []
-                    for (const id of sel.selectedIds) {
-                      const opt = group.options.find((o) => o.id === id)
-                      if (opt) { price += Number(opt.price); labels.push(opt.label) }
-                    }
-                    label = labels.join(", ")
-                  } else if ((sel.type === "RADIO" || sel.type === "SELECT") && sel.selectedId) {
-                    const opt = group.options.find((o) => o.id === sel.selectedId)
-                    if (opt) { price = Number(opt.price); label = opt.label }
-                  }
-                  if (price === 0 && !label) return null
-                  return (
-                    <div key={group.id} className="flex justify-between text-[#1A1A2E]/70">
-                      <span>{label} x {quantity}</span>
-                      <span className="font-medium">{price > 0 ? formatPrice(price * quantity) : "Free"}</span>
-                    </div>
-                  )
-                })}
-                <Separator className="my-1" />
-                <div className="flex justify-between font-bold text-[#1A1A2E]">
-                  <span>Total</span>
-                  <span className="text-[#E91E63]">{formatPrice(totalPrice)}</span>
-                </div>
+                ))}
               </div>
-            )}
+            </div>
+          )}
+        </div>
+      </AccordionItem>
 
-            {/* -- Action buttons -- */}
-            <div className="flex gap-3">
-              <button
-                className="flex-1 btn-gradient flex items-center justify-center gap-2 h-14 text-base rounded-xl shadow-lg disabled:opacity-50"
-                style={partner?.primaryColor ? { background: partner.primaryColor, borderColor: partner.primaryColor } : {}}
-                onClick={handleAddToCart}
-                disabled={isVariable && matchedVariation?.stockQty === 0}
-              >
-                {addedToCart ? (
-                  <>
-                    <CheckCircle className="h-5 w-5" />
-                    Added to Cart!
-                  </>
-                ) : (
-                  <>
-                    <ShoppingCart className="h-5 w-5" />
-                    {unitPrice > 0
-                      ? `Add to Cart — ${formatPrice(totalPrice)}`
-                      : "Add to Cart"}
-                  </>
-                )}
-              </button>
-              <button
-                className="flex-1 h-14 rounded-xl border-2 border-[#E91E63] text-[#E91E63] font-semibold text-base hover:bg-[#FFF0F5] transition-all duration-200 disabled:opacity-50"
-                onClick={handleBuyNow}
-                disabled={isVariable && matchedVariation?.stockQty === 0}
-              >
-                Buy Now
-              </button>
+      <AccordionItem title="Care Instructions">
+        <div className="text-sm text-gray-600 space-y-2">
+          <p>Store in a cool and dry place.</p>
+          <p>Best consumed within 2-3 hours of delivery for fresh products.</p>
+          <p>Keep refrigerated for cakes and perishable items.</p>
+          <p>Handle fresh flowers with care, trim stems and change water daily.</p>
+        </div>
+      </AccordionItem>
+
+      <AccordionItem title="Delivery Information">
+        <div className="text-sm text-gray-600 space-y-3">
+          <div className="flex items-start gap-2">
+            <Truck className="h-4 w-4 mt-0.5 text-pink-600 shrink-0" />
+            <p>We deliver to Chandigarh, Mohali & Panchkula. Enter your pincode to check availability.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <Clock className="h-4 w-4 mt-0.5 text-pink-600 shrink-0" />
+            <p>Choose from Standard (free), Fixed Slot (+49), Midnight (+199), Early Morning (+149), or Express (+249).</p>
+          </div>
+          <ul className="list-disc list-inside text-gray-500 space-y-1 pl-1">
+            <li>Orders before 4 PM qualify for same-day delivery</li>
+            <li>Free delivery on orders above {formatPrice(499)}</li>
+            <li>Actual product may slightly vary from images</li>
+          </ul>
+        </div>
+      </AccordionItem>
+    </div>
+  )
+
+  const reviewsSection = (
+    <div className="pt-6">
+      <h2 className="text-lg font-bold text-gray-900 mb-4">Customer Reviews</h2>
+      <ReviewList
+        reviews={reviews}
+        avgRating={Number(product.avgRating)}
+        totalReviews={product.totalReviews}
+      />
+      <div className="mt-4">
+        <Button
+          variant="outline"
+          className="border-pink-600 text-pink-600 hover:bg-pink-50"
+          disabled
+        >
+          Write a Review
+        </Button>
+        <p className="text-xs text-gray-400 mt-1">Login required to write a review</p>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="bg-white min-h-screen">
+      {/* Breadcrumb */}
+      <div className="container mx-auto px-4">
+        <nav className="flex items-center gap-1 text-xs text-gray-500 py-3">
+          <Link href="/" className="hover:text-pink-600 transition-colors">Home</Link>
+          <span className="mx-1">&gt;</span>
+          {categoryName && (
+            <>
+              <Link href={`/category/${categorySlug}`} className="hover:text-pink-600 transition-colors">
+                {categoryName}
+              </Link>
+              <span className="mx-1">&gt;</span>
+            </>
+          )}
+          <span className="text-gray-800 font-medium truncate">{product.name}</span>
+        </nav>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="container mx-auto px-4 pb-8">
+        <div className="grid gap-8 lg:grid-cols-12">
+
+          {/* ============== LEFT COLUMN ============== */}
+          <div className="lg:col-span-7">
+            {/* Gallery */}
+            <ProductGallery images={product.images} name={product.name} />
+
+            {/* Mobile-only: product info + controls */}
+            <div className="lg:hidden mt-6 space-y-0">
+              {productInfoBlock}
+              {weightSelectorBlock}
+              {singleWeightDisplay}
+              {variationBlock}
+              {deliveryBlock}
+              {pincodeBlock}
+              {addonBlock}
+              {giftMessageBlock}
+              {quantityBlock}
+              {actionButtons}
+              {trustBadges}
             </div>
 
-            {/* Trust badges */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-[#FFF9F5] p-3 text-center">
-                <Truck className="h-5 w-5 text-[#E91E63]" />
-                <span className="text-[11px] font-medium text-[#1A1A2E]/70">Same Day Delivery</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-[#FFF9F5] p-3 text-center">
-                <Shield className="h-5 w-5 text-[#E91E63]" />
-                <span className="text-[11px] font-medium text-[#1A1A2E]/70">100% Fresh</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 rounded-xl bg-[#FFF9F5] p-3 text-center">
-                <Clock className="h-5 w-5 text-[#E91E63]" />
-                <span className="text-[11px] font-medium text-[#1A1A2E]/70">On-Time Guarantee</span>
-              </div>
+            {/* Description Accordion */}
+            <div className="mt-8">
+              {descriptionAccordion}
+            </div>
+
+            {/* Reviews */}
+            {reviewsSection}
+          </div>
+
+          {/* ============== RIGHT COLUMN (Desktop Sticky Panel) ============== */}
+          <div className="hidden lg:block lg:col-span-5">
+            <div className="sticky top-24 bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+              {productInfoBlock}
+              {weightSelectorBlock}
+              {singleWeightDisplay}
+              {variationBlock}
+
+              <Separator className="my-4" />
+
+              {deliveryBlock}
+              {pincodeBlock}
+
+              <Separator className="my-4" />
+
+              {giftMessageBlock}
+              {addonBlock}
+              {quantityBlock}
+              {actionButtons}
+              {trustBadges}
             </div>
           </div>
         </div>
       </div>
 
-      {/* -- Upsell products section -- */}
+      {/* Upsell Products */}
       {upsells.length > 0 && (
-        <div className="container mx-auto px-4 py-6">
+        <div className="container mx-auto px-4 py-6 border-t">
           <UpsellProducts upsells={upsells} />
         </div>
       )}
 
-      {/* -- Below-fold: Tabs section -- */}
-      <div className="bg-white border-t mt-8">
-        <div className="container mx-auto px-4">
-          {/* Tab headers */}
-          <div className="flex border-b">
-            {(
-              [
-                { key: "description", label: "Description" },
-                { key: "reviews", label: "Reviews" },
-                { key: "delivery", label: "Delivery Info" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`relative px-6 py-4 text-sm font-semibold transition-colors ${
-                  activeTab === tab.key
-                    ? "text-[#E91E63]"
-                    : "text-muted-foreground hover:text-[#1A1A2E]"
-                }`}
-              >
-                {tab.label}
-                {tab.key === "reviews" && product.totalReviews > 0 && (
-                  <span className="ml-1 text-xs text-muted-foreground">({product.totalReviews})</span>
-                )}
-                {activeTab === tab.key && (
-                  <span className="absolute bottom-0 left-0 right-0 h-[3px] rounded-t-full bg-gradient-to-r from-[#E91E63] to-[#FF6B9D]" />
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Tab content */}
-          <div className="py-8">
-            {/* Description tab */}
-            {activeTab === "description" && (
-              <div className="max-w-3xl space-y-6">
-                <div>
-                  <h3 className="text-lg font-bold text-[#1A1A2E] mb-3">About this product</h3>
-                  <p className="text-sm text-[#1A1A2E]/70 leading-relaxed whitespace-pre-line">
-                    {product.description}
-                  </p>
-                </div>
-                {product.weight && (
-                  <div className="flex items-center gap-8 rounded-xl bg-[#FFF9F5] p-4">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Weight</p>
-                      <p className="text-sm font-semibold text-[#1A1A2E]">{product.weight}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Type</p>
-                      <div className="flex items-center gap-1.5">
-                        <div className={`flex h-4 w-4 items-center justify-center rounded-sm border-2 ${product.isVeg ? "border-green-600" : "border-red-600"}`}>
-                          <div className={`h-2 w-2 rounded-full ${product.isVeg ? "bg-green-600" : "bg-red-600"}`} />
-                        </div>
-                        <p className="text-sm font-semibold text-[#1A1A2E]">{product.isVeg ? "Vegetarian" : "Non-Vegetarian"}</p>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Category</p>
-                      <p className="text-sm font-semibold text-[#1A1A2E]">{categoryName}</p>
-                    </div>
-                  </div>
-                )}
-                {product.occasion.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-[#1A1A2E] mb-2">Perfect for</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {product.occasion.map((occ) => (
-                        <span
-                          key={occ}
-                          className="inline-flex items-center rounded-full bg-[#FFF0F5] px-3 py-1.5 text-xs font-medium text-[#E91E63] capitalize"
-                        >
-                          {occ.replace(/-/g, " ")}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Reviews tab */}
-            {activeTab === "reviews" && (
-              <div className="max-w-3xl">
-                <ReviewList
-                  reviews={reviews}
-                  avgRating={Number(product.avgRating)}
-                  totalReviews={product.totalReviews}
-                />
-              </div>
-            )}
-
-            {/* Delivery info tab */}
-            {activeTab === "delivery" && (
-              <div className="max-w-3xl space-y-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF0F5]">
-                    <Truck className="h-5 w-5 text-[#E91E63]" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-[#1A1A2E]">Delivery Areas</h4>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      We currently deliver to Chandigarh, Mohali &amp; Panchkula. Enter your pincode above to check availability for your area.
-                    </p>
-                  </div>
-                </div>
-                <Separator />
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF0F5]">
-                    <Clock className="h-5 w-5 text-[#E91E63]" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-[#1A1A2E]">Delivery Slots</h4>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Choose from Standard (9AM-9PM, Free), Fixed Slot (2-hour window, +49), Midnight (11PM-11:59PM, +199), Early Morning (6AM-8AM, +149), or Express (within 2-3 hours, +249).
-                    </p>
-                  </div>
-                </div>
-                <Separator />
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF0F5]">
-                    <Info className="h-5 w-5 text-[#E91E63]" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-[#1A1A2E]">Important Notes</h4>
-                    <ul className="mt-1 space-y-1 text-sm text-muted-foreground list-disc list-inside">
-                      <li>Orders placed before 4 PM qualify for same-day delivery</li>
-                      <li>Free delivery on orders above {formatPrice(499)}</li>
-                      <li>Actual product appearance may slightly vary from images</li>
-                      <li>Contact us for bulk or corporate orders</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* -- Related products section -- */}
+      {/* Related Products */}
       {relatedProducts.length > 0 && (
-        <div className="bg-[#FFF9F5] border-t py-10 sm:py-14">
+        <div className="bg-gray-50 border-t py-10">
           <div className="container mx-auto px-4">
-            <h2 className="section-title text-[#1A1A2E] mb-8">You May Also Like</h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6 mt-10">
+            <h2 className="text-xl font-bold text-gray-900 mb-6">You May Also Like</h2>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6">
               {relatedProducts.map((rp) => (
                 <ProductCard
                   key={rp.id}
