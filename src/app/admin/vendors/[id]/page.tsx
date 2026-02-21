@@ -170,7 +170,10 @@ export default function EditVendorPage() {
             {vendor._count.orders}
           </p>
         </div>
-        <div className="rounded-lg border bg-white p-4">
+        <Link
+          href={`/admin/vendors/${id}/products`}
+          className="rounded-lg border bg-white p-4 hover:border-[#E91E63]/30 hover:bg-pink-50/30 transition-colors group"
+        >
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Package className="h-4 w-4" />
             Products
@@ -178,7 +181,10 @@ export default function EditVendorPage() {
           <p className="mt-1 text-2xl font-bold text-slate-900">
             {vendor._count.products}
           </p>
-        </div>
+          <p className="mt-1 text-xs text-[#E91E63] opacity-0 group-hover:opacity-100 transition-opacity">
+            Manage Products &rarr;
+          </p>
+        </Link>
         <div className="rounded-lg border bg-white p-4">
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Star className="h-4 w-4" />
