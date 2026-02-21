@@ -4,9 +4,9 @@ import { useCity } from "@/hooks/use-city"
 import { CityModal } from "./city-modal"
 
 export function CityGate() {
-  const { isSelected } = useCity()
+  const { shouldShowCityModal } = useCity()
 
-  if (isSelected) return null
+  if (!shouldShowCityModal) return null
 
   return <CityModal />
 }

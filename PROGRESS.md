@@ -46,6 +46,7 @@
 - **City modal instant chips + API optimization** — City chips now use static hardcoded data from `src/lib/cities-data.ts` — zero API calls for chip selection. CitySearch does local-first filtering for popular cities before hitting the API. Search debounce increased to 400ms, partial pincodes (1-3 digits) skip API calls. Header dropdown shows popular city chips immediately when opened. API pre-warmed on page load to prevent cold start latency. City resolve responses cached at CDN edge (5 min s-maxage, 10 min stale-while-revalidate).
 - **City-aware lazy loading + SWR caching** — isHydrating flag added to CityProvider (true until localStorage read completes). CityGate component gates product fetches until city context is confirmed from localStorage. SWR added for product fetching (trending products + category page) with 1-minute client-side deduplication cache — second visits and back-navigation show cached products instantly. CDN cache headers added to products API (60s s-maxage, 5min stale-while-revalidate). Category links prefetch on hover via Next.js router.prefetch. Checkout step buttons have loading/spinner state to prevent double-clicks.
 - **Sender details step in checkout** — Added Step 2 of 4 in checkout flow (Address > Sender > Delivery > Review). Fields: Your Name*, Your Mobile*, Email (optional), Occasion (19 options dropdown), Gift Card Message (200 chars). Auto-fills from user session. 4 new columns added to orders table (sender_name, sender_phone, sender_email, occasion). Gift details (occasion + message) shown on order confirmation page. Old gift message expandable removed from delivery step — now part of sender step.
+- **Partner resolution via ref param, custom domain, and subdomain** — PartnerProvider detects partner via `?ref=` param, custom domain, or subdomain. Partner stored in sessionStorage for the tab session. Partner default city auto-sets city, skips modal entirely. Resolve API (`GET /api/partners/resolve`) handles ref, customDomain, subdomain in one endpoint with CDN caching (5 min s-maxage). Netlify: wildcard `*.giftscart.in` configured once, partner custom domains added per partner. Header preserves `?ref=` param in category and occasion nav links. New Prisma fields: `default_city_id`, `default_vendor_id` on partners table.
 
 ### What's NOT Done (Priority Order)
 
@@ -192,6 +193,7 @@
 | `src/components/providers/session-provider.tsx` | Yes | Yes | ✅ |
 | `src/components/providers/city-provider.tsx` | Yes | Yes | ✅ |
 | `src/components/providers/cart-provider.tsx` | Yes | Yes | ✅ |
+| `src/components/providers/partner-provider.tsx` | Yes | Yes | ✅ PartnerProvider + usePartner hook |
 | `src/components/providers/currency-provider.tsx` | No (added) | Yes | ✅ CurrencyProvider + useCurrency hook |
 | `src/components/seo/json-ld.tsx` | Yes (Phase B) | Yes | ✅ JSON-LD script injector |
 | `src/components/seo/breadcrumb.tsx` | Yes (Phase B) | Yes | ✅ Visual breadcrumb + BreadcrumbList schema |
@@ -226,6 +228,7 @@
 | `src/middleware.ts` | Yes | Yes | ✅ Auth + role-based route protection |
 | `src/hooks/use-city.ts` | Yes | Yes | ✅ |
 | `src/hooks/use-cart.ts` | Yes | Yes | ✅ Zustand with persist |
+| `src/hooks/use-partner.ts` | Yes | Yes | ✅ Re-exports usePartner from provider |
 | `src/hooks/use-currency.ts` | No (added) | Yes | ✅ Re-exports useCurrency from provider |
 | `src/types/index.ts` | Yes | Yes | ✅ All types defined |
 | `src/types/next-auth.d.ts` | Not in spec | Yes | ✅ Type augmentation |
@@ -335,6 +338,7 @@
 | `/api/admin/products/generate-content` | ✅ | Claude + OpenAI + Supabase Storage | POST | AI content generation + image generation (Phase E) |
 | `/api/city/resolve` | ✅ | Yes | POST | City resolver: pincode + text search (Sprint 1) |
 | `/api/city/notify` | ✅ | Yes | POST | City notification: email signup for coming-soon cities (Sprint 1) |
+| `/api/partners/resolve` | ✅ | Yes | GET | Partner resolution: ref code, custom domain, subdomain |
 
 **All 24+ API routes are fully implemented with real database queries.**
 

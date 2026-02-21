@@ -121,6 +121,7 @@ model City {
   deliveryConfig CityDeliveryConfig[]
   deliveryHolidays DeliveryHoliday[]
   pincodes  PincodeCityMap[]
+  partnerDefaults  Partner[]
 
   @@map("cities")
 }
@@ -243,6 +244,7 @@ model Vendor {
   capacity        VendorCapacity[]
   payouts         VendorPayout[]
   productVariations VendorProductVariation[]
+  partnerDefaults  Partner[]
 
   @@map("vendors")
 }
@@ -745,10 +747,14 @@ model Partner {
   secondaryColor    String   @default("#9C27B0")
   showPoweredBy     Boolean  @default(true)
   commissionPercent Decimal  @db.Decimal(5, 2)
+  defaultCityId     String?  @map("default_city_id")
+  defaultVendorId   String?  @map("default_vendor_id")
   isActive          Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  defaultCity       City?    @relation(fields: [defaultCityId], references: [id])
+  defaultVendor     Vendor?  @relation(fields: [defaultVendorId], references: [id])
   orders            Order[]
   earnings          PartnerEarning[]
 
