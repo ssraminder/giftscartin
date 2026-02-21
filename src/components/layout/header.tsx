@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import {
   ChevronDown,
@@ -30,6 +30,7 @@ import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
 import { CitySearch } from "@/components/location/city-search"
 import { POPULAR_CITIES } from "@/lib/cities-data"
+import { MegaMenu, MobileMegaMenu } from "@/components/layout/mega-menu"
 
 const INTERNAL_HOSTS_HEADER = [
   'giftscart.netlify.app',
@@ -38,20 +39,6 @@ const INTERNAL_HOSTS_HEADER = [
   'localhost',
 ]
 
-const CATEGORY_NAV = [
-  { slug: "cakes", label: "Cakes", icon: "\u{1F382}" },
-  { slug: "flowers", label: "Flowers", icon: "\u{1F338}" },
-  { slug: "combos", label: "Combos", icon: "\u{1F381}" },
-  { slug: "plants", label: "Plants", icon: "\u{1FAB4}" },
-  { slug: "gifts", label: "Gifts", icon: "\u{1F380}" },
-  { slug: "gifts?occasion=birthday", label: "Birthday", icon: "\u{1F389}" },
-  { slug: "gifts?occasion=anniversary", label: "Anniversary", icon: "\u{1F48D}" },
-  { slug: "gifts?occasion=valentines-day", label: "Valentine's", icon: "\u{1F49D}" },
-  { slug: "gifts?occasion=wedding", label: "Wedding", icon: "\u{1F492}" },
-  { slug: "gifts?occasion=diwali", label: "Diwali", icon: "\u{1FA94}" },
-  { slug: "gifts?occasion=thank-you", label: "Thank You", icon: "\u{1F64F}" },
-  { slug: "gifts?occasion=graduation", label: "Graduation", icon: "\u{1F393}" },
-]
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return "U"
@@ -74,7 +61,6 @@ export function Header() {
   const cartCount = useCart((s) => s.getItemCount())
   const { cityName, isSelected, setCity } = useCity()
   const { partner } = usePartner()
-  const pathname = usePathname()
   const router = useRouter()
 
   const withRef = (path: string) => {
@@ -121,15 +107,6 @@ export function Header() {
       router.push(withRef(`/category/cakes?search=${encodeURIComponent(searchQuery.trim())}`))
       setMobileSearchOpen(false)
     }
-  }
-
-  function isActiveCategory(slug: string): boolean {
-    const href = `/category/${slug}`
-    if (slug.includes("?")) {
-      const [basePath, qs] = slug.split("?")
-      return pathname === `/category/${basePath}` && typeof window !== "undefined" && window.location.search.includes(qs)
-    }
-    return pathname === href
   }
 
   return (
@@ -378,31 +355,13 @@ export function Header() {
         )}
       </div>
 
-      {/* ROW 3: Category navigation */}
-      <nav className="bg-white border-b border-gray-200">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center overflow-x-auto scrollbar-hide md:justify-center">
-            {CATEGORY_NAV.map((cat) => {
-              const href = `/category/${cat.slug}`
-              const active = isActiveCategory(cat.slug)
-              return (
-                <Link
-                  key={cat.slug}
-                  href={withRef(href)}
-                  className={`flex items-center gap-1.5 whitespace-nowrap py-2.5 px-3 text-sm font-medium transition-colors shrink-0 border-b-2 ${
-                    active
-                      ? "text-[#E91E63] border-[#E91E63]"
-                      : "text-gray-600 border-transparent hover:text-[#E91E63] hover:border-[#E91E63]"
-                  }`}
-                >
-                  <span className="text-base">{cat.icon}</span>
-                  <span>{cat.label}</span>
-                </Link>
-              )
-            })}
-          </div>
+      {/* ROW 3: Mega menu (desktop) + mobile menu trigger */}
+      <div className="relative">
+        <MegaMenu />
+        <div className="md:hidden bg-white border-b border-gray-200 px-4">
+          <MobileMegaMenu />
         </div>
-      </nav>
+      </div>
     </header>
   )
 }
