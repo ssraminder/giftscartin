@@ -102,6 +102,7 @@ export default function CheckoutPage() {
     recipientPhone: "",
     address: "",
     city: "",
+    state: "",
     pincode: "",
     landmark: "",
     saveAddress: true,
@@ -277,6 +278,9 @@ export default function CheckoutPage() {
     if (!formData.city.trim()) {
       errors.city = "City is required"
     }
+    if (!formData.state.trim()) {
+      errors.state = "State is required"
+    }
     if (!formData.pincode.trim()) {
       errors.pincode = "Pincode is required"
     } else if (!/^\d{6}$/.test(formData.pincode.trim())) {
@@ -359,8 +363,21 @@ export default function CheckoutPage() {
   // ─── Place Order ───
 
   const handlePlaceOrder = useCallback(async () => {
+    // Validate required fields before submission
     if (!formData.paymentMethod) {
       setOrderError("Please select a payment method")
+      return
+    }
+    if (!formData.deliveryDate) {
+      setOrderError("Please select a delivery date")
+      return
+    }
+    if (!formData.deliverySlot) {
+      setOrderError("Please select a delivery time slot")
+      return
+    }
+    if (!formData.selectedAddressId && !formData.recipientName.trim()) {
+      setOrderError("Please provide a delivery address")
       return
     }
 
@@ -368,37 +385,36 @@ export default function CheckoutPage() {
     setOrderError("")
 
     try {
-      const addrDisplay = getAddressDisplay()
+      // Determine if using a saved address or creating a new one
+      const isNewAddress = !formData.selectedAddressId
+
       const body: Record<string, unknown> = {
         items: items.map((item) => ({
           productId: item.productId,
-          variationId: item.variationId,
+          variationId: item.variationId || undefined,
           quantity: item.quantity,
-          price: item.price,
-          addonSelections: item.addonSelections,
+          addons: item.addonSelections?.length > 0 ? item.addonSelections : undefined,
         })),
-        addressId: formData.selectedAddressId || null,
-        newAddress: formData.selectedAddressId
-          ? null
-          : {
-              name: formData.recipientName,
-              phone: formData.recipientPhone,
-              address: formData.address,
-              city: formData.city,
-              pincode: formData.pincode,
-              landmark: formData.landmark || null,
-              save: formData.saveAddress,
-            },
+        // API requires addressId as a non-empty string; use '__CREATE__' for inline address creation
+        addressId: isNewAddress ? "__CREATE__" : formData.selectedAddressId,
+        // Send inline address data when creating a new address (field must be 'address', not 'newAddress')
+        ...(isNewAddress && {
+          address: {
+            name: formData.recipientName.trim(),
+            phone: formData.recipientPhone.trim(),
+            address: formData.address.trim(),
+            city: formData.city.trim(),
+            state: formData.state.trim(),
+            pincode: formData.pincode.trim(),
+            landmark: formData.landmark.trim() || undefined,
+          },
+        }),
         deliveryDate: formData.deliveryDate,
         deliverySlot: formData.deliverySlot,
-        giftMessage: formData.giftMessage || null,
-        specialInstructions: formData.specialInstructions || null,
-        couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : null,
-        paymentMethod: formData.paymentMethod,
+        giftMessage: formData.giftMessage || undefined,
+        specialInstructions: formData.specialInstructions || undefined,
+        couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
       }
-
-      // Suppress unused variable warning — addrDisplay used for potential future logging
-      void addrDisplay
 
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -408,10 +424,10 @@ export default function CheckoutPage() {
 
       const data = await res.json()
 
-      if (data.success && data.data?.order) {
+      if (data.success && data.data?.id) {
         clearReferral()
         clearCart()
-        router.push(`/orders/${data.data.order.id}/confirmation`)
+        router.push(`/orders/${data.data.id}/confirmation`)
       } else {
         setOrderError(data.error || "Failed to place order. Please try again.")
       }
@@ -420,7 +436,7 @@ export default function CheckoutPage() {
     } finally {
       setPlacingOrder(false)
     }
-  }, [formData, items, getAddressDisplay, clearReferral, clearCart, router])
+  }, [formData, items, clearReferral, clearCart, router])
 
   // ─── Derived Values ───
 
@@ -437,6 +453,7 @@ export default function CheckoutPage() {
       !formData.recipientPhone.trim() ||
       !formData.address.trim() ||
       !formData.city.trim() ||
+      !formData.state.trim() ||
       !formData.pincode.trim() ||
       formData.pincodeStatus === "invalid" ||
       formData.pincodeStatus === "checking")
@@ -651,7 +668,7 @@ export default function CheckoutPage() {
                       )}
                     </div>
 
-                    {/* Row 2: City + Pincode */}
+                    {/* Row 2: City + State */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -672,6 +689,29 @@ export default function CheckoutPage() {
                           </p>
                         )}
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          State <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.state}
+                          onChange={(e) =>
+                            updateField("state", e.target.value)
+                          }
+                          placeholder="State"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        />
+                        {formErrors.state && (
+                          <p className="text-red-500 text-xs mt-1">
+                            {formErrors.state}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 3: Pincode */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Pincode <span className="text-red-500">*</span>
@@ -1212,7 +1252,9 @@ export default function CheckoutPage() {
 
                 {/* Order error */}
                 {orderError && (
-                  <p className="text-sm text-red-500 mt-3">{orderError}</p>
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-sm font-medium text-red-800">{orderError}</p>
+                  </div>
                 )}
 
                 {/* 5. Place Order */}
