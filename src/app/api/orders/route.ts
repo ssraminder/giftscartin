@@ -58,6 +58,7 @@ const createOrderBodySchema = z.object({
   giftMessage: z.string().max(500).optional(),
   specialInstructions: z.string().max(500).optional(),
   couponCode: z.string().max(50).optional(),
+  partnerId: z.string().optional(),
 })
 
 async function getSessionUser() {
@@ -252,6 +253,7 @@ export async function POST(request: NextRequest) {
       giftMessage,
       specialInstructions,
       couponCode,
+      partnerId,
     } = parsed.data
 
     // Resolve address: create inline or look up existing
@@ -498,6 +500,7 @@ export async function POST(request: NextRequest) {
         orderNumber: generateOrderNumber(cityCode),
         userId: user.id,
         vendorId: bestVendorId,
+        partnerId: partnerId || null,
         addressId: address.id,
         deliveryDate: deliveryDateObj,
         deliverySlot,
@@ -529,6 +532,30 @@ export async function POST(request: NextRequest) {
         statusHistory: true,
       },
     })
+
+    // Create partner earning if partner is set
+    if (partnerId) {
+      try {
+        const partnerRecord = await prisma.partner.findUnique({
+          where: { id: partnerId },
+          select: { commissionPercent: true },
+        })
+        if (partnerRecord) {
+          const earningAmount = (Number(order.total) * Number(partnerRecord.commissionPercent)) / 100
+          await prisma.partnerEarning.create({
+            data: {
+              partnerId,
+              orderId: order.id,
+              amount: earningAmount,
+              status: 'pending',
+            },
+          })
+        }
+      } catch (partnerErr) {
+        // Non-critical: log but don't fail the order
+        console.error('Partner earning creation error:', partnerErr)
+      }
+    }
 
     // Move FILE_UPLOAD addon files from pending/ to orders/{orderId}/
     try {

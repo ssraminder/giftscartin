@@ -146,13 +146,30 @@ export function Header() {
 
           {/* Logo */}
           <Link href={withRef("/")} className="flex items-center shrink-0 gap-1">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
-              <Gift className="h-4 w-4 text-white" />
-            </div>
-            <div className="flex items-baseline">
-              <span className="text-xl font-bold text-[#E91E63]">Gifts</span>
-              <span className="text-xl font-bold text-[#1A1A2E]">Cart</span>
-            </div>
+            {partner?.logoUrl ? (
+              <div className="flex flex-col items-start">
+                <img
+                  src={partner.logoUrl}
+                  alt={partner.name}
+                  className="h-8 max-w-[160px] object-contain"
+                />
+                {partner.showPoweredBy && (
+                  <span className="text-[10px] text-gray-400 leading-none mt-0.5">
+                    powered by Gifts Cart India
+                  </span>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
+                  <Gift className="h-4 w-4 text-white" />
+                </div>
+                <div className="flex items-baseline">
+                  <span className="text-xl font-bold text-[#E91E63]">Gifts</span>
+                  <span className="text-xl font-bold text-[#1A1A2E]">Cart</span>
+                </div>
+              </>
+            )}
           </Link>
 
           {/* Search Bar - Desktop */}

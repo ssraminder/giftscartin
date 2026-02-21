@@ -20,6 +20,7 @@ import { ProductCard } from "@/components/product/product-card"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
+import { usePartner } from "@/hooks/use-partner"
 import type {
   Product,
   ProductAttribute,
@@ -156,6 +157,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const router = useRouter()
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
+  const { partner } = usePartner()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // State for fetched data
@@ -191,7 +193,8 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
           setProduct(json.data)
           // Fetch related products from same category
           if (json.data.category?.slug) {
-            const relRes = await fetch(`/api/products?categorySlug=${json.data.category.slug}&pageSize=5&sortBy=rating`)
+            const vendorParam = partner?.defaultVendorId ? `&vendorId=${partner.defaultVendorId}` : ""
+            const relRes = await fetch(`/api/products?categorySlug=${json.data.category.slug}&pageSize=5&sortBy=rating${vendorParam}`)
             const relJson: ApiResponse<PaginatedData<Product>> = await relRes.json()
             if (relJson.success && relJson.data) {
               setRelatedProducts(relJson.data.items.filter((p) => p.id !== json.data!.id).slice(0, 4))
@@ -689,6 +692,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
             <div className="flex gap-3">
               <button
                 className="flex-1 btn-gradient flex items-center justify-center gap-2 h-14 text-base rounded-xl shadow-lg disabled:opacity-50"
+                style={partner?.primaryColor ? { background: partner.primaryColor, borderColor: partner.primaryColor } : {}}
                 onClick={handleAddToCart}
                 disabled={isVariable && matchedVariation?.stockQty === 0}
               >

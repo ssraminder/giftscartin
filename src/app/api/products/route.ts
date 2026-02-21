@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       categorySlug,
       city,
       citySlug,
+      vendorId,
       minPrice,
       maxPrice,
       isVeg,
@@ -88,6 +89,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Filter by vendor: only show products that this vendor carries
+    if (vendorId) {
+      where.vendorProducts = {
+        some: {
+          vendorId,
+          isAvailable: true,
+          ...(where.vendorProducts && 'some' in where.vendorProducts
+            ? where.vendorProducts.some
+            : {}),
+        },
+      }
+    }
+
     // Determine sort order
     let orderBy: Prisma.ProductOrderByWithRelationInput
     switch (sortBy) {
@@ -117,6 +131,14 @@ export async function GET(request: NextRequest) {
         include: {
           category: { select: { id: true, name: true, slug: true } },
           variations: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
+          // If filtering by vendor, include that vendor's specific price
+          ...(vendorId ? {
+            vendorProducts: {
+              where: { vendorId, isAvailable: true },
+              select: { sellingPrice: true, costPrice: true },
+              take: 1,
+            },
+          } : {}),
         },
       }),
       prisma.product.count({ where }),

@@ -10,6 +10,7 @@ import { ProductCard } from "@/components/product/product-card"
 import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
 import { CityGate } from "@/components/providers/city-gate"
 import { useCity } from "@/hooks/use-city"
+import { usePartner } from "@/hooks/use-partner"
 import type { Product } from "@/types"
 
 const WHY_CHOOSE = [
@@ -62,8 +63,10 @@ function TrendingSkeleton() {
 function TrendingProductsInner() {
   const [showAll, setShowAll] = useState(false)
   const { citySlug } = useCity()
+  const { partner } = usePartner()
 
-  const url = `/api/products?sortBy=rating&pageSize=10${citySlug ? `&citySlug=${citySlug}` : ""}`
+  const vendorParam = partner?.defaultVendorId ? `&vendorId=${partner.defaultVendorId}` : ""
+  const url = `/api/products?sortBy=rating&pageSize=10${citySlug ? `&citySlug=${citySlug}` : ""}${vendorParam}`
 
   const { data, isLoading } = useSWR(url, fetcher, {
     revalidateOnFocus: false,

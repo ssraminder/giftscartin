@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks/use-cart"
 import { useCurrency } from "@/hooks/use-currency"
+import { usePartner } from "@/hooks/use-partner"
 import { SenderDetailsStep, type SenderDetails } from "@/components/checkout/sender-details-step"
 
 // ─── Types ───
@@ -151,6 +152,7 @@ export default function CheckoutPage() {
   const router = useRouter()
   const { data: session, status: authStatus } = useSession()
   const { formatPrice } = useCurrency()
+  const { partner } = usePartner()
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
   const clearCart = useCart((s) => s.clearCart)
@@ -405,6 +407,7 @@ export default function CheckoutPage() {
           deliverySlot: selectedSlot!.slug,
           addressId: "inline",
           address: addressForm,
+          partnerId: partner?.id || undefined,
           senderName: senderDetails.senderName || undefined,
           senderPhone: senderDetails.senderPhone || undefined,
           senderEmail: senderDetails.senderEmail || undefined,
@@ -1250,6 +1253,7 @@ export default function CheckoutPage() {
                 {currentStep === 4 && (
                   <Button
                     className="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white"
+                    style={partner?.primaryColor ? { background: partner.primaryColor, borderColor: partner.primaryColor } : {}}
                     size="lg"
                     onClick={handlePlaceOrder}
                     disabled={placing || (paymentMethod === "razorpay" && !razorpayLoaded)}

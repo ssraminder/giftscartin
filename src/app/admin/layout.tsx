@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   X,
+  Users,
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,7 @@ const sidebarLinks = [
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/categories", label: "Categories", icon: FolderOpen },
   { href: "/admin/cities", label: "Cities", icon: MapPin },
+  { href: "/admin/partners", label: "Partners", icon: Users },
   { href: "/admin/seo", label: "SEO Settings", icon: Search },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ]

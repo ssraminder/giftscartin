@@ -19,6 +19,7 @@ import { ProductCard } from "@/components/product/product-card"
 import { ProductCardSkeleton } from "@/components/product/product-card-skeleton"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { useCity } from "@/hooks/use-city"
+import { usePartner } from "@/hooks/use-partner"
 import type { Product, Category } from "@/types"
 
 const OCCASIONS = ["birthday", "anniversary", "valentines-day", "congratulations", "housewarming", "thank-you", "diwali"]
@@ -42,6 +43,7 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { citySlug } = useCity()
+  const { partner } = usePartner()
 
   // Filters from URL search params
   const [sortBy, setSortBy] = useState<SortOption>((searchParams.get("sortBy") as SortOption) || "popularity")
@@ -92,13 +94,14 @@ export default function CategoryPageClient({ slug }: { slug: string }) {
     params.set("sortBy", sortOptionToApi(sortBy))
 
     if (citySlug) params.set("citySlug", citySlug)
+    if (partner?.defaultVendorId) params.set("vendorId", partner.defaultVendorId)
     if (priceRange[0] > 0) params.set("minPrice", String(priceRange[0]))
     if (priceRange[1] < 5000) params.set("maxPrice", String(priceRange[1]))
     if (vegOnly) params.set("isVeg", "true")
     if (selectedOccasion) params.set("occasion", selectedOccasion)
 
     return `/api/products?${params.toString()}`
-  }, [slug, currentPage, sortBy, priceRange, vegOnly, selectedOccasion, citySlug])
+  }, [slug, currentPage, sortBy, priceRange, vegOnly, selectedOccasion, citySlug, partner?.defaultVendorId])
 
   // SWR for products
   const { data: productsData, isLoading: productsLoading } = useSWR(

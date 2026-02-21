@@ -47,6 +47,7 @@
 - **City-aware lazy loading + SWR caching** — isHydrating flag added to CityProvider (true until localStorage read completes). CityGate component gates product fetches until city context is confirmed from localStorage. SWR added for product fetching (trending products + category page) with 1-minute client-side deduplication cache — second visits and back-navigation show cached products instantly. CDN cache headers added to products API (60s s-maxage, 5min stale-while-revalidate). Category links prefetch on hover via Next.js router.prefetch. Checkout step buttons have loading/spinner state to prevent double-clicks.
 - **Sender details step in checkout** — Added Step 2 of 4 in checkout flow (Address > Sender > Delivery > Review). Fields: Your Name*, Your Mobile*, Email (optional), Occasion (19 options dropdown), Gift Card Message (200 chars). Auto-fills from user session. 4 new columns added to orders table (sender_name, sender_phone, sender_email, occasion). Gift details (occasion + message) shown on order confirmation page. Old gift message expandable removed from delivery step — now part of sender step.
 - **Partner resolution via ref param, custom domain, and subdomain** — PartnerProvider detects partner via `?ref=` param, custom domain, or subdomain. Partner stored in sessionStorage for the tab session. Partner default city auto-sets city, skips modal entirely. Resolve API (`GET /api/partners/resolve`) handles ref, customDomain, subdomain in one endpoint with CDN caching (5 min s-maxage). Netlify: wildcard `*.giftscart.in` configured once, partner custom domains added per partner. Header preserves `?ref=` param in category and occasion nav links. New Prisma fields: `default_city_id`, `default_vendor_id` on partners table.
+- **Vendor filtering + Admin partner management** — Partner vendor filter: products filtered to defaultVendorId when partner is active (Products API accepts `vendorId` param, trending products / category page / product detail all pass vendorId from partner context). partnerId + partner_earnings record created on order placement. Header: partner logo replaces platform logo when partner is active. Header: "powered by Gifts Cart India" badge shown if showPoweredBy is true. Primary brand colour applied to CTA buttons (Add to Cart, Place Order) when partner has custom primaryColor. Admin: /admin/partners list, create, edit pages with full form (name, refCode, commission, city, vendor, logo, brand color, toggles). Admin: city → vendor dependency dropdown (vendor list filters when city changes). Admin API: /api/admin/partners (GET list + POST create), /api/admin/partners/[id] (GET + PATCH). Partners link added to admin sidebar.
 
 ### What's NOT Done (Priority Order)
 
@@ -70,7 +71,7 @@
 - Admin delivery configuration UI
 - Vendor delivery config (pincodes, slots, capacity)
 - Coupon management
-- Partner/referral management
+- ~~Partner/referral management~~ — **DONE** (admin CRUD + vendor filtering + brand theming)
 - Audit log viewer
 
 ---
@@ -127,6 +128,9 @@
 | `src/app/admin/products/new/page.tsx` | Yes (Phase C) | Yes | ✅ Create product form |
 | `src/app/admin/products/[id]/edit/page.tsx` | Yes (Phase C) | Yes | ✅ Edit product form |
 | `src/app/admin/categories/page.tsx` | Yes (Phase F) | Yes | ✅ Category tree list page |
+| `src/app/admin/partners/page.tsx` | Yes | Yes | ✅ Partner list page (server component, force-dynamic) |
+| `src/app/admin/partners/new/page.tsx` | Yes | Yes | ✅ Create partner page |
+| `src/app/admin/partners/[id]/page.tsx` | Yes | Yes | ✅ Edit partner page (server component, force-dynamic) |
 | `src/app/admin/seo/page.tsx` | Yes (Phase B) | Yes | ✅ Admin SEO settings form |
 | `src/app/sitemap.ts` | Yes (Phase B) | Yes | ✅ Dynamic sitemap from DB |
 | `src/app/robots.ts` | Yes (Phase B) | Yes | ✅ Configurable robots.txt |
@@ -150,6 +154,8 @@
 | `src/app/api/payments/verify/route.ts` | Yes | Yes | ✅ Exists & Working (Prisma + Razorpay) |
 | `src/app/api/upload/route.ts` | Yes | Yes | ✅ Exists & Working (Supabase Storage) |
 | `src/app/api/admin/dashboard/route.ts` | Not in spec | Yes | ✅ Bonus — admin dashboard API |
+| `src/app/api/admin/partners/route.ts` | Yes | Yes | ✅ Partner CRUD (GET list + POST create) |
+| `src/app/api/admin/partners/[id]/route.ts` | Yes | Yes | ✅ Partner single (GET + PATCH update) |
 
 ### Source — Components
 
