@@ -32,6 +32,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/hooks/use-cart"
 import { useCurrency } from "@/hooks/use-currency"
+import { SenderDetailsStep, type SenderDetails } from "@/components/checkout/sender-details-step"
 
 // ─── Types ───
 
@@ -97,8 +98,9 @@ declare global {
 // Step indicator data
 const STEPS = [
   { label: "Address", number: 1 },
-  { label: "Delivery", number: 2 },
-  { label: "Review", number: 3 },
+  { label: "Sender", number: 2 },
+  { label: "Delivery", number: 3 },
+  { label: "Review", number: 4 },
 ]
 
 function generateDates(count: number): { date: Date; label: string; isToday: boolean }[] {
@@ -159,6 +161,13 @@ export default function CheckoutPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [addressForm, setAddressForm] = useState<AddressForm>(EMPTY_ADDRESS)
   const [errors, setErrors] = useState<Partial<Record<keyof AddressForm, string>>>({})
+  const [senderDetails, setSenderDetails] = useState<SenderDetails>({
+    senderName: '',
+    senderPhone: '',
+    senderEmail: '',
+    occasion: '',
+    giftMessage: '',
+  })
 
   // Serviceability state
   const [checkingPincode, setCheckingPincode] = useState(false)
@@ -170,10 +179,8 @@ export default function CheckoutPage() {
   const [selectedSlot, setSelectedSlot] = useState<SlotInfo | null>(null)
   const availableDates = generateDates(30)
 
-  // Gift / instructions
-  const [giftMessage, setGiftMessage] = useState("")
+  // Instructions
   const [specialInstructions, setSpecialInstructions] = useState("")
-  const [giftExpanded, setGiftExpanded] = useState(false)
   const [instructionsExpanded, setInstructionsExpanded] = useState(false)
 
   // Payment / Geo
@@ -363,12 +370,12 @@ export default function CheckoutPage() {
       } finally {
         setIsSubmitting(false)
       }
-    } else if (currentStep === 2) {
+    } else if (currentStep === 3) {
       if (!selectedDate || !selectedSlot) return
       setIsSubmitting(true)
       try {
         await new Promise((r) => setTimeout(r, 300))
-        setCurrentStep(3)
+        setCurrentStep(4)
       } finally {
         setIsSubmitting(false)
       }
@@ -398,7 +405,11 @@ export default function CheckoutPage() {
           deliverySlot: selectedSlot!.slug,
           addressId: "inline",
           address: addressForm,
-          giftMessage: giftMessage || undefined,
+          senderName: senderDetails.senderName || undefined,
+          senderPhone: senderDetails.senderPhone || undefined,
+          senderEmail: senderDetails.senderEmail || undefined,
+          occasion: senderDetails.occasion || undefined,
+          giftMessage: senderDetails.giftMessage || undefined,
           specialInstructions: specialInstructions || undefined,
           couponCode: couponCode || undefined,
         }),
@@ -774,7 +785,7 @@ export default function CheckoutPage() {
                         </span>
                       ) : (
                         <>
-                          Continue to Delivery
+                          Continue to Sender Details
                           <ArrowRight className="ml-2 h-4 w-4" />
                         </>
                       )}
@@ -784,8 +795,22 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* ======================== STEP 2: DELIVERY SLOT ======================== */}
+            {/* ======================== STEP 2: SENDER DETAILS ======================== */}
             {currentStep === 2 && (
+              <div className="card-premium overflow-hidden">
+                <div className="p-5 sm:p-6">
+                  <SenderDetailsStep
+                    value={senderDetails}
+                    onChange={setSenderDetails}
+                    onContinue={() => setCurrentStep(3)}
+                    onBack={() => setCurrentStep(1)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* ======================== STEP 3: DELIVERY SLOT ======================== */}
+            {currentStep === 3 && (
               <div className="space-y-5">
                 {/* Date Selection */}
                 <div className="card-premium overflow-hidden">
@@ -898,37 +923,6 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {/* Gift Message - Expandable */}
-                <div className="card-premium overflow-hidden">
-                  <button
-                    onClick={() => setGiftExpanded(!giftExpanded)}
-                    className="flex w-full items-center justify-between p-4 sm:p-5 text-left hover:bg-gray-50/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-50 to-pink-50">
-                        <Gift className="h-5 w-5 text-purple-500" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">Gift Message</p>
-                        <p className="text-xs text-muted-foreground">Add a personal touch to your gift</p>
-                      </div>
-                    </div>
-                    {giftExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                  </button>
-                  {giftExpanded && (
-                    <div className="border-t border-gray-100 p-4 sm:p-5">
-                      <textarea
-                        className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-200 focus-visible:border-pink-300 min-h-[100px] resize-y"
-                        placeholder="Write a heartfelt message for the recipient..."
-                        maxLength={500}
-                        value={giftMessage}
-                        onChange={(e) => setGiftMessage(e.target.value)}
-                      />
-                      <p className="mt-1.5 text-right text-xs text-muted-foreground">{giftMessage.length}/500</p>
-                    </div>
-                  )}
-                </div>
-
                 {/* Special Instructions - Expandable */}
                 <div className="card-premium overflow-hidden">
                   <button
@@ -964,7 +958,7 @@ export default function CheckoutPage() {
                 <div className="flex justify-between">
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentStep(1)}
+                    onClick={() => setCurrentStep(2)}
                     className="px-6"
                   >
                     <ArrowLeft className="mr-2 h-4 w-4" />
@@ -991,8 +985,8 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* ======================== STEP 3: REVIEW & PLACE ORDER ======================== */}
-            {currentStep === 3 && (
+            {/* ======================== STEP 4: REVIEW & PLACE ORDER ======================== */}
+            {currentStep === 4 && (
               <div className="space-y-5">
                 {/* Address Summary */}
                 <div className="card-premium overflow-hidden">
@@ -1019,6 +1013,39 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
+                {/* Sender Summary */}
+                {(senderDetails.senderName || senderDetails.occasion || senderDetails.giftMessage) && (
+                  <div className="card-premium overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-6">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-50 to-pink-50">
+                          <Gift className="h-5 w-5 text-purple-500" />
+                        </div>
+                        <h2 className="font-semibold text-gray-800">Sender & Gift Details</h2>
+                      </div>
+                      <button
+                        onClick={() => setCurrentStep(2)}
+                        className="text-xs font-medium text-pink-500 hover:text-pink-600"
+                      >
+                        Change
+                      </button>
+                    </div>
+                    <div className="p-5 sm:p-6 text-sm text-gray-600">
+                      <p className="font-medium text-gray-800">{senderDetails.senderName}</p>
+                      {senderDetails.senderPhone && <p className="mt-0.5 text-muted-foreground">Phone: {senderDetails.senderPhone}</p>}
+                      {senderDetails.occasion && (
+                        <p className="mt-1">Occasion: <span className="font-medium">{senderDetails.occasion}</span></p>
+                      )}
+                      {senderDetails.giftMessage && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <p className="text-xs font-medium text-gray-500 mb-1">Gift Card Message:</p>
+                          <p className="text-xs text-gray-600 italic">&ldquo;{senderDetails.giftMessage}&rdquo;</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Delivery Summary */}
                 <div className="card-premium overflow-hidden">
                   <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 sm:px-6">
@@ -1029,7 +1056,7 @@ export default function CheckoutPage() {
                       <h2 className="font-semibold text-gray-800">Delivery Schedule</h2>
                     </div>
                     <button
-                      onClick={() => setCurrentStep(2)}
+                      onClick={() => setCurrentStep(3)}
                       className="text-xs font-medium text-pink-500 hover:text-pink-600"
                     >
                       Change
@@ -1052,12 +1079,6 @@ export default function CheckoutPage() {
                         </span>
                       )}
                     </p>
-                    {giftMessage && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs font-medium text-gray-500 mb-1">Gift Message:</p>
-                        <p className="text-xs text-gray-600 italic">&ldquo;{giftMessage}&rdquo;</p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1130,7 +1151,7 @@ export default function CheckoutPage() {
                 <div className="flex justify-between">
                   <Button
                     variant="outline"
-                    onClick={() => setCurrentStep(2)}
+                    onClick={() => setCurrentStep(3)}
                     className="px-6"
                   >
                     <ArrowLeft className="mr-2 h-4 w-4" />
@@ -1226,7 +1247,7 @@ export default function CheckoutPage() {
                   <span>{formatPrice(total)}</span>
                 </div>
 
-                {currentStep === 3 && (
+                {currentStep === 4 && (
                   <Button
                     className="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white"
                     size="lg"

@@ -294,6 +294,10 @@ export interface Order {
   giftMessage: string | null
   specialInstructions: string | null
   couponCode: string | null
+  senderName: string | null
+  senderPhone: string | null
+  senderEmail: string | null
+  occasion: string | null
   businessModel: BusinessModel
   createdAt: string
   updatedAt: string
