@@ -395,6 +395,7 @@ model Product {
   ogImage           String?
   canonicalUrl      String?
   aiImagePrompt     String?
+  isSameDayEligible Boolean        @default(false)
   minLeadTimeHours  Int            @default(2)
   leadTimeNote      String?
 

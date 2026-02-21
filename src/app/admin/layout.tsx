@@ -23,12 +23,15 @@ import { Separator } from "@/components/ui/separator"
 
 const sidebarLinks = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/vendors", label: "Vendors", icon: Store },
   { href: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { type: "section" as const, label: "Catalog" },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/categories", label: "Categories", icon: FolderOpen },
+  { type: "section" as const, label: "Operations" },
+  { href: "/admin/vendors", label: "Vendors", icon: Store },
   { href: "/admin/cities", label: "Cities", icon: MapPin },
   { href: "/admin/partners", label: "Partners", icon: Users },
+  { type: "section" as const, label: "Settings" },
   { href: "/admin/seo", label: "SEO Settings", icon: Search },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ]
@@ -81,15 +84,26 @@ export default function AdminLayout({
 
           {/* Navigation */}
           <nav className="flex flex-col gap-1 p-4">
-            {sidebarLinks.map((link) => {
+            {sidebarLinks.map((link, index) => {
+              if ('type' in link && link.type === 'section') {
+                return (
+                  <p
+                    key={`section-${index}`}
+                    className="mt-4 mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500"
+                  >
+                    {link.label}
+                  </p>
+                )
+              }
+              const navLink = link as { href: string; label: string; icon: React.ComponentType<{ className?: string }> }
               const isActive =
-                link.href === "/admin"
+                navLink.href === "/admin"
                   ? pathname === "/admin"
-                  : pathname.startsWith(link.href)
+                  : pathname.startsWith(navLink.href)
               return (
                 <Link
-                  key={link.href}
-                  href={link.href}
+                  key={navLink.href}
+                  href={navLink.href}
                   onClick={() => setSidebarOpen(false)}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
@@ -98,8 +112,8 @@ export default function AdminLayout({
                       : "text-slate-400 hover:bg-slate-800 hover:text-white"
                   )}
                 >
-                  <link.icon className="h-4 w-4" />
-                  {link.label}
+                  <navLink.icon className="h-4 w-4" />
+                  {navLink.label}
                 </Link>
               )
             })}
