@@ -2,24 +2,20 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import { usePathname, useRouter } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import {
-  Cake,
   ChevronDown,
-  Flower2,
   Gift,
   LogOut,
   MapPin,
   Package,
   Search,
   ShoppingCart,
-  TreePine,
   User,
   X,
 } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -34,7 +30,6 @@ import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
 import { CitySearch } from "@/components/location/city-search"
 import { POPULAR_CITIES } from "@/lib/cities-data"
-import { MobileNav } from "./mobile-nav"
 
 const INTERNAL_HOSTS_HEADER = [
   'giftscart.netlify.app',
@@ -43,20 +38,19 @@ const INTERNAL_HOSTS_HEADER = [
   'localhost',
 ]
 
-const CATEGORY_LINKS = [
-  { href: "/category/cakes", label: "Cakes", icon: Cake },
-  { href: "/category/flowers", label: "Flowers", icon: Flower2 },
-  { href: "/category/combos", label: "Combos", icon: Package },
-  { href: "/category/plants", label: "Plants", icon: TreePine },
-  { href: "/category/gifts", label: "Gifts", icon: Gift },
-]
-
-const OCCASION_LINKS = [
-  { href: "/category/gifts?occasion=birthday", label: "Birthday" },
-  { href: "/category/gifts?occasion=anniversary", label: "Anniversary" },
-  { href: "/category/gifts?occasion=valentines-day", label: "Valentine's" },
-  { href: "/category/gifts?occasion=wedding", label: "Wedding" },
-  { href: "/category/gifts?occasion=thank-you", label: "Thank You" },
+const CATEGORY_NAV = [
+  { slug: "cakes", label: "Cakes", icon: "\u{1F382}" },
+  { slug: "flowers", label: "Flowers", icon: "\u{1F338}" },
+  { slug: "combos", label: "Combos", icon: "\u{1F381}" },
+  { slug: "plants", label: "Plants", icon: "\u{1FAB4}" },
+  { slug: "gifts", label: "Gifts", icon: "\u{1F380}" },
+  { slug: "gifts?occasion=birthday", label: "Birthday", icon: "\u{1F389}" },
+  { slug: "gifts?occasion=anniversary", label: "Anniversary", icon: "\u{1F48D}" },
+  { slug: "gifts?occasion=valentines-day", label: "Valentine's", icon: "\u{1F49D}" },
+  { slug: "gifts?occasion=wedding", label: "Wedding", icon: "\u{1F492}" },
+  { slug: "gifts?occasion=diwali", label: "Diwali", icon: "\u{1FA94}" },
+  { slug: "gifts?occasion=thank-you", label: "Thank You", icon: "\u{1F64F}" },
+  { slug: "gifts?occasion=graduation", label: "Graduation", icon: "\u{1F393}" },
 ]
 
 function getInitials(name: string | null | undefined): string {
@@ -70,18 +64,18 @@ function getInitials(name: string | null | undefined): string {
 }
 
 export function Header() {
-  const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [scrolled, setScrolled] = useState(false)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
   const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
-  const { cityName, pincode, isSelected, setCity } = useCity()
+  const { cityName, isSelected, setCity } = useCity()
   const { partner } = usePartner()
+  const pathname = usePathname()
+  const router = useRouter()
 
-  // Append ?ref= to navigation links on the main domain
   const withRef = (path: string) => {
     if (!partner?.refCode) return path
     const onPartnerDomain = typeof window !== 'undefined' &&
@@ -95,11 +89,6 @@ export function Header() {
 
   useEffect(() => {
     setMounted(true)
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 40)
-    }
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
   // Close city dropdown on outside click
@@ -113,39 +102,88 @@ export function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    if (searchQuery.trim()) {
+      router.push(withRef(`/category/cakes?search=${encodeURIComponent(searchQuery.trim())}`))
+      setMobileSearchOpen(false)
+    }
+  }
+
+  function isActiveCategory(slug: string): boolean {
+    const href = `/category/${slug}`
+    if (slug.includes("?")) {
+      const [basePath, qs] = slug.split("?")
+      return pathname === `/category/${basePath}` && typeof window !== "undefined" && window.location.search.includes(qs)
+    }
+    return pathname === href
+  }
+
   return (
-    <header className="sticky top-0 z-40 w-full">
-      {/* Top Trust Bar */}
-      <div
-        className={`gradient-primary text-white transition-all duration-300 overflow-hidden ${
-          scrolled ? "h-0" : "h-9"
-        }`}
-      >
-        <div className="container mx-auto flex h-9 items-center justify-center gap-6 px-4 text-xs font-medium sm:gap-10 sm:text-sm">
-          <span className="hidden sm:inline-flex items-center gap-1.5">
-            <span className="opacity-90">Free Delivery on orders above ₹499</span>
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="opacity-90">Same Day & Midnight Delivery</span>
-          </span>
-          <span className="hidden md:inline-flex items-center gap-1.5">
-            <span className="opacity-90">100% Safe Payments</span>
-          </span>
+    <header className="w-full">
+      {/* ROW 1: Top utility bar — desktop only */}
+      <div className="hidden md:block bg-gray-50 border-b border-gray-100">
+        <div className="container mx-auto flex items-center justify-between px-4 h-8">
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <span>{"\u{1F4DE}"} +91 98765 43210</span>
+            <span className="mx-1.5">|</span>
+            <span>support@giftscart.in</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <Link href={withRef("/orders")} className="hover:text-[#E91E63] transition-colors">
+              Track Order
+            </Link>
+            <span>|</span>
+            <Link href={withRef("/category/gifts?occasion=corporate")} className="hover:text-[#E91E63] transition-colors">
+              Corporate Gifting
+            </Link>
+            <span>|</span>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="hover:text-[#E91E63] transition-colors flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  <span>{user.name || "My Account"}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-lg">
+                  <DropdownMenuLabel className="font-normal">
+                    <p className="text-sm font-medium">{user.name || "User"}</p>
+                    {user.phone && (
+                      <p className="text-xs text-muted-foreground">{user.phone}</p>
+                    )}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/orders" className="cursor-pointer">
+                      <Package className="mr-2 h-4 w-4" />
+                      My Orders
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer text-destructive focus:text-destructive"
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link href="/login" className="hover:text-[#E91E63] transition-colors flex items-center gap-1">
+                <User className="h-3 w-3" />
+                <span>Login</span>
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Main Header */}
-      <div
-        className={`bg-white transition-shadow duration-300 ${
-          scrolled ? "shadow-md" : "shadow-sm"
-        }`}
-      >
-        <div className="container mx-auto flex h-16 items-center gap-3 px-4">
-          {/* Mobile Hamburger */}
-          <MobileNav />
-
-          {/* Logo */}
-          <Link href={withRef("/")} className="flex items-center shrink-0 gap-1">
+      {/* ROW 2: Main header */}
+      <div className="bg-white shadow-sm">
+        <div className="container mx-auto flex items-center gap-3 px-4 py-3">
+          {/* Logo — 25% on desktop */}
+          <Link href={withRef("/")} className="flex items-center shrink-0 gap-1 md:w-1/4">
             {partner?.logoUrl ? (
               <div className="flex flex-col items-start">
                 <img
@@ -172,59 +210,51 @@ export function Header() {
             )}
           </Link>
 
-          {/* Search Bar - Desktop */}
-          <div className="hidden md:flex flex-1 max-w-lg mx-4">
+          {/* Search bar — center 50% on desktop */}
+          <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-xl mx-4 md:w-1/2">
             <div className="relative w-full">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search for cakes, flowers, gifts..."
+              <input
+                type="text"
+                placeholder="Search cakes, flowers, gifts..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10 rounded-full border-2 border-pink-200 bg-white focus:border-pink-400 placeholder:text-gray-400"
+                className="w-full h-11 pl-4 pr-12 rounded-full border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-pink-400 focus:bg-white transition-colors placeholder:text-gray-400"
               />
+              <button
+                type="submit"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-9 w-9 flex items-center justify-center rounded-full gradient-primary text-white hover:opacity-90 transition-opacity"
+              >
+                <Search className="h-4 w-4" />
+              </button>
             </div>
-          </div>
+          </form>
 
-          {/* Right Actions */}
-          <div className="flex items-center gap-1 ml-auto">
-            {/* Mobile Search Toggle */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden h-10 w-10 rounded-full"
-              onClick={() => setSearchOpen(!searchOpen)}
+          {/* Right actions — 25% on desktop */}
+          <div className="flex items-center gap-2 ml-auto md:w-1/4 md:justify-end">
+            {/* Mobile search toggle */}
+            <button
+              onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+              className="md:hidden flex items-center justify-center h-9 w-9 rounded-full hover:bg-gray-100 transition-colors"
               aria-label="Search"
             >
-              {searchOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Search className="h-5 w-5" />
-              )}
-            </Button>
+              {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
+            </button>
 
-            {/* City Selector */}
+            {/* City selector pill */}
             <div ref={cityDropdownRef} className="relative">
               <button
                 onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
-                className={`flex items-center gap-1 text-sm transition-colors hover:text-[#E91E63] ${
+                className={`flex items-center gap-1 text-sm transition-colors hover:text-[#E91E63] rounded-full border px-2.5 py-1.5 ${
                   isSelected
-                    ? "rounded-full border border-border px-2.5 py-1.5 bg-background"
-                    : "rounded-full bg-pink-50 border border-[#E91E63]/30 px-2.5 py-1.5"
+                    ? "border-gray-200 bg-white"
+                    : "border-[#E91E63]/30 bg-pink-50"
                 }`}
               >
-                <MapPin className={`h-4 w-4 shrink-0 ${isSelected ? 'text-[#E91E63]' : 'text-[#E91E63] animate-pulse'}`} />
-                <span className="truncate max-w-[100px] sm:max-w-[140px] font-medium">
-                  {isSelected ? (
-                    <>
-                      <span className="hidden sm:inline">{cityName}{pincode ? `, ${pincode}` : ''}</span>
-                      <span className="sm:hidden">{cityName}</span>
-                    </>
-                  ) : (
-                    "Select City"
-                  )}
+                <MapPin className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-[#E91E63]' : 'text-[#E91E63] animate-pulse'}`} />
+                <span className="truncate max-w-[80px] sm:max-w-[120px] font-medium text-xs sm:text-sm">
+                  {isSelected ? cityName : "Select City"}
                 </span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
               </button>
 
               {/* City dropdown */}
@@ -264,121 +294,96 @@ export function Header() {
               )}
             </div>
 
-            {/* Account */}
-            {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative hidden sm:inline-flex h-10 w-10 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="text-xs gradient-primary text-white font-semibold">
-                        {getInitials(user.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-lg">
-                  <DropdownMenuLabel className="font-normal">
-                    <p className="text-sm font-medium">{user.name || "User"}</p>
-                    {user.phone && (
-                      <p className="text-xs text-muted-foreground">{user.phone}</p>
-                    )}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/orders" className="cursor-pointer">
-                      <Package className="mr-2 h-4 w-4" />
-                      My Orders
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="cursor-pointer text-destructive focus:text-destructive"
-                    onClick={() => signOut({ callbackUrl: "/" })}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="hidden sm:inline-flex gap-1.5 rounded-full hover:bg-pink-50 hover:text-pink-600"
+            {/* Cart icon */}
+            <Link
+              href="/cart"
+              className="relative flex items-center justify-center h-9 w-9 rounded-full hover:bg-pink-50 transition-colors"
+              aria-label="Cart"
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {mounted && cartCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                  {cartCount > 9 ? "9+" : cartCount}
+                </span>
+              )}
+            </Link>
+
+            {/* Login — mobile icon only */}
+            {!user && (
+              <Link
+                href="/login"
+                className="md:hidden flex items-center justify-center h-9 w-9 rounded-full hover:bg-pink-50 transition-colors"
+                aria-label="Login"
               >
-                <Link href="/login">
-                  <User className="h-4 w-4" />
-                  <span>Login</span>
-                </Link>
-              </Button>
+                <User className="h-5 w-5" />
+              </Link>
             )}
 
-            {/* Cart */}
-            <Button variant="ghost" size="icon" asChild className="relative h-10 w-10 rounded-full hover:bg-pink-50">
-              <Link href="/cart" aria-label="Cart">
-                <ShoppingCart className="h-5 w-5" />
-                {mounted && cartCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full gradient-primary text-[10px] font-bold text-white shadow-sm">
-                    {cartCount > 9 ? "9+" : cartCount}
-                  </span>
-                )}
+            {/* Account avatar — mobile */}
+            {user && (
+              <Link
+                href="/orders"
+                className="md:hidden flex items-center justify-center h-9 w-9 rounded-full"
+                aria-label="Account"
+              >
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback className="text-[10px] gradient-primary text-white font-semibold">
+                    {getInitials(user.name)}
+                  </AvatarFallback>
+                </Avatar>
               </Link>
-            </Button>
+            )}
           </div>
         </div>
 
-        {/* Mobile Search Bar (expandable) */}
-        {searchOpen && (
+        {/* Mobile search bar (expandable) */}
+        {mobileSearchOpen && (
           <div className="border-t px-4 py-2 md:hidden bg-white">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Search for cakes, flowers, gifts..."
+            <form onSubmit={handleSearch} className="relative">
+              <input
+                type="text"
+                placeholder="Search cakes, flowers, gifts..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-10 rounded-full border-2 border-pink-200 bg-white"
+                className="w-full h-9 pl-4 pr-12 rounded-full border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-pink-400 placeholder:text-gray-400"
                 autoFocus
               />
-            </div>
+              <button
+                type="submit"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 flex items-center justify-center rounded-full gradient-primary text-white"
+              >
+                <Search className="h-3.5 w-3.5" />
+              </button>
+            </form>
           </div>
         )}
+      </div>
 
-        {/* Category + Occasion Navigation - Desktop */}
-        <nav className="hidden md:block border-t border-gray-100">
-          <div className="container mx-auto flex items-center gap-1 px-4 h-11">
-            {/* Category Links with Icons */}
-            {CATEGORY_LINKS.map((link) => {
-              const Icon = link.icon
+      {/* ROW 3: Category navigation */}
+      <nav className="bg-white border-b border-gray-200">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center overflow-x-auto scrollbar-hide md:justify-center">
+            {CATEGORY_NAV.map((cat) => {
+              const href = `/category/${cat.slug}`
+              const active = isActiveCategory(cat.slug)
               return (
                 <Link
-                  key={link.href}
-                  href={withRef(link.href)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 transition-all duration-200 hover:text-[#E91E63] rounded-full hover:bg-pink-50"
+                  key={cat.slug}
+                  href={withRef(href)}
+                  className={`flex items-center gap-1.5 whitespace-nowrap py-2.5 px-3 text-sm font-medium transition-colors shrink-0 border-b-2 ${
+                    active
+                      ? "text-[#E91E63] border-[#E91E63]"
+                      : "text-gray-600 border-transparent hover:text-[#E91E63] hover:border-[#E91E63]"
+                  }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {link.label}
+                  <span className="text-base">{cat.icon}</span>
+                  <span>{cat.label}</span>
                 </Link>
               )
             })}
-
-            {/* Separator */}
-            <div className="h-5 w-px bg-gray-200 mx-2" />
-
-            {/* Occasion Links */}
-            {OCCASION_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={withRef(link.href)}
-                className="px-3 py-1.5 text-sm text-gray-500 transition-all duration-200 hover:text-[#E91E63] rounded-full hover:bg-pink-50"
-              >
-                {link.label}
-              </Link>
-            ))}
           </div>
-        </nav>
-      </div>
+        </div>
+      </nav>
     </header>
   )
 }
