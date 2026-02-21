@@ -66,7 +66,11 @@ export default function AdminSettingsPage() {
       const res = await fetch("/api/admin/settings/logo")
       const json = await res.json()
       if (json.success && json.data) {
-        setSettings(json.data)
+        setSettings((prev) => ({
+          logo_url: json.data.logo_url ?? prev.logo_url,
+          site_name: json.data.site_name ?? prev.site_name,
+          favicon_url: json.data.favicon_url ?? prev.favicon_url,
+        }))
         setSiteName(json.data.site_name || "Gifts Cart India")
       }
     } catch (err) {

@@ -117,7 +117,9 @@ export function MenuManager() {
       const res = await fetch("/api/admin/menu")
       const json = await res.json()
       if (json.success) {
-        setMenuTree(json.data)
+        // API returns { data: { items: [...] } }
+        const items = Array.isArray(json.data) ? json.data : json.data?.items ?? []
+        setMenuTree(items)
       } else {
         setError(json.error || "Failed to load menu")
       }
