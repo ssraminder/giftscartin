@@ -16,6 +16,7 @@ import {
   Menu,
   X,
   Users,
+  Truck,
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -28,6 +29,7 @@ const sidebarLinks = [
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/categories", label: "Categories", icon: FolderOpen },
   { type: "section" as const, label: "Operations" },
+  { href: "/admin/delivery", label: "Delivery", icon: Truck },
   { href: "/admin/vendors", label: "Vendors", icon: Store },
   { href: "/admin/cities", label: "Cities", icon: MapPin },
   { href: "/admin/partners", label: "Partners", icon: Users },
