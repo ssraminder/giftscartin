@@ -1,6 +1,8 @@
 import Link from "next/link"
+import { Clock } from "lucide-react"
 
-const OCCASIONS = [
+const OCCASIONS: { label: string; slug: string; gradient: string; emoji: string; isSameDay?: boolean }[] = [
+  { label: "Same Day", slug: "_same-day", gradient: "from-rose-500 to-pink-600", emoji: "", isSameDay: true },
   { label: "Birthday", slug: "birthday", gradient: "from-pink-400 to-pink-500", emoji: "🎂" },
   { label: "Anniversary", slug: "anniversary", gradient: "from-amber-400 to-amber-500", emoji: "💍" },
   { label: "Valentine's", slug: "valentines-day", gradient: "from-red-400 to-red-500", emoji: "❤️" },
@@ -20,19 +22,23 @@ export function OccasionNav() {
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 sm:gap-4 md:grid-cols-6 max-w-4xl mx-auto">
+        <div className="grid grid-cols-4 gap-3 sm:gap-4 md:grid-cols-7 max-w-5xl mx-auto">
           {OCCASIONS.map((occasion) => (
             <Link
               key={occasion.slug}
-              href={`/category/gifts?occasion=${occasion.slug}`}
+              href={occasion.isSameDay ? '/same-day' : `/category/gifts?occasion=${occasion.slug}`}
               className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover-lift"
             >
               <div
                 className={`bg-gradient-to-br ${occasion.gradient} p-4 sm:p-5 text-center`}
               >
-                <span className="text-2xl sm:text-3xl block mb-2">
-                  {occasion.emoji}
-                </span>
+                {occasion.isSameDay ? (
+                  <Clock className="h-7 w-7 sm:h-8 sm:w-8 text-white mx-auto mb-2" />
+                ) : (
+                  <span className="text-2xl sm:text-3xl block mb-2">
+                    {occasion.emoji}
+                  </span>
+                )}
                 <span className="text-xs sm:text-sm font-semibold text-white">
                   {occasion.label}
                 </span>

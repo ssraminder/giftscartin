@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
-  MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock,
+  MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
   Package, CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
   MessageSquare,
 } from "lucide-react"
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ProductGallery } from "@/components/product/product-gallery"
-import { DeliverySlotPicker } from "@/components/product/delivery-slot-picker"
+import { DeliverySlotPicker, type DeliverySelection } from "@/components/product/delivery-slot-picker"
 import { VariationSelector } from "@/components/product/variation-selector"
 import { AddonGroup } from "@/components/product/addon-group"
 import { UpsellProducts } from "@/components/product/upsell-products"
@@ -215,7 +215,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
   const { partner } = usePartner()
-  const { pincode: cityPincode } = useCity()
+  const { pincode: cityPincode, cityId } = useCity()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // State for fetched data
@@ -231,10 +231,8 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const [addonErrors, setAddonErrors] = useState<Set<string>>(new Set())
   const [variationError, setVariationError] = useState(false)
   const [addedToCart, setAddedToCart] = useState(false)
-  const [deliveryDate, setDeliveryDate] = useState(() => new Date().toISOString().split('T')[0])
-  const [deliverySlotId, setDeliverySlotId] = useState<string | null>(null)
-  const [, setDeliverySlotName] = useState('')
-  const [, setDeliverySlotCharge] = useState(0)
+  const [deliverySelection, setDeliverySelection] = useState<DeliverySelection | null>(null)
+  const [deliveryError, setDeliveryError] = useState(false)
   const [pincode, setPincode] = useState("")
   const [pincodeChecked, setPincodeChecked] = useState(false)
   const [pincodeAvailable, setPincodeAvailable] = useState(true)
@@ -442,6 +440,13 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const handleAddToCart = useCallback(() => {
     if (!product) return
 
+    // Validate: delivery selection required
+    if (!deliverySelection) {
+      setDeliveryError(true)
+      return
+    }
+    setDeliveryError(false)
+
     // Validate: VARIABLE product must have a variation selected
     if (isVariable && !matchedVariation) {
       setVariationError(true)
@@ -482,7 +487,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
-  }, [product, isVariable, matchedVariation, addonGroups, addonSelections, addItemAdvanced, quantity, unitPrice, buildAddonRecords])
+  }, [product, deliverySelection, isVariable, matchedVariation, addonGroups, addonSelections, addItemAdvanced, quantity, unitPrice, buildAddonRecords])
 
   const handleBuyNow = useCallback(() => {
     handleAddToCart()
@@ -656,17 +661,24 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   const deliveryBlock = (
     <div className="mb-4">
-      <DeliverySlotPicker
-        productIds={product ? [product.id] : []}
-        selectedDate={deliveryDate}
-        selectedSlot={deliverySlotId}
-        onDateChange={setDeliveryDate}
-        onSlotChange={(id, name, charge) => {
-          setDeliverySlotId(id)
-          setDeliverySlotName(name)
-          setDeliverySlotCharge(charge)
-        }}
-      />
+      <p className="font-medium text-sm text-gray-700 mb-2 flex items-center gap-1.5">
+        <Calendar className="h-4 w-4" />
+        Select Delivery Date &amp; Time
+      </p>
+      {deliveryError && !deliverySelection && (
+        <p className="text-sm text-red-500 font-medium mb-2">Please select a delivery date and time slot</p>
+      )}
+      {product && cityId && (
+        <DeliverySlotPicker
+          productId={product.id}
+          cityId={cityId}
+          onSelect={(sel) => {
+            setDeliverySelection(sel)
+            setDeliveryError(false)
+          }}
+          initialSelection={deliverySelection ?? undefined}
+        />
+      )}
     </div>
   )
 
