@@ -56,7 +56,7 @@ interface HeaderProps {
   menuItems?: MenuNode[]
 }
 
-export function Header({ logoUrl, menuItems }: HeaderProps) {
+export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)

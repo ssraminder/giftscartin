@@ -59,9 +59,9 @@ function buildHref(rawHref: string, refCode?: string): string {
 
 /** Filter the tree to only visible items, recursively. */
 function filterVisible(nodes: MenuNode[]): MenuNode[] {
-  return nodes
+  return (nodes || [])
     .filter((n) => n.isVisible)
-    .map((n) => ({ ...n, children: filterVisible(n.children) }))
+    .map((n) => ({ ...n, children: filterVisible(n.children || []) }))
 }
 
 /** Determine the menu "type" based on the top-level slug */
