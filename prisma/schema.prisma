@@ -213,6 +213,7 @@ model Vendor {
   address         String
   lat             Decimal?     @db.Decimal(10, 7)
   lng             Decimal?     @db.Decimal(10, 7)
+  deliveryRadiusKm Decimal     @default(10) @db.Decimal(5, 2) @map("delivery_radius_km")
   categories      String[]
   status          VendorStatus @default(PENDING)
   commissionRate  Decimal      @default(12) @db.Decimal(5, 2)

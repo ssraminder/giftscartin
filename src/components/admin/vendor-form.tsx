@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { VendorAddressInput, type VendorAddressResult } from "@/components/vendor/address-input/vendor-address-input"
 
 // ==================== Types ====================
 
@@ -34,6 +35,8 @@ interface VendorData {
   email: string | null
   cityId: string
   address: string
+  lat?: number | null
+  lng?: number | null
   categories: string[]
   commissionRate: number
   autoAccept: boolean
@@ -91,7 +94,20 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
   const [phone, setPhone] = useState(vendor?.phone ?? "")
   const [email, setEmail] = useState(vendor?.email ?? "")
   const [cityId, setCityId] = useState(vendor?.cityId ?? "")
-  const [address, setAddress] = useState(vendor?.address ?? "")
+  const [addressData, setAddressData] = useState<VendorAddressResult | null>(
+    vendor?.address
+      ? {
+          address: vendor.address,
+          details: '',
+          lat: vendor.lat ?? 0,
+          lng: vendor.lng ?? 0,
+          pincode: '',
+          city: '',
+          state: '',
+          source: 'manual',
+        }
+      : null
+  )
   const [categories, setCategories] = useState<string[]>(vendor?.categories ?? [])
 
   // Settings
@@ -173,8 +189,12 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       showToast("error", "Please select a city.")
       return
     }
-    if (!address.trim() || address.trim().length < 5) {
-      showToast("error", "Address must be at least 5 characters.")
+    if (!addressData?.lat || !addressData?.lng) {
+      showToast("error", "Please search or pin your shop location.")
+      return
+    }
+    if (!addressData?.pincode) {
+      showToast("error", "Could not detect pincode — please try map picker.")
       return
     }
 
@@ -188,7 +208,11 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       phone: phone.trim(),
       email: email.trim(),
       cityId,
-      address: address.trim(),
+      address: addressData
+        ? `${addressData.details ? addressData.details + ', ' : ''}${addressData.address}`.trim()
+        : '',
+      lat: addressData?.lat ?? null,
+      lng: addressData?.lng ?? null,
       categories,
       commissionRate: parseFloat(commissionRate) || 12,
       autoAccept,
@@ -319,35 +343,29 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
           </div>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="cityId">City</Label>
-            <select
-              id="cityId"
-              value={cityId}
-              onChange={(e) => setCityId(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            >
-              <option value="">Select city</option>
-              {cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
-              value={address}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setAddress(e.target.value)
-              }
-              placeholder="Full shop address"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="cityId">City</Label>
+          <select
+            id="cityId"
+            value={cityId}
+            onChange={(e) => setCityId(e.target.value)}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            <option value="">Select city</option>
+            {cities.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
         </div>
+
+        <VendorAddressInput
+          value={addressData}
+          onChange={setAddressData}
+          label="Shop Address"
+          required
+        />
 
         <div className="space-y-2">
           <Label>Categories</Label>
