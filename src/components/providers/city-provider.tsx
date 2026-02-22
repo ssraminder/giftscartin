@@ -11,6 +11,8 @@ export interface CitySelection {
   areaName?: string
   zoneId?: string
   zoneName?: string
+  lat?: number
+  lng?: number
   source?: string
 }
 
@@ -22,6 +24,8 @@ export interface CityContextValue {
   areaName: string | null
   zoneId: string | null
   zoneName: string | null
+  lat: number | null
+  lng: number | null
   isServiceable: boolean | null  // null = not checked yet
   isSelected: boolean
   isHydrating: boolean  // true until localStorage has been read
@@ -50,6 +54,8 @@ export const CityContext = createContext<CityContextValue>({
   areaName: null,
   zoneId: null,
   zoneName: null,
+  lat: null,
+  lng: null,
   isServiceable: null,
   isSelected: false,
   isHydrating: true,
@@ -98,15 +104,10 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     setLoaded(true)
   }, [partnerLoading, partner])
 
-  // Pre-warm the city resolve serverless function after 2 seconds
-  // This prevents cold start latency for the first real user search
+  // Pre-warm the location search serverless function after 2 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetch('/api/city/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: 'Ch' }),
-      }).catch(() => {}) // silently ignore errors
+      fetch('/api/location/search?q=Ch').catch(() => {})
     }, 2000)
     return () => clearTimeout(timer)
   }, [])
@@ -163,6 +164,8 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     areaName: selection?.areaName ?? null,
     zoneId: selection?.zoneId ?? null,
     zoneName: selection?.zoneName ?? null,
+    lat: selection?.lat ?? null,
+    lng: selection?.lng ?? null,
     isServiceable: null, // checked inline by city modal / area search
     isSelected,
     isHydrating: !loaded,

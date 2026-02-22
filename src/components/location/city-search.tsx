@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { Search, MapPin, CheckCircle2, Clock, Bell, Loader2 } from "lucide-react"
+import { Search, MapPin, CheckCircle2, Clock, Bell, Loader2, Truck } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -11,28 +11,37 @@ import type { CitySelection } from "@/components/providers/city-provider"
 interface AreaResult {
   id: string
   name: string
-  pincode: string
-  cityId: string
-  cityName: string
-  citySlug: string
-  state: string
+  pincode: string | null
+  cityId: string | null
+  cityName: string | null
+  citySlug: string | null
+  state: string | null
+  lat: number | null
+  lng: number | null
   isActive: boolean
   isComingSoon: boolean
+  source: 'db' | 'google'
 }
 
 interface CityResult {
-  cityId: string
-  cityName: string
-  citySlug: string
-  state: string
+  cityId: string | null
+  cityName: string | null
+  citySlug: string | null
+  state: string | null
+  lat: number | null
+  lng: number | null
   isActive: boolean
   isComingSoon: boolean
+  source: 'db' | 'google'
 }
 
 interface SearchResults {
   areas: AreaResult[]
   cities: CityResult[]
 }
+
+// Serviceability status per result
+type ServiceabilityStatus = 'loading' | 'available' | 'coming_soon' | 'unavailable' | null
 
 interface CitySearchProps {
   onSelect: (selection: CitySelection) => void
@@ -54,10 +63,56 @@ export function CitySearch({
   const [notifyCity, setNotifyCity] = useState("")
   const [notifySending, setNotifySending] = useState(false)
   const [notifySent, setNotifySent] = useState(false)
+  // Serviceability badge cache: keyed by "pincode" or "lat,lng"
+  const [serviceability, setServiceability] = useState<Record<string, ServiceabilityStatus>>({})
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const hasResults = results.areas.length > 0 || results.cities.length > 0
+
+  /** Check serviceability for a result (silently in background) */
+  const checkServiceability = useCallback(async (key: string, pincode: string | null, lat: number | null, lng: number | null) => {
+    // Already checked or loading
+    setServiceability(prev => {
+      if (prev[key]) return prev
+      return { ...prev, [key]: 'loading' }
+    })
+
+    try {
+      const body: Record<string, unknown> = {}
+      if (pincode) {
+        body.pincode = pincode
+      } else if (lat != null && lng != null) {
+        body.lat = lat
+        body.lng = lng
+      } else {
+        setServiceability(prev => ({ ...prev, [key]: null }))
+        return
+      }
+
+      const res = await fetch('/api/serviceability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+
+      if (json.success && json.data) {
+        const d = json.data
+        if (d.comingSoon) {
+          setServiceability(prev => ({ ...prev, [key]: 'coming_soon' }))
+        } else if (d.isServiceable && d.vendorCount > 0) {
+          setServiceability(prev => ({ ...prev, [key]: 'available' }))
+        } else {
+          setServiceability(prev => ({ ...prev, [key]: 'unavailable' }))
+        }
+      } else {
+        setServiceability(prev => ({ ...prev, [key]: 'unavailable' }))
+      }
+    } catch {
+      setServiceability(prev => ({ ...prev, [key]: null }))
+    }
+  }, [])
 
   const fetchResults = useCallback(async (searchQuery: string) => {
     if (searchQuery.length < 2) {
@@ -88,8 +143,11 @@ export function CitySearch({
             cityName: c.cityName,
             citySlug: c.citySlug,
             state: "",
+            lat: null,
+            lng: null,
             isActive: c.isActive,
             isComingSoon: c.isComingSoon,
+            source: 'db' as const,
           })),
         })
         setShowDropdown(true)
@@ -118,6 +176,26 @@ export function CitySearch({
       setLoading(false)
     }
   }, [])
+
+  // Trigger serviceability checks when results change
+  useEffect(() => {
+    for (const area of results.areas) {
+      const key = area.pincode || (area.lat && area.lng ? `${area.lat},${area.lng}` : null)
+      if (key && !serviceability[key]) {
+        checkServiceability(key, area.pincode, area.lat, area.lng)
+      }
+    }
+    for (const city of results.cities) {
+      if (city.citySlug && city.lat && city.lng) {
+        const key = `city-${city.citySlug}`
+        if (!serviceability[key]) {
+          // For cities, use lat/lng for serviceability if no pincode
+          checkServiceability(key, null, city.lat, city.lng)
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results])
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -149,13 +227,30 @@ export function CitySearch({
   }, [])
 
   function handleSelectArea(area: AreaResult) {
-    onSelect({
-      cityId: area.cityId,
-      cityName: area.cityName,
-      citySlug: area.citySlug,
-      pincode: area.pincode,
-      areaName: area.name,
-    })
+    if (!area.cityId || !area.cityName || !area.citySlug) {
+      // Google Places result without city mapping — store with lat/lng
+      onSelect({
+        cityId: area.cityId || '',
+        cityName: area.cityName || area.name,
+        citySlug: area.citySlug || area.name.toLowerCase().replace(/\s+/g, '-'),
+        pincode: area.pincode || undefined,
+        areaName: area.name,
+        lat: area.lat || undefined,
+        lng: area.lng || undefined,
+        source: area.source,
+      })
+    } else {
+      onSelect({
+        cityId: area.cityId,
+        cityName: area.cityName,
+        citySlug: area.citySlug,
+        pincode: area.pincode || undefined,
+        areaName: area.name,
+        lat: area.lat || undefined,
+        lng: area.lng || undefined,
+        source: area.source,
+      })
+    }
     setQuery("")
     setShowDropdown(false)
     setResults({ areas: [], cities: [] })
@@ -163,13 +258,24 @@ export function CitySearch({
 
   function handleSelectCity(city: CityResult) {
     onSelect({
-      cityId: city.cityId,
-      cityName: city.cityName,
-      citySlug: city.citySlug,
+      cityId: city.cityId || '',
+      cityName: city.cityName || '',
+      citySlug: city.citySlug || '',
+      lat: city.lat || undefined,
+      lng: city.lng || undefined,
+      source: city.source,
     })
     setQuery("")
     setShowDropdown(false)
     setResults({ areas: [], cities: [] })
+  }
+
+  function getAreaBadgeKey(area: AreaResult): string {
+    return area.pincode || (area.lat && area.lng ? `${area.lat},${area.lng}` : '')
+  }
+
+  function getCityBadgeKey(city: CityResult): string {
+    return city.citySlug ? `city-${city.citySlug}` : ''
   }
 
   async function handleNotify() {
@@ -187,6 +293,55 @@ export function CitySearch({
     } finally {
       setNotifySending(false)
     }
+  }
+
+  function renderBadge(status: ServiceabilityStatus, isComingSoon: boolean, isActive: boolean) {
+    // Priority: serviceability API result > static flags
+    if (status === 'loading') {
+      return (
+        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+          <Loader2 className="h-3 w-3 animate-spin" />
+        </span>
+      )
+    }
+
+    if (status === 'available') {
+      return (
+        <span className="flex items-center gap-1 text-xs text-green-600 shrink-0">
+          <Truck className="h-3.5 w-3.5" />
+          Delivery available
+        </span>
+      )
+    }
+
+    if (status === 'coming_soon' || isComingSoon) {
+      return (
+        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+          <Clock className="h-3.5 w-3.5" />
+          Coming soon
+        </span>
+      )
+    }
+
+    if (status === 'unavailable') {
+      return (
+        <span className="flex items-center gap-1 text-xs text-orange-500 shrink-0">
+          <Clock className="h-3.5 w-3.5" />
+          Expanding soon
+        </span>
+      )
+    }
+
+    if (isActive) {
+      return (
+        <span className="flex items-center gap-1 text-xs text-green-600 shrink-0">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          We deliver here
+        </span>
+      )
+    }
+
+    return null
   }
 
   return (
@@ -234,41 +389,43 @@ export function CitySearch({
                   <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     Areas
                   </p>
-                  {results.areas.map((area) => (
-                    <button
-                      key={`area-${area.id}`}
-                      onClick={() => {
-                        if (area.isComingSoon) {
-                          setNotifyCity(area.cityName)
-                          setShowNotify(true)
-                        } else {
-                          handleSelectArea(area)
-                        }
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
-                    >
-                      <MapPin className={`h-5 w-5 shrink-0 ${area.isComingSoon ? 'text-gray-400' : 'text-[#E91E63]'}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 truncate">
-                          {area.pincode ? `${area.pincode} — ${area.name}` : area.name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {area.cityName}{area.state ? `, ${area.state}` : ''}
-                        </p>
-                      </div>
-                      {area.isComingSoon ? (
-                        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
-                          <Clock className="h-3.5 w-3.5" />
-                          Coming soon
-                        </span>
-                      ) : area.isActive ? (
-                        <span className="flex items-center gap-1 text-xs text-green-600 shrink-0">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          We deliver here
-                        </span>
-                      ) : null}
-                    </button>
-                  ))}
+                  {results.areas.map((area, idx) => {
+                    const badgeKey = getAreaBadgeKey(area)
+                    const status = badgeKey ? serviceability[badgeKey] || null : null
+                    return (
+                      <button
+                        key={`area-${area.id}-${idx}`}
+                        onClick={() => {
+                          if (area.isComingSoon && status !== 'available') {
+                            setNotifyCity(area.cityName || area.name)
+                            setShowNotify(true)
+                          } else {
+                            handleSelectArea(area)
+                          }
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
+                      >
+                        <MapPin className={`h-5 w-5 shrink-0 ${
+                          status === 'available' ? 'text-[#E91E63]' :
+                          area.isComingSoon ? 'text-gray-400' :
+                          area.source === 'google' ? 'text-blue-500' :
+                          'text-[#E91E63]'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-gray-900 truncate">
+                            {area.pincode ? `${area.pincode} — ${area.name}` : area.name}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {area.cityName}{area.state ? `, ${area.state}` : ''}
+                            {area.source === 'google' && (
+                              <span className="ml-1 text-blue-400">via Google</span>
+                            )}
+                          </p>
+                        </div>
+                        {renderBadge(status, area.isComingSoon, area.isActive)}
+                      </button>
+                    )
+                  })}
                 </>
               )}
 
@@ -278,41 +435,45 @@ export function CitySearch({
                   <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     Cities
                   </p>
-                  {results.cities.map((city, idx) => (
-                    <button
-                      key={`city-${city.cityId}-${idx}`}
-                      onClick={() => {
-                        if (city.isComingSoon) {
-                          setNotifyCity(city.cityName)
-                          setShowNotify(true)
-                        } else {
-                          handleSelectCity(city)
-                        }
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
-                    >
-                      <MapPin className={`h-5 w-5 shrink-0 ${city.isComingSoon ? 'text-gray-400' : 'text-[#E91E63]'}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 truncate">
-                          {city.cityName}
-                        </p>
-                        {city.state && (
-                          <p className="text-xs text-gray-500">{city.state}</p>
-                        )}
-                      </div>
-                      {city.isComingSoon ? (
-                        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
-                          <Clock className="h-3.5 w-3.5" />
-                          Coming soon
-                        </span>
-                      ) : city.isActive ? (
-                        <span className="flex items-center gap-1 text-xs text-green-600 shrink-0">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          We deliver here
-                        </span>
-                      ) : null}
-                    </button>
-                  ))}
+                  {results.cities.map((city, idx) => {
+                    const badgeKey = getCityBadgeKey(city)
+                    const status = badgeKey ? serviceability[badgeKey] || null : null
+                    return (
+                      <button
+                        key={`city-${city.cityId}-${idx}`}
+                        onClick={() => {
+                          if (city.isComingSoon && status !== 'available') {
+                            setNotifyCity(city.cityName || '')
+                            setShowNotify(true)
+                          } else {
+                            handleSelectCity(city)
+                          }
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
+                      >
+                        <MapPin className={`h-5 w-5 shrink-0 ${
+                          status === 'available' ? 'text-[#E91E63]' :
+                          city.isComingSoon ? 'text-gray-400' :
+                          city.source === 'google' ? 'text-blue-500' :
+                          'text-[#E91E63]'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm text-gray-900 truncate">
+                            {city.cityName}
+                          </p>
+                          {city.state && (
+                            <p className="text-xs text-gray-500">
+                              {city.state}
+                              {city.source === 'google' && (
+                                <span className="ml-1 text-blue-400">via Google</span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                        {renderBadge(status, city.isComingSoon, city.isActive)}
+                      </button>
+                    )
+                  })}
                 </>
               )}
             </div>
