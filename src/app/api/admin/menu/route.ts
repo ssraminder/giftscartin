@@ -131,8 +131,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Run all updates in a transaction
-    await prisma.$transaction(
+    // Run all updates with Promise.all (no transaction — pgBouncer compatible)
+    await Promise.all(
       updates.map((update) => {
         const { id, ...data } = update
         return prisma.menuItem.update({
