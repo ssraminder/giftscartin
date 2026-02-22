@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getCategoryMeta } from '@/lib/seo'
@@ -112,19 +113,21 @@ export default async function CategoryPage({
         </div>
       </div>
 
-      {/* Product Grid with Filters */}
-      <CategoryProductGrid
-        categorySlug={params.slug}
-        categoryName={category.name}
-        parentSlug={parentCategory?.slug}
-        parentName={parentCategory?.name}
-        subcategories={(category.children || []).map((c) => ({
-          id: c.id,
-          name: c.name,
-          slug: c.slug,
-        }))}
-        isSubCategory={isSubCategory}
-      />
+      {/* Product Grid with Filters — Suspense required for useSearchParams with SSG */}
+      <Suspense>
+        <CategoryProductGrid
+          categorySlug={params.slug}
+          categoryName={category.name}
+          parentSlug={parentCategory?.slug}
+          parentName={parentCategory?.name}
+          subcategories={(category.children || []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+          }))}
+          isSubCategory={isSubCategory}
+        />
+      </Suspense>
     </div>
   )
 }
