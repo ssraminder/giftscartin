@@ -112,7 +112,7 @@ function useIsMobile() {
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const { formatPrice } = useCurrency()
   const { cityName, cityId } = useCity()
   const { clearReferral } = useReferral()
@@ -124,6 +124,7 @@ export default function CheckoutPage() {
   const setDeliveryDateForAll = useCart((s) => s.setDeliveryDateForAll)
 
   const [currentStep, setCurrentStep] = useState<StepNumber>(1)
+  const [guestConfirmed, setGuestConfirmed] = useState(false)
 
   // ─── Step 1 State ───
 
@@ -653,6 +654,77 @@ export default function CheckoutPage() {
       formData.pincodeStatus === "invalid" ||
       formData.pincodeStatus === "checking")
 
+  // ─── Auth Gate ───
+
+  const cartItems = items
+  const cartTotal = subtotal
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-pink-500" />
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated' && !guestConfirmed) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 w-full max-w-md">
+
+          {/* Cart summary — show what they're buying */}
+          <div className="mb-6 pb-6 border-b border-gray-100">
+            <h1 className="text-lg font-semibold text-gray-900 mb-1">
+              Ready to checkout?
+            </h1>
+            <p className="text-sm text-gray-500">
+              {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} · ₹{cartTotal}
+            </p>
+          </div>
+
+          {/* Login option */}
+          <div className="space-y-3">
+            <div className="rounded-xl border border-pink-200 bg-pink-50 p-4">
+              <h2 className="text-sm font-semibold text-gray-800 mb-1">
+                Sign in or create account
+              </h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Track orders, save addresses, faster checkout next time
+              </p>
+              <button
+                onClick={() => router.push(
+                  `/login?callbackUrl=${encodeURIComponent('/checkout')}`
+                )}
+                className="w-full py-2.5 bg-pink-600 text-white rounded-lg text-sm font-medium hover:bg-pink-700 transition-colors"
+              >
+                Sign in with Email OTP
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="relative flex items-center gap-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">or</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            {/* Guest option */}
+            <button
+              onClick={() => setGuestConfirmed(true)}
+              className="w-full py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-colors"
+            >
+              Continue as Guest
+            </button>
+            <p className="text-center text-xs text-gray-400">
+              No account needed — enter your details at checkout
+            </p>
+          </div>
+
+        </div>
+      </div>
+    )
+  }
+
   // ─── Render ───
 
   return (
@@ -749,6 +821,7 @@ export default function CheckoutPage() {
                     }
                     onContinue={() => {}}
                     onBack={() => router.push("/cart")}
+                    hideButtons
                   />
                 </div>
 
