@@ -23,6 +23,7 @@ const updateVendorSettingsSchema = z.object({
   bankAccountNo: z.string().optional(),
   bankIfsc: z.string().optional(),
   bankName: z.string().optional(),
+  deliveryRadiusKm: z.number().min(1).max(100).optional(),
 })
 
 async function getVendor() {
@@ -61,6 +62,7 @@ export async function GET() {
         rating: Number(vendor.rating),
         lat: vendor.lat ? Number(vendor.lat) : null,
         lng: vendor.lng ? Number(vendor.lng) : null,
+        deliveryRadiusKm: Number(vendor.deliveryRadiusKm),
         pincodes: vendor.pincodes.map((p) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),
@@ -145,6 +147,7 @@ export async function PATCH(request: NextRequest) {
         ...(data.bankAccountNo !== undefined ? { bankAccountNo: data.bankAccountNo } : {}),
         ...(data.bankIfsc !== undefined ? { bankIfsc: data.bankIfsc } : {}),
         ...(data.bankName !== undefined ? { bankName: data.bankName } : {}),
+        ...(data.deliveryRadiusKm !== undefined ? { deliveryRadiusKm: data.deliveryRadiusKm } : {}),
       },
     })
 
