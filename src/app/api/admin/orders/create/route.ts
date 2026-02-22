@@ -7,14 +7,14 @@ import { generateOrderNumber } from '@/lib/utils'
 import { z } from 'zod/v4'
 
 const adminOrderSchema = z.object({
-  customerPhone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid phone'),
+  customerPhone: z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid phone'),
   customerName: z.string().min(2).max(100),
   customerEmail: z.string().email().optional(),
   deliveryDate: z.string().min(1),
   deliverySlot: z.string().min(1),
   deliveryAddress: z.object({
     name: z.string().min(2).max(100),
-    phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid phone'),
+    phone: z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid phone'),
     address: z.string().min(5).max(500),
     city: z.string().min(2).max(100),
     state: z.string().min(2).max(100),

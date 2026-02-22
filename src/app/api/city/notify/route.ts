@@ -4,7 +4,7 @@ import { z } from 'zod/v4'
 
 const notifySchema = z.object({
   email: z.email().optional(),
-  phone: z.string().regex(/^[6-9]\d{9}$/).optional(),
+  phone: z.string().regex(/^\+91[6-9]\d{9}$/).optional(),
   cityName: z.string().min(1).max(200),
 }).refine((data) => data.email || data.phone, {
   message: 'Either email or phone is required',

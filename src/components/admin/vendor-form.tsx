@@ -177,8 +177,8 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       showToast("error", "Owner name is required.")
       return
     }
-    if (!/^[6-9]\d{9}$/.test(phone)) {
-      showToast("error", "Invalid phone number. Must be 10 digits starting with 6-9.")
+    if (!/^\+91[6-9]\d{9}$/.test(phone)) {
+      showToast("error", "Invalid phone number. Must be +91 followed by 10 digits starting with 6-9.")
       return
     }
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

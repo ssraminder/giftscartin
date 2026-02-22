@@ -10,7 +10,7 @@ import { z } from 'zod/v4'
 
 const inlineAddressSchema = z.object({
   name: z.string().min(2).max(100),
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid phone'),
+  phone: z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid phone'),
   address: z.string().min(5).max(500),
   landmark: z.string().max(200).optional(),
   city: z.string().min(2).max(100),
@@ -52,14 +52,14 @@ const createOrderBodySchema = z.object({
   addressId: z.string().min(1),
   address: inlineAddressSchema.optional(),
   senderName: z.string().max(100).optional(),
-  senderPhone: z.string().regex(/^\d{10}$/, 'Invalid phone').optional(),
+  senderPhone: z.string().regex(/^\+[1-9]\d{6,14}$/, 'Invalid phone').optional(),
   senderEmail: z.string().email().max(200).optional(),
   occasion: z.string().max(100).optional(),
   giftMessage: z.string().max(500).optional(),
   specialInstructions: z.string().max(500).optional(),
   couponCode: z.string().max(50).optional(),
   partnerId: z.string().optional(),
-  guestEmail: z.string().email().optional(),
+  guestEmail: z.string().email().optional().or(z.literal('').transform(() => undefined)),
   guestPhone: z.string().regex(/^\+[1-9]\d{6,14}$/).optional(),
 })
 
@@ -228,13 +228,11 @@ export async function POST(request: NextRequest) {
     const isGuest = !user
 
     const body = await request.json()
-    console.log('Order creation attempt:', JSON.stringify(body, null, 2))
     const parsed = createOrderBodySchema.safeParse(body)
 
     if (!parsed.success) {
-      console.log('Zod validation failed:', JSON.stringify(parsed.error.issues, null, 2))
       return NextResponse.json(
-        { success: false, error: 'Validation failed', details: parsed.error.issues },
+        { success: false, error: 'Invalid request data' },
         { status: 400 }
       )
     }

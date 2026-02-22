@@ -18,7 +18,7 @@ const vendorListSchema = z.object({
 const createVendorSchema = z.object({
   businessName: z.string().min(2, 'Business name is required').max(200),
   ownerName: z.string().min(2, 'Owner name is required').max(200),
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number (10 digits)'),
+  phone: z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid Indian phone number (+91 followed by 10 digits)'),
   email: z.string().email('Invalid email address'),
   cityId: z.string().min(1, 'City is required'),
   address: z.string().min(5, 'Address is required').max(500),

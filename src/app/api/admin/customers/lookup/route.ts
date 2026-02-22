@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
     }
 
     const phone = request.nextUrl.searchParams.get('phone')
-    if (!phone || !/^[6-9]\d{9}$/.test(phone)) {
+    if (!phone || !/^\+91[6-9]\d{9}$/.test(phone)) {
       return NextResponse.json(
-        { success: false, error: 'Valid 10-digit phone number required' },
+        { success: false, error: 'Valid Indian phone number required (+91 followed by 10 digits)' },
         { status: 400 }
       )
     }

@@ -2,7 +2,7 @@ import { z } from 'zod/v4'
 
 // ==================== Common ====================
 
-export const phoneSchema = z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number (10 digits)')
+export const phoneSchema = z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid Indian phone number (+91 followed by 10 digits)')
 
 export const pincodeSchema = z.string().regex(/^\d{6}$/, 'Invalid pincode (6 digits)')
 

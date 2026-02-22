@@ -605,8 +605,8 @@ export default function CheckoutPage() {
         specialInstructions: formData.specialInstructions || undefined,
         couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
         // Guest checkout: pass email + phone for the API guest check
-        guestEmail: isGuestCheckout ? formData.senderEmail : undefined,
-        guestPhone: isGuestCheckout ? formData.senderPhone : undefined,
+        guestEmail: isGuestCheckout && formData.senderEmail ? formData.senderEmail : undefined,
+        guestPhone: isGuestCheckout && formData.senderPhone ? formData.senderPhone : undefined,
       }
 
       const res = await fetch("/api/orders", {
