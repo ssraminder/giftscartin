@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, AlertTriangle } from "lucide-react"
 import { VendorAddressInput, type VendorAddressResult } from "@/components/vendor/address-input/vendor-address-input"
 
 // ==================== Types ====================
@@ -95,16 +95,16 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
   const [email, setEmail] = useState(vendor?.email ?? "")
   const [cityId, setCityId] = useState(vendor?.cityId ?? "")
   const [addressData, setAddressData] = useState<VendorAddressResult | null>(
-    vendor?.address
+    vendor && vendor.lat && vendor.lng
       ? {
-          address: vendor.address,
+          address: vendor.address || '',
           details: '',
-          lat: vendor.lat ?? 0,
-          lng: vendor.lng ?? 0,
+          lat: Number(vendor.lat),
+          lng: Number(vendor.lng),
           pincode: '',
           city: '',
           state: '',
-          source: 'manual',
+          source: 'google',
         }
       : null
   )
@@ -189,12 +189,12 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       showToast("error", "Please select a city.")
       return
     }
-    if (!addressData?.lat || !addressData?.lng) {
+    // 0,0 is in the ocean, not India — treat as unset
+    const hasLocation = addressData?.lat &&
+                        addressData?.lng &&
+                        !(addressData.lat === 0 && addressData.lng === 0)
+    if (!hasLocation) {
       showToast("error", "Please search or pin your shop location.")
-      return
-    }
-    if (!addressData?.pincode) {
-      showToast("error", "Could not detect pincode — please try map picker.")
       return
     }
 
@@ -366,6 +366,12 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
           label="Shop Address"
           required
         />
+        {addressData && !addressData.pincode && (
+          <p className="text-xs text-amber-600 flex items-center gap-1.5 mt-1">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            Pincode not detected — you can save and update manually later
+          </p>
+        )}
 
         <div className="space-y-2">
           <Label>Categories</Label>

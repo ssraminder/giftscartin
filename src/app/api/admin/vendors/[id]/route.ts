@@ -24,6 +24,8 @@ const fullUpdateVendorSchema = z.object({
   autoAccept: z.boolean().optional(),
   status: z.enum(['PENDING', 'APPROVED', 'SUSPENDED', 'TERMINATED']).optional(),
   isOnline: z.boolean().optional(),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
   workingHours: z.array(z.object({
     dayOfWeek: z.number().int().min(0).max(6),
     openTime: z.string(),
@@ -242,6 +244,8 @@ export async function PUT(
       }
     }
     if (data.isOnline !== undefined) vendorUpdate.isOnline = data.isOnline
+    if (data.lat !== undefined) vendorUpdate.lat = data.lat
+    if (data.lng !== undefined) vendorUpdate.lng = data.lng
 
     // Update vendor
     await prisma.vendor.update({

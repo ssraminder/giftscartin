@@ -25,6 +25,8 @@ const createVendorSchema = z.object({
   categories: z.array(z.string()).default([]),
   commissionRate: z.number().min(0).max(100).default(12),
   autoAccept: z.boolean().default(false),
+  lat: z.number().optional().nullable(),
+  lng: z.number().optional().nullable(),
   workingHours: z.array(z.object({
     dayOfWeek: z.number().int().min(0).max(6),
     openTime: z.string(),
@@ -188,6 +190,8 @@ export async function POST(request: NextRequest) {
         categories: data.categories,
         commissionRate: data.commissionRate,
         autoAccept: data.autoAccept,
+        lat: data.lat ?? null,
+        lng: data.lng ?? null,
         status: 'APPROVED',
       },
     })
