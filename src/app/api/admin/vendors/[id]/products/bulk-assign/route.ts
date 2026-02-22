@@ -11,6 +11,7 @@ const bulkAssignSchema = z.object({
     costPrice: z.number().min(0).optional(),
     preparationTime: z.number().int().min(0).optional(),
     dailyLimit: z.number().int().min(1).nullable().optional(),
+    isSameDayEligible: z.boolean().default(false),
   })).min(1, 'At least one product required'),
 })
 
@@ -98,6 +99,7 @@ export async function POST(
               costPrice: item.costPrice ?? Math.round(basePrice * 0.68),
               preparationTime: item.preparationTime ?? 240,
               dailyLimit: item.dailyLimit ?? null,
+              isSameDayEligible: item.isSameDayEligible,
             },
           })
           skipped++
@@ -110,6 +112,7 @@ export async function POST(
               costPrice: item.costPrice ?? Math.round(basePrice * 0.68),
               preparationTime: item.preparationTime ?? 240,
               dailyLimit: item.dailyLimit ?? null,
+              isSameDayEligible: item.isSameDayEligible,
               isAvailable: true,
             },
           })

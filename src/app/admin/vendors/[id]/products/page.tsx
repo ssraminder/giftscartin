@@ -15,8 +15,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Loader2,
-  Check,
-  Minus,
   ArrowRight,
   ArrowLeft,
 } from "lucide-react"
@@ -45,12 +43,12 @@ interface VendorProductItem {
   preparationTime: number
   dailyLimit: number | null
   isAvailable: boolean
+  isSameDayEligible: boolean
   product: {
     id: string
     name: string
     slug: string
     basePrice: number
-    isSameDayEligible: boolean
     category: { name: string; slug: string }
   }
 }
@@ -59,7 +57,6 @@ interface AvailableProduct {
   id: string
   name: string
   basePrice: number
-  isSameDayEligible: boolean
   category: { id: string; name: string; slug: string }
 }
 
@@ -68,6 +65,7 @@ interface BulkItem {
   costPrice: number
   preparationTime: number
   dailyLimit: string // empty string = unlimited
+  isSameDayEligible: boolean
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -401,6 +399,7 @@ export default function VendorProductsPage() {
         costPrice: Math.round(p.basePrice * 0.68),
         preparationTime: 240,
         dailyLimit: "",
+        isSameDayEligible: false,
       }))
     )
     setAssignStep("review")
@@ -416,6 +415,7 @@ export default function VendorProductsPage() {
         costPrice: bi.costPrice,
         preparationTime: bi.preparationTime,
         dailyLimit: bi.dailyLimit ? Number(bi.dailyLimit) : null,
+        isSameDayEligible: bi.isSameDayEligible,
       }))
 
       const res = await fetch(`/api/admin/vendors/${vendorId}/products/bulk-assign`, {
@@ -678,11 +678,21 @@ export default function VendorProductsPage() {
                           />
                         </td>
                         <td className="px-3 py-3">
-                          {vp.product.isSameDayEligible ? (
-                            <Check className="h-4 w-4 text-emerald-600" />
-                          ) : (
-                            <Minus className="h-4 w-4 text-slate-300" />
-                          )}
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={vp.isSameDayEligible}
+                            onClick={() => patchVendorProduct(vp.id, "isSameDayEligible", !vp.isSameDayEligible)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                              vp.isSameDayEligible ? "bg-[#E91E63]" : "bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition-transform ${
+                                vp.isSameDayEligible ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
                         </td>
                         <td className="px-3 py-3">
                           <button
@@ -820,9 +830,6 @@ export default function VendorProductsPage() {
                       <span className="text-sm font-medium text-slate-700 shrink-0 whitespace-nowrap">
                         {formatPrice(p.basePrice)}
                       </span>
-                      {p.isSameDayEligible && (
-                        <Badge className="bg-pink-100 text-pink-700 text-xs shrink-0">Same Day</Badge>
-                      )}
                     </label>
                   ))}
                 </div>
@@ -869,6 +876,7 @@ export default function VendorProductsPage() {
                       <th className="px-3 py-3 text-left font-medium text-slate-600">Margin %</th>
                       <th className="px-3 py-3 text-left font-medium text-slate-600">Prep Time (mins)</th>
                       <th className="px-3 py-3 text-left font-medium text-slate-600">Daily Limit</th>
+                      <th className="px-3 py-3 text-left font-medium text-slate-600">Same Day</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -949,6 +957,18 @@ export default function VendorProductsPage() {
                               className="h-8 w-24 text-sm"
                               placeholder="Unlimited"
                               min={1}
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={bi.isSameDayEligible}
+                              onChange={(e) => {
+                                setBulkItems((prev) =>
+                                  prev.map((item, i) => (i === idx ? { ...item, isSameDayEligible: e.target.checked } : item))
+                                )
+                              }}
+                              className="h-4 w-4 rounded border-slate-300 text-[#E91E63] focus:ring-[#E91E63]"
                             />
                           </td>
                         </tr>

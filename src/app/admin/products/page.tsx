@@ -14,8 +14,6 @@ import {
   ChevronRight,
   CheckCircle,
   AlertCircle,
-  Check,
-  Minus,
 } from "lucide-react"
 import { formatPrice } from "@/lib/utils"
 import { ProductFormDrawer } from "@/components/admin/product-form-drawer"
@@ -27,7 +25,6 @@ interface ProductItem {
   productType: "SIMPLE" | "VARIABLE"
   basePrice: number
   isActive: boolean
-  isSameDayEligible: boolean
   images: string[]
   category: { id: string; name: string; slug: string }
   _count: { vendorProducts: number; variations: number }
@@ -52,7 +49,6 @@ export default function AdminProductsPage() {
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
-  const [sameDayFilter, setSameDayFilter] = useState(false)
   const [statusFilter, setStatusFilter] = useState("")
 
   // Drawer
@@ -71,7 +67,7 @@ export default function AdminProductsPage() {
   // Reset page on filter change
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch, categoryFilter, sameDayFilter, statusFilter])
+  }, [debouncedSearch, categoryFilter, statusFilter])
 
   // Fetch categories
   useEffect(() => {
@@ -96,7 +92,6 @@ export default function AdminProductsPage() {
       params.set("pageSize", String(pageSize))
       if (debouncedSearch) params.set("search", debouncedSearch)
       if (categoryFilter) params.set("category", categoryFilter)
-      if (sameDayFilter) params.set("isSameDayEligible", "true")
       if (statusFilter) params.set("status", statusFilter)
 
       const res = await fetch(`/api/admin/products?${params}`)
@@ -110,7 +105,7 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, debouncedSearch, categoryFilter, sameDayFilter, statusFilter])
+  }, [page, pageSize, debouncedSearch, categoryFilter, statusFilter])
 
   useEffect(() => {
     fetchProducts()
@@ -245,17 +240,6 @@ export default function AdminProductsPage() {
               ]
             })}
         </select>
-        <button
-          type="button"
-          onClick={() => setSameDayFilter(!sameDayFilter)}
-          className={`h-10 rounded-md border px-4 text-sm font-medium transition-colors whitespace-nowrap ${
-            sameDayFilter
-              ? "border-[#E91E63] bg-[#E91E63]/10 text-[#E91E63]"
-              : "border-input bg-background text-slate-600 hover:bg-slate-50"
-          }`}
-        >
-          Same Day Only
-        </button>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -295,7 +279,6 @@ export default function AdminProductsPage() {
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Name</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Category</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Price</th>
-                <th className="px-3 py-3 text-left font-medium text-slate-600">Same Day</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Active</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Vendors</th>
                 <th className="px-3 py-3 text-left font-medium text-slate-600">Actions</th>
@@ -319,13 +302,6 @@ export default function AdminProductsPage() {
                   </td>
                   <td className="px-3 py-3 font-medium whitespace-nowrap">
                     {formatPrice(product.basePrice)}
-                  </td>
-                  <td className="px-3 py-3">
-                    {product.isSameDayEligible ? (
-                      <Check className="h-4 w-4 text-emerald-600" />
-                    ) : (
-                      <Minus className="h-4 w-4 text-slate-300" />
-                    )}
                   </td>
                   <td className="px-3 py-3">
                     <button

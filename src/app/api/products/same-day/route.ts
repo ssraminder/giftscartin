@@ -45,10 +45,19 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Find products where isSameDayEligible = true, isActive = true
+    // Find products where at least one vendor_product has isSameDayEligible = true
     const whereClause: Record<string, unknown> = {
-      isSameDayEligible: true,
       isActive: true,
+      vendorProducts: {
+        some: {
+          isSameDayEligible: true,
+          isAvailable: true,
+          vendor: {
+            cityId,
+            status: 'APPROVED',
+          },
+        },
+      },
     }
 
     if (categorySlug) {
@@ -61,6 +70,7 @@ export async function GET(req: NextRequest) {
         category: { select: { id: true, name: true, slug: true } },
         vendorProducts: {
           where: {
+            isSameDayEligible: true,
             isAvailable: true,
             vendor: {
               cityId,

@@ -10,6 +10,7 @@ const updateSchema = z.object({
   preparationTime: z.number().int().min(0).optional(),
   dailyLimit: z.number().int().min(1).nullable().optional(),
   isAvailable: z.boolean().optional(),
+  isSameDayEligible: z.boolean().optional(),
 })
 
 async function getAdminUser() {
@@ -61,6 +62,7 @@ export async function PATCH(
     if (parsed.data.preparationTime !== undefined) data.preparationTime = parsed.data.preparationTime
     if (parsed.data.dailyLimit !== undefined) data.dailyLimit = parsed.data.dailyLimit
     if (parsed.data.isAvailable !== undefined) data.isAvailable = parsed.data.isAvailable
+    if (parsed.data.isSameDayEligible !== undefined) data.isSameDayEligible = parsed.data.isSameDayEligible
 
     const updated = await prisma.vendorProduct.update({
       where: { id: vpId },
@@ -76,6 +78,7 @@ export async function PATCH(
         preparationTime: updated.preparationTime,
         dailyLimit: updated.dailyLimit,
         isAvailable: updated.isAvailable,
+        isSameDayEligible: updated.isSameDayEligible,
       },
     })
   } catch (error) {

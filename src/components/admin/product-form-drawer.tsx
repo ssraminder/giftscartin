@@ -27,7 +27,6 @@ interface ProductListItem {
   slug: string
   basePrice: number
   isActive: boolean
-  isSameDayEligible: boolean
   images: string[]
   category: { id: string; name: string; slug: string }
 }
@@ -46,7 +45,6 @@ interface ProductFullData {
   weight: string | null
   isVeg: boolean
   isActive: boolean
-  isSameDayEligible: boolean
 }
 
 interface ProductFormDrawerProps {
@@ -87,7 +85,6 @@ export function ProductFormDrawer({
   const [shortDesc, setShortDesc] = useState("")
   const [weight, setWeight] = useState("")
   const [isVeg, setIsVeg] = useState(true)
-  const [isSameDayEligible, setIsSameDayEligible] = useState(false)
   const [isActive, setIsActive] = useState(true)
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([])
   const [tags, setTags] = useState<string[]>([])
@@ -108,7 +105,6 @@ export function ProductFormDrawer({
     setShortDesc(data.shortDesc || "")
     setWeight(data.weight || "")
     setIsVeg(data.isVeg)
-    setIsSameDayEligible(data.isSameDayEligible)
     setIsActive(data.isActive)
     setSelectedOccasions(data.occasion || [])
     setTags(data.tags || [])
@@ -126,7 +122,6 @@ export function ProductFormDrawer({
     setShortDesc("")
     setWeight("")
     setIsVeg(true)
-    setIsSameDayEligible(false)
     setIsActive(true)
     setSelectedOccasions([])
     setTags([])
@@ -154,7 +149,6 @@ export function ProductFormDrawer({
               setCategoryId(product.category.id)
               setBasePrice(String(product.basePrice))
               setIsActive(product.isActive)
-              setIsSameDayEligible(product.isSameDayEligible)
               setImages(product.images?.length > 0 ? product.images : [""])
             }
           })
@@ -166,7 +160,6 @@ export function ProductFormDrawer({
             setCategoryId(product.category.id)
             setBasePrice(String(product.basePrice))
             setIsActive(product.isActive)
-            setIsSameDayEligible(product.isSameDayEligible)
             setImages(product.images?.length > 0 ? product.images : [""])
           })
           .finally(() => setLoadingProduct(false))
@@ -258,7 +251,6 @@ export function ProductFormDrawer({
         shortDesc: shortDesc.trim() || null,
         weight: weight.trim() || null,
         isVeg,
-        isSameDayEligible,
         isActive,
         occasion: selectedOccasions,
         tags,
@@ -466,27 +458,6 @@ export function ProductFormDrawer({
               <span
                 className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${
                   isVeg ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Toggle — Same Day Eligible */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="product-sameday">Available for Same Day Delivery</Label>
-            <button
-              id="product-sameday"
-              type="button"
-              role="switch"
-              aria-checked={isSameDayEligible}
-              onClick={() => setIsSameDayEligible(!isSameDayEligible)}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                isSameDayEligible ? "bg-[#E91E63]" : "bg-slate-200"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform ${
-                  isSameDayEligible ? "translate-x-5" : "translate-x-0"
                 }`}
               />
             </button>
