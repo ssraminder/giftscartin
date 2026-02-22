@@ -136,6 +136,11 @@
   animation: marquee 25s linear infinite;
 }
 
+/* Leaflet map — loaded conditionally on vendor pages */
+.leaflet-container {
+  font-family: inherit;
+}
+
 /* Google Places Autocomplete (New API — PlaceAutocompleteElement) */
 gmp-place-autocomplete {
   width: 100%;
