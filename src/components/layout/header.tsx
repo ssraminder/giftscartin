@@ -30,7 +30,6 @@ import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
 import { CitySearch } from "@/components/location/city-search"
-import { AreaSearchInput, type AreaResult } from "@/components/layout/area-search-input"
 import { POPULAR_CITIES } from "@/lib/cities-data"
 import { MegaMenu, MobileMegaMenu, type MenuNode } from "@/components/layout/mega-menu"
 
@@ -65,7 +64,8 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
-  const { cityId, cityName, citySlug, areaName, isSelected, setCity } = useCity()
+  const { cityId, cityName, citySlug, areaName, pincode: cityPincode, isSelected, setCity, clearCity, setArea } = useCity()
+  const [headerPincode, setHeaderPincode] = useState(cityPincode || "")
   const { partner } = usePartner()
   const router = useRouter()
 
@@ -101,6 +101,12 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
       router.push(withRef(`/category/cakes?search=${encodeURIComponent(searchQuery.trim())}`))
       setMobileSearchOpen(false)
     }
+  }
+
+  function handlePincodeSubmit(val: string) {
+    if (val.length !== 6 || !cityId || !citySlug || !cityName) return
+    setArea({ name: "", pincode: val, isServiceable: true })
+    setCityDropdownOpen(false)
   }
 
   return (
@@ -256,58 +262,71 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
               {/* City dropdown */}
               {cityDropdownOpen && (
                 <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Change delivery location</p>
-                  <CitySearch
-                    onSelect={(selection) => {
-                      setCity(selection)
-                      setCityDropdownOpen(false)
-                    }}
-                    autoFocus
-                    placeholder="Search city or pincode..."
-                  />
-                  {/* Area search — show when city is already selected */}
-                  {isSelected && cityName && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <p className="text-xs text-gray-400 mb-2">Search area in {cityName}</p>
-                      <AreaSearchInput
-                        cityName={cityName}
-                        onAreaSelect={(area: AreaResult) => {
-                          if (area.pincode && cityId && citySlug) {
-                            setCity({
-                              cityId,
-                              cityName: cityName!,
-                              citySlug,
-                              pincode: area.pincode,
-                              areaName: area.displayName,
-                            })
-                          }
-                          setCityDropdownOpen(false)
+                  {!cityId ? (
+                    <>
+                      <p className="text-sm font-medium text-gray-700 mb-2">Select delivery city</p>
+                      <CitySearch
+                        onSelect={(selection) => {
+                          setCity(selection)
+                          setHeaderPincode("")
                         }}
-                        placeholder="Enter area, street or landmark"
+                        autoFocus
+                        placeholder="Search city or pincode..."
+                      />
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs text-gray-400 mb-2">Popular Cities</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {POPULAR_CITIES.filter(c => !c.isComingSoon).map((city) => (
+                            <button
+                              key={city.citySlug}
+                              onClick={() => {
+                                setCity({
+                                  cityId: city.cityId,
+                                  cityName: city.cityName,
+                                  citySlug: city.citySlug,
+                                })
+                                setHeaderPincode("")
+                              }}
+                              className="px-2.5 py-1 rounded-full border border-gray-200 text-xs font-medium text-gray-600 hover:border-[#E91E63] hover:text-[#E91E63] hover:bg-pink-50 transition-colors"
+                            >
+                              {city.cityName}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">{cityName}</span>
+                        <button
+                          onClick={() => {
+                            clearCity()
+                            setHeaderPincode("")
+                          }}
+                          className="text-xs text-pink-600 hover:underline"
+                        >
+                          Change city
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="Enter delivery pincode"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                        value={headerPincode}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '')
+                          setHeaderPincode(val)
+                          if (val.length === 6) {
+                            handlePincodeSubmit(val)
+                          }
+                        }}
+                        autoFocus
                       />
                     </div>
                   )}
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-2">Popular Cities</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {POPULAR_CITIES.filter(c => !c.isComingSoon).map((city) => (
-                        <button
-                          key={city.citySlug}
-                          onClick={() => {
-                            setCity({
-                              cityId: city.cityId,
-                              cityName: city.cityName,
-                              citySlug: city.citySlug,
-                            })
-                            setCityDropdownOpen(false)
-                          }}
-                          className="px-2.5 py-1 rounded-full border border-gray-200 text-xs font-medium text-gray-600 hover:border-[#E91E63] hover:text-[#E91E63] hover:bg-pink-50 transition-colors"
-                        >
-                          {city.cityName}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
                 </div>
               )}
             </div>

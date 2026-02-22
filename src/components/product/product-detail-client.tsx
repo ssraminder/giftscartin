@@ -7,7 +7,7 @@ import Link from "next/link"
 import {
   MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
   CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
-  MessageSquare, Loader2,
+  MessageSquare, Loader2, X, XCircle,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -33,8 +33,6 @@ import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import { usePartner } from "@/hooks/use-partner"
 import { useCity } from "@/hooks/use-city"
-import { AreaSearchInput } from "@/components/layout/area-search-input"
-import type { AreaResult } from "@/components/layout/area-search-input"
 import type {
   Product,
   ProductAttribute,
@@ -229,11 +227,14 @@ export default function ProductDetailClient({
   const [giftMessageOpen, setGiftMessageOpen] = useState(false)
   const [giftMessage, setGiftMessage] = useState("")
 
-  // Auto-check serviceability when city pincode is available
+  // Sync local pincode with city context on every change
   useEffect(() => {
-    if (cityPincode && !pincode) {
+    if (cityPincode) {
       setPincode(cityPincode)
       checkServiceability(cityPincode)
+    } else {
+      // City changed but no pincode — clear local state so the input shows
+      setPincode("")
     }
   }, [cityPincode]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -481,14 +482,6 @@ export default function ProductDetailClient({
     }
   }
 
-  const handleAreaSelect = (area: AreaResult) => {
-    if (area.pincode) {
-      setPincode(area.pincode)
-      setPincodeChecked(false)
-      checkServiceability(area.pincode)
-      setArea({ name: area.displayName, pincode: area.pincode, isServiceable: true })
-    }
-  }
 
   const categorySlug = product.category?.slug || ""
   const categoryName = product.category?.name || ""
@@ -628,52 +621,78 @@ export default function ProductDetailClient({
     </div>
   )
 
+  const serviceabilityStatus = pincodeChecked
+    ? (pincodeAvailable ? 'available' : 'unavailable')
+    : null
+
   const pincodeBlock = (
     <div className="mb-3">
-      {pincode ? (
-        /* Pincode is set (from city context or area search) — show inline result */
-        <div className="text-sm">
-          {pincodeChecking ? (
-            <p className="text-gray-500 flex items-center gap-1.5">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Checking delivery to {cityAreaName ? `${cityAreaName} (${pincode})` : pincode}...
-            </p>
-          ) : pincodeChecked ? (
-            <p className={`flex items-center gap-1.5 ${pincodeAvailable ? "text-green-600" : "text-red-500"}`}>
-              {pincodeAvailable ? (
-                <>
-                  <CheckCircle className="h-4 w-4" />
-                  Delivery available to {cityAreaName ? `${cityAreaName} (${pincode})` : pincode}
-                </>
-              ) : (
-                <>
-                  <MapPin className="h-4 w-4" />
-                  Delivery not available to {pincode}
-                </>
-              )}
-            </p>
-          ) : null}
-        </div>
-      ) : (
-        /* No pincode — show area search */
-        <div>
-          <p className="font-medium text-sm text-gray-700 mb-2 flex items-center gap-1.5">
+      <div className="space-y-1.5">
+        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+          <MapPin className="h-3.5 w-3.5 text-gray-400" />
+          Deliver to:
+        </label>
+        <div className="flex items-center border border-gray-300 rounded-lg focus-within:border-pink-500 focus-within:ring-1 focus-within:ring-pink-500 transition-colors overflow-hidden">
+          <div className="flex items-center pl-3 text-gray-400">
             <MapPin className="h-4 w-4" />
-            Deliver to:
-          </p>
-          <AreaSearchInput
-            cityName={cityName || ""}
-            onAreaSelect={handleAreaSelect}
-            placeholder="Search area, locality or pincode"
+          </div>
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={pincode}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, '')
+              setPincode(val)
+              if (val.length === 6) checkServiceability(val)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && pincode.length === 6) {
+                checkServiceability(pincode)
+              }
+            }}
+            placeholder={`Enter pincode in ${cityName || 'your city'}`}
+            className="flex-1 px-3 py-3 text-sm outline-none bg-transparent"
           />
-          {pincodeChecked && !pincodeAvailable && (
-            <p className="mt-2 text-sm text-red-500 flex items-center gap-1.5">
-              <MapPin className="h-4 w-4" />
-              Delivery not available to this area
-            </p>
+          {pincode.length === 6 && (
+            <button
+              onClick={() => checkServiceability(pincode)}
+              className="px-3 py-3 text-xs text-pink-600 font-medium hover:text-pink-700"
+            >
+              Check
+            </button>
+          )}
+          {pincode && (
+            <button
+              onClick={() => {
+                setPincode("")
+                setArea({ name: "", pincode: "", isServiceable: false })
+              }}
+              className="px-3 py-2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           )}
         </div>
-      )}
+        {pincodeChecking && (
+          <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Checking...
+          </p>
+        )}
+        {!pincodeChecking && serviceabilityStatus === 'available' && (
+          <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
+            <CheckCircle className="h-3 w-3" />
+            Delivery available{cityAreaName ? ` in ${cityAreaName}` : ''}
+          </p>
+        )}
+        {!pincodeChecking && serviceabilityStatus === 'unavailable' && (
+          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
+            <XCircle className="h-3 w-3" />
+            Sorry, we don&apos;t deliver to this pincode yet
+          </p>
+        )}
+      </div>
     </div>
   )
 

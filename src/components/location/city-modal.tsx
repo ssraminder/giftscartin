@@ -379,7 +379,7 @@ export function CityModal() {
                 onClick={handleSkipArea}
                 className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
               >
-                Skip &mdash; browse all products in {selectedCity.name}
+                Skip &mdash; I&apos;ll enter pincode on the product page
               </button>
             </div>
 
