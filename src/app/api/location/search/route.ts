@@ -37,29 +37,39 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // ── Text search: Google-first approach ──
+    // ── Text search: Google-first approach (FNP style) ──
     // Fire Google Places and DB search in parallel
     const [googleResults, dbResults] = await Promise.all([
       fetchGooglePlaces(q),
       searchByText(q),
     ])
 
-    // Merge: Google results first, then DB results that aren't duplicates
+    if (googleResults.length === 0 && dbResults.length === 0) {
+      console.warn(`[location/search] No results for "${q}" — Google: 0, DB: 0`)
+    }
+
+    // Merge: Google results first (locality-level), then DB results (area/city)
     const combined: LocationResult[] = [...googleResults]
 
     for (const dbr of dbResults) {
-      const isDuplicate = combined.some(
-        (gr) =>
-          gr.label.toLowerCase() === dbr.label.toLowerCase() ||
-          (dbr.pincode && gr.label.includes(dbr.pincode))
-      )
+      const dbrLabelLower = dbr.label.toLowerCase()
+      const isDuplicate = combined.some((gr) => {
+        const grLabelLower = gr.label.toLowerCase()
+        return (
+          grLabelLower === dbrLabelLower ||
+          (dbr.pincode && gr.label.includes(dbr.pincode)) ||
+          // Fuzzy: if Google label contains the DB area name or vice versa
+          (dbr.areaName && grLabelLower.includes(dbr.areaName.toLowerCase())) ||
+          (gr.areaName && dbrLabelLower.includes(gr.areaName.toLowerCase()))
+        )
+      })
       if (!isDuplicate) {
         combined.push(dbr)
       }
     }
 
     return NextResponse.json(
-      { success: true, data: { results: combined.slice(0, 8) } },
+      { success: true, data: { results: combined.slice(0, 10) } },
       { headers: CACHE_HEADERS }
     )
   } catch (err) {
@@ -248,49 +258,113 @@ async function searchByPincode(q: string, isExact: boolean): Promise<LocationRes
 
 /**
  * Search DB by text — used as supplement to Google results.
+ *
+ * Strategy:
+ * 1. Search for the full query in service_areas.name and altNames
+ * 2. For multi-word queries, also search for EACH word individually
+ *    (e.g. "Khalsa Mohalla" → search for "Khalsa" AND "Mohalla" separately)
+ * 3. Rank: exact full-query matches first, then per-word area matches, then cities
  */
 async function searchByText(q: string): Promise<LocationResult[]> {
   const results: LocationResult[] = []
   const qLower = q.toLowerCase()
 
-  const [areas, altNameAreas, cities] = await Promise.all([
+  // Split query into meaningful words (ignore very short words like "of", "in")
+  const words = q.split(/\s+/).filter(w => w.length >= 2)
+  const hasMultipleWords = words.length > 1
+
+  // Build per-word service_area queries for multi-word searches
+  const wordAreaQueries = hasMultipleWords
+    ? words.map(word =>
+        prisma.serviceArea.findMany({
+          where: {
+            name: { contains: word, mode: 'insensitive' },
+            isActive: true,
+          },
+          include: { city: true },
+          take: 4,
+          orderBy: { name: 'asc' },
+        })
+      )
+    : []
+
+  const [areas, altNameAreas, cities, ...wordAreaResults] = await Promise.all([
+    // Full-query match on name
     prisma.serviceArea.findMany({
       where: {
         name: { contains: q, mode: 'insensitive' },
         isActive: true,
       },
       include: { city: true },
-      take: 3,
+      take: 4,
       orderBy: { name: 'asc' },
     }),
+    // Full-query match on altNames
     prisma.serviceArea.findMany({
       where: {
-        altNames: { has: qLower },
+        OR: [
+          { altNames: { has: qLower } },
+          // Also check per-word altNames for multi-word queries
+          ...(hasMultipleWords
+            ? words.map(w => ({ altNames: { has: w.toLowerCase() } }))
+            : []),
+        ],
         isActive: true,
       },
       include: { city: true },
-      take: 2,
+      take: 3,
     }),
+    // City name + aliases
     prisma.city.findMany({
       where: {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { aliases: { has: qLower } },
+          // Also match per-word for multi-word queries (e.g. "Khalsa Mohalla Patiala")
+          ...(hasMultipleWords
+            ? words.map(w => ({ name: { contains: w, mode: 'insensitive' as const } }))
+            : []),
         ],
       },
-      take: 2,
+      take: 3,
       orderBy: { name: 'asc' },
     }),
+    ...wordAreaQueries,
   ])
 
+  // De-duplicate areas: full-query matches first, then per-word matches
   const seenAreaIds = new Set<string>()
-  const allAreas = [...areas, ...altNameAreas].filter(a => {
+
+  // Priority 1: full-query exact matches (name contains full query)
+  const fullMatchAreas = [...areas, ...altNameAreas].filter(a => {
     if (seenAreaIds.has(a.id)) return false
     seenAreaIds.add(a.id)
     return true
   })
 
-  for (const a of allAreas) {
+  // Priority 2: per-word matches (e.g. areas matching "Khalsa" or "Mohalla")
+  // Score by how many words match the area name
+  const wordMatchAreas: Array<{ area: typeof areas[0]; score: number }> = []
+  if (hasMultipleWords) {
+    const allWordAreas = wordAreaResults.flat()
+    for (const a of allWordAreas) {
+      if (seenAreaIds.has(a.id)) continue
+      seenAreaIds.add(a.id)
+      const nameLower = a.name.toLowerCase()
+      const score = words.filter(w => nameLower.includes(w.toLowerCase())).length
+      wordMatchAreas.push({ area: a, score })
+    }
+    // Sort by score descending (areas matching more words rank higher)
+    wordMatchAreas.sort((a, b) => b.score - a.score)
+  }
+
+  // Build area results
+  const allSortedAreas = [
+    ...fullMatchAreas,
+    ...wordMatchAreas.map(w => w.area),
+  ].slice(0, 5)
+
+  for (const a of allSortedAreas) {
     results.push({
       type: 'area',
       label: a.pincode
@@ -309,26 +383,37 @@ async function searchByText(q: string): Promise<LocationResult[]> {
     })
   }
 
+  // De-duplicate cities: skip if already covered by area results for that city
+  // For multi-word queries, only show city if the city name matches a word
+  // (avoid showing "Chandigarh" for "Khalsa Mohalla" just because DB returned it)
+  const seenCityIds = new Set(results.map(r => r.cityId))
   for (const c of cities) {
-    const alreadyHasCity = results.some(
-      (r) => r.type === 'city' && r.cityId === c.id
-    )
-    if (!alreadyHasCity) {
-      results.push({
-        type: 'city',
-        label: c.state ? `${c.name}, ${c.state}` : c.name,
-        cityId: c.id,
-        cityName: c.name,
-        citySlug: c.slug,
-        pincode: null,
-        areaName: null,
-        lat: Number(c.lat),
-        lng: Number(c.lng),
-        placeId: null,
-        isActive: c.isActive,
-        isComingSoon: c.isComingSoon,
-      })
+    if (seenCityIds.has(c.id)) continue
+    seenCityIds.add(c.id)
+
+    // For multi-word queries, only show a city if its name actually matches
+    // the full query or at least one word is a meaningful substring of the city name
+    if (hasMultipleWords) {
+      const cityNameLower = c.name.toLowerCase()
+      const fullMatch = cityNameLower.includes(qLower)
+      const wordMatch = words.some(w => cityNameLower.includes(w.toLowerCase()))
+      if (!fullMatch && !wordMatch) continue
     }
+
+    results.push({
+      type: 'city',
+      label: c.state ? `${c.name}, ${c.state}` : c.name,
+      cityId: c.id,
+      cityName: c.name,
+      citySlug: c.slug,
+      pincode: null,
+      areaName: null,
+      lat: Number(c.lat),
+      lng: Number(c.lng),
+      placeId: null,
+      isActive: c.isActive,
+      isComingSoon: c.isComingSoon,
+    })
   }
 
   return results
@@ -341,7 +426,10 @@ async function fetchGooglePlaces(query: string): Promise<LocationResult[]> {
   const apiKey =
     process.env.GOOGLE_PLACES_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
-  if (!apiKey) return []
+  if (!apiKey) {
+    console.warn('[location/search] Google Places API key not configured — locality search disabled')
+    return []
+  }
 
   try {
     const res = await fetch(
