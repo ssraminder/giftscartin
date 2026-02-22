@@ -660,7 +660,7 @@ export default function ProductDetailClient({
           <AreaSearchInput
             cityName={cityName || ""}
             onAreaSelect={handleAreaSelect}
-            placeholder="Search area or enter pincode"
+            placeholder="Search area, locality or pincode"
           />
           {pincodeChecked && !pincodeAvailable && (
             <p className="mt-2 text-sm text-red-500 flex items-center gap-1.5">
