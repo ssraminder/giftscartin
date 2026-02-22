@@ -5,21 +5,10 @@ import { prisma } from '@/lib/prisma'
 import ProductDetailClient from '@/components/product/product-detail-client'
 import ProductNotFound from './product-not-found'
 
-// Cache page for 1 hour, then regenerate on next request
+// ISR: generate on first request, cache for 1 hour, then regenerate in background.
+// No generateStaticParams — avoids build-time DB connection pool exhaustion
+// when Next.js tries to prerender all ~25 product pages concurrently.
 export const revalidate = 3600
-
-// Pre-build all active product pages at deploy time
-export async function generateStaticParams() {
-  try {
-    const products = await prisma.product.findMany({
-      where: { isActive: true },
-      select: { slug: true },
-    })
-    return products.map((p) => ({ slug: p.slug }))
-  } catch {
-    return [] // If DB unavailable at build time, skip static generation
-  }
-}
 
 export async function generateMetadata(
   { params }: { params: { slug: string } }
