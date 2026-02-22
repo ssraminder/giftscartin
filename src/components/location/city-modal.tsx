@@ -60,7 +60,7 @@ export function CityModal() {
             Where should we deliver?
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Select your city to see available products
+            Search by city, area, or pincode
           </p>
         </div>
 
