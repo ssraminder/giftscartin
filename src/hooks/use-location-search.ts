@@ -72,8 +72,15 @@ export function useLocationSearch(query: string): UseLocationSearchReturn {
       clearTimeout(debounceRef.current)
     }
 
+    // Abort any in-flight request so stale results don't overwrite
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+
     if (query.length >= 2) {
       setLoading(true)
+      setResults([]) // Clear stale results immediately on query change
       debounceRef.current = setTimeout(() => {
         fetchResults(query)
       }, 300)
