@@ -11,6 +11,52 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet'
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useCity } from '@/hooks/use-city'
+
+// -- Slot cutoff type for fast calendar ----------------------------------------
+
+interface SlotCutoff {
+  slotId:      string
+  name:        string
+  slug:        string
+  startTime:   string   // "09:00"
+  endTime:     string
+  cutoffHours: number
+  baseCharge:  number
+}
+
+function computeAvailableDates(
+  slots: SlotCutoff[],
+  daysAhead = 30
+): Set<string> {
+  const available = new Set<string>()
+  const now = new Date()
+
+  for (let i = 0; i < daysAhead; i++) {
+    const date = new Date()
+    date.setDate(now.getDate() + i)
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    const dateStr = `${y}-${m}-${d}`
+
+    const availableSlots = slots.filter((slot) => {
+      if (i === 0) {
+        // Same day: check cutoff hasn't passed
+        const [slotHour] = slot.startTime.split(':').map(Number)
+        const cutoffHour = slotHour - slot.cutoffHours
+        return now.getHours() < cutoffHour
+      }
+      return true
+    })
+
+    if (availableSlots.length > 0) {
+      available.add(dateStr)
+    }
+  }
+
+  return available
+}
 
 // -- Types -------------------------------------------------------------------
 
@@ -259,12 +305,8 @@ export function CalendarSection({
 
 // -- Date-Only Picker for Product Page ----------------------------------------
 
-export function DeliveryDatePicker({
-  productId,
-  cityId,
-  onDateSelect,
-  initialDate,
-}: DatePickerProps) {
+export function DeliveryDatePicker(props: DatePickerProps) {
+  const { cityId, onDateSelect, initialDate } = props
   const isMobile = useIsMobile()
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(initialDate ?? null)
@@ -278,22 +320,25 @@ export function DeliveryDatePicker({
   const [loadingDates, setLoadingDates] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
 
-  // Fetch available dates only when calendar is opened
+  // Fetch city slot cutoffs (fast endpoint) and compute available dates client-side
+  const { cityId: contextCityId } = useCity()
+  const effectiveCityId = cityId || contextCityId
+
   useEffect(() => {
     if (!calendarOpen) return
-    if (!productId || !cityId) return
-    // Skip if we already have dates loaded for this product/city
+    if (!effectiveCityId) return
+    // Skip if we already have dates loaded
     if (availableDatesSet.size > 0) return
 
     setLoadingDates(true)
-    const params = new URLSearchParams({ productId, cityId, days: '15' })
     const controller = new AbortController()
 
-    fetch(`/api/delivery/available-dates?${params}`, { signal: controller.signal })
+    fetch(`/api/delivery/city-slots?cityId=${effectiveCityId}`, { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        if (data.success && data.data?.availableDates) {
-          setAvailableDatesSet(new Set(data.data.availableDates as string[]))
+        if (data.success && data.data?.slots) {
+          const dates = computeAvailableDates(data.data.slots as SlotCutoff[])
+          setAvailableDatesSet(dates)
         }
       })
       .catch((err) => {
@@ -302,7 +347,7 @@ export function DeliveryDatePicker({
       .finally(() => setLoadingDates(false))
 
     return () => controller.abort()
-  }, [calendarOpen, productId, cityId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [calendarOpen, effectiveCityId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDateSelect = useCallback((date: Date) => {
     setSelectedDate(date)

@@ -29,6 +29,40 @@ import {
   formatDateDisplay,
 } from "@/components/product/delivery-slot-picker"
 
+// ─── City Slots Prefetch Cache ───
+
+interface CitySlotCutoff {
+  slotId:      string
+  name:        string
+  slug:        string
+  startTime:   string
+  endTime:     string
+  cutoffHours: number
+  baseCharge:  number
+}
+
+const slotsCache = new Map<string, {
+  data: CitySlotCutoff[]
+  fetchedAt: number
+}>()
+
+async function prefetchCitySlots(cid: string): Promise<CitySlotCutoff[]> {
+  const cached = slotsCache.get(cid)
+  if (cached && Date.now() - cached.fetchedAt < 5 * 60 * 1000) {
+    return cached.data
+  }
+
+  try {
+    const res  = await fetch(`/api/delivery/city-slots?cityId=${cid}`)
+    const data = await res.json()
+    if (data.success) {
+      slotsCache.set(cid, { data: data.data.slots, fetchedAt: Date.now() })
+      return data.data.slots
+    }
+  } catch { /* silent fail */ }
+  return []
+}
+
 // ─── Slot API Response Types ───
 
 interface FixedWindow {
@@ -252,6 +286,14 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // intentionally only on mount
 
+  // ─── Prefetch delivery slots silently as soon as city is known ───
+
+  useEffect(() => {
+    if (cityId) {
+      prefetchCitySlots(cityId).catch(() => {})
+    }
+  }, [cityId])
+
   // ─── Fetch slots when Step 2 is entered and date is set ───
 
   const fetchSlots = useCallback(async (dateStr: string) => {
@@ -271,25 +313,42 @@ export default function CheckoutPage() {
     }
   }, [cityId])
 
-  // Fetch available dates when "Change Date" is opened
+  // Fetch available dates when "Change Date" is opened — uses fast city-slots + client-side computation
   const fetchAvailableDates = useCallback(async () => {
-    const firstProductId = items.length > 0 ? items[0].productId : null
-    if (!firstProductId || !cityId) return
+    if (!cityId) return
 
     setLoadingDates(true)
     try {
-      const params = new URLSearchParams({ productId: firstProductId, cityId, days: '15' })
-      const res = await fetch(`/api/delivery/available-dates?${params}`)
-      const json = await res.json()
-      if (json.success && json.data?.availableDates) {
-        setAvailableDatesSet(new Set(json.data.availableDates as string[]))
+      const slots = await prefetchCitySlots(cityId)
+      if (slots.length > 0) {
+        const now = new Date()
+        const available = new Set<string>()
+        for (let i = 0; i < 30; i++) {
+          const date = new Date()
+          date.setDate(now.getDate() + i)
+          const y = date.getFullYear()
+          const m = String(date.getMonth() + 1).padStart(2, '0')
+          const d = String(date.getDate()).padStart(2, '0')
+          const dateStr = `${y}-${m}-${d}`
+
+          const hasSlot = slots.some((slot) => {
+            if (i === 0) {
+              const [slotHour] = slot.startTime.split(':').map(Number)
+              const cutoffHour = slotHour - slot.cutoffHours
+              return now.getHours() < cutoffHour
+            }
+            return true
+          })
+          if (hasSlot) available.add(dateStr)
+        }
+        setAvailableDatesSet(available)
       }
     } catch {
       setAvailableDatesSet(new Set())
     } finally {
       setLoadingDates(false)
     }
-  }, [items, cityId])
+  }, [cityId])
 
   // Load slots when entering Step 2
   useEffect(() => {

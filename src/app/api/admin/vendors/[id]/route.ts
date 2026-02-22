@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-options'
 import { prisma } from '@/lib/prisma'
 import { isAdminRole } from '@/lib/roles'
+import { recalculateCitySlotCutoff } from '@/lib/recalculate-city-slots'
 import { z } from 'zod/v4'
 
 const updateVendorSchema = z.object({
@@ -162,6 +163,11 @@ export async function PATCH(
       },
     })
 
+    // Recalculate city slot cutoffs when vendor status changes
+    if (data.status) {
+      await recalculateCitySlotCutoff(updated.cityId)
+    }
+
     // Log the action
     await prisma.auditLog.create({
       data: {
@@ -288,6 +294,17 @@ export async function PUT(
             },
           })
         }
+      }
+    }
+
+    // Recalculate city slot cutoffs when vendor status, slots, or city changes
+    const needsRecalc = data.status || data.cityId
+    const targetCityId = data.cityId || vendor.cityId
+    if (needsRecalc) {
+      await recalculateCitySlotCutoff(targetCityId)
+      // If city changed, also recalculate the old city
+      if (data.cityId && data.cityId !== vendor.cityId) {
+        await recalculateCitySlotCutoff(vendor.cityId)
       }
     }
 
