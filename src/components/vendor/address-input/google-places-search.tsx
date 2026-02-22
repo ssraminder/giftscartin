@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Search, MapPin, Loader2 } from 'lucide-react'
+import { MapPin, Loader2 } from 'lucide-react'
 import { parseGoogleAddressComponents, reverseGeocode } from '@/lib/nominatim'
 import type { VendorAddressResult } from './types'
 
@@ -11,121 +11,152 @@ interface Props {
 }
 
 export function GooglePlacesSearch({ onSelect, onSwitchToMap }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const elementRef = useRef<HTMLElement | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [inputValue, setInputValue] = useState('')
-  const [googleAvailable, setGoogleAvailable] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check if Google Places is loaded
-    if (typeof window !== 'undefined' && window.google?.maps?.places) {
-      setGoogleAvailable(true)
-      initAutocomplete()
-    } else {
-      // Wait for it to load
-      const checkInterval = setInterval(() => {
-        if (window.google?.maps?.places) {
-          setGoogleAvailable(true)
-          initAutocomplete()
-          clearInterval(checkInterval)
+    let attempts = 0
+    const maxAttempts = 10
+
+    const tryInit = () => {
+      attempts++
+      // Check for the NEW Places API (PlaceAutocompleteElement)
+      if (
+        typeof window !== 'undefined' &&
+        window.google?.maps?.places?.PlaceAutocompleteElement
+      ) {
+        initElement()
+        return
+      }
+      if (attempts < maxAttempts) {
+        setTimeout(tryInit, 500)
+      }
+      // If Google never loads, map picker is the fallback
+    }
+
+    const container = containerRef.current
+
+    tryInit()
+
+    return () => {
+      // Cleanup: remove the element if component unmounts
+      if (elementRef.current && container) {
+        try {
+          container.removeChild(elementRef.current)
+        } catch {
+          // Element may already be removed
         }
-      }, 500)
-      // After 5 seconds, give up -- user can use map
-      const timeout = setTimeout(() => {
-        clearInterval(checkInterval)
-      }, 5000)
-      return () => {
-        clearInterval(checkInterval)
-        clearTimeout(timeout)
+        elementRef.current = null
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function initAutocomplete() {
-    if (!inputRef.current || autocompleteRef.current) return
+  function initElement() {
+    if (!containerRef.current || elementRef.current) return
 
-    const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+    // Create PlaceAutocompleteElement (new Places API web component)
+    const placeAutocomplete = new google.maps.places.PlaceAutocompleteElement({
       componentRestrictions: { country: 'IN' },
       types: ['establishment', 'geocode'],
-      fields: ['formatted_address', 'address_components', 'geometry', 'name'],
     })
 
-    autocomplete.addListener('place_changed', async () => {
-      const place = autocomplete.getPlace()
-      if (!place.geometry?.location) return
+    // Style the web component to match site design
+    placeAutocomplete.style.width = '100%'
+    placeAutocomplete.setAttribute('placeholder', 'Search your shop name or address...')
 
-      setIsLoading(true)
+    // Listen for place selection
+    placeAutocomplete.addEventListener(
+      'gmp-placeselect',
+      async (event: Event) => {
+        const placeSelectEvent = event as CustomEvent
+        const place = placeSelectEvent.detail?.place as google.maps.places.Place
 
-      const lat = place.geometry.location.lat()
-      const lng = place.geometry.location.lng()
+        if (!place) return
 
-      let pincode = ''
-      let city = ''
-      let state = ''
+        setIsLoading(true)
+        setError(null)
 
-      if (place.address_components) {
-        const parsed = parseGoogleAddressComponents(place.address_components)
-        pincode = parsed.pincode
-        city = parsed.city
-        state = parsed.state
-      }
+        try {
+          // Fetch full details
+          await place.fetchFields({
+            fields: ['displayName', 'formattedAddress', 'addressComponents', 'location'],
+          })
 
-      // If Google didn't give us a pincode, use Nominatim
-      if (!pincode) {
-        const nominatim = await reverseGeocode(lat, lng)
-        if (nominatim) {
-          pincode = nominatim.pincode
-          if (!city) city = nominatim.city
-          if (!state) state = nominatim.state
+          const lat = place.location?.lat() ?? 0
+          const lng = place.location?.lng() ?? 0
+
+          let pincode = ''
+          let city = ''
+          let state = ''
+
+          if (place.addressComponents) {
+            const parsed = parseGoogleAddressComponents(
+              place.addressComponents as unknown as google.maps.GeocoderAddressComponent[]
+            )
+            pincode = parsed.pincode
+            city = parsed.city
+            state = parsed.state
+          }
+
+          // Fallback to Nominatim if Google didn't return pincode
+          if (!pincode && lat && lng) {
+            const nominatim = await reverseGeocode(lat, lng)
+            if (nominatim) {
+              pincode = nominatim.pincode
+              if (!city) city = nominatim.city
+              if (!state) state = nominatim.state
+            }
+          }
+
+          onSelect({
+            address: place.formattedAddress || place.displayName || '',
+            details: '',
+            lat,
+            lng,
+            pincode,
+            city,
+            state,
+            source: 'google',
+          })
+        } catch (err) {
+          console.error('Place fetch error:', err)
+          setError('Could not fetch address details. Please try the map picker.')
+        } finally {
+          setIsLoading(false)
         }
       }
+    )
 
-      setIsLoading(false)
-
-      onSelect({
-        address: place.formatted_address || place.name || '',
-        details: '',
-        lat,
-        lng,
-        pincode,
-        city,
-        state,
-        source: 'google',
-      })
-    })
-
-    autocompleteRef.current = autocomplete
+    containerRef.current.appendChild(placeAutocomplete)
+    elementRef.current = placeAutocomplete
   }
 
   return (
     <div className="space-y-3">
+      {/* Container for PlaceAutocompleteElement web component */}
       <div className="relative">
-        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
-          ) : (
-            <Search className="h-4 w-4 text-gray-400" />
-          )}
-        </div>
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder={
-            googleAvailable
-              ? 'Search your shop name or address...'
-              : 'Type your shop address...'
-          }
-          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg
-            text-sm focus:outline-none focus:border-pink-500
-            focus:ring-1 focus:ring-pink-500 transition-colors
-            placeholder:text-gray-400"
+        <div
+          ref={containerRef}
+          className="w-full [&>*]:w-full [&>*]:border [&>*]:border-gray-300
+            [&>*]:rounded-lg [&>*]:text-sm [&>*]:px-3 [&>*]:py-3
+            [&>*:focus]:border-pink-500 [&>*:focus]:ring-1
+            [&>*:focus]:ring-pink-500 [&>*]:outline-none"
         />
+        {isLoading && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+          </div>
+        )}
       </div>
 
+      {error && (
+        <p className="text-xs text-red-500">{error}</p>
+      )}
+
+      {/* Map fallback link */}
       <button
         type="button"
         onClick={onSwitchToMap}
