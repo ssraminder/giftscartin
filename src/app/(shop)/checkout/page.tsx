@@ -343,7 +343,7 @@ export default function CheckoutPage() {
 
     setLoadingDates(true)
     try {
-      const params = new URLSearchParams({ productId: firstProductId, cityId, months: '2' })
+      const params = new URLSearchParams({ productId: firstProductId, cityId, days: '15' })
       const res = await fetch(`/api/delivery/available-dates?${params}`)
       const json = await res.json()
       if (json.success && json.data?.availableDates) {

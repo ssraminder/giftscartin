@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nowIST, toISTDateString, parseLocalDate } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,12 +34,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-    const currentHourIST = nowIST.getHours()
-    const currentMinuteIST = nowIST.getMinutes()
-    const todayIST = nowIST.toISOString().split('T')[0]
+    const istNow = nowIST()
+    const currentHourIST = istNow.getHours()
+    const currentMinuteIST = istNow.getMinutes()
+    const todayIST = toISTDateString(new Date())
     const isToday = dateStr === todayIST
-    const deliveryDate = new Date(dateStr)
+    const deliveryDate = parseLocalDate(dateStr)
     const dayOfWeek = deliveryDate.getDay()
 
     // 1. Get city delivery configs (which slots are enabled)
@@ -89,6 +90,8 @@ export async function GET(req: NextRequest) {
       : undefined
 
     // 4. Get vendors in cityId with this product
+    //    Don't require isOnline (that's for real-time order acceptance, not slot visibility).
+    //    Instead filter out vendors currently on vacation.
     const vendorProducts = await prisma.vendorProduct.findMany({
       where: {
         productId,
@@ -96,6 +99,10 @@ export async function GET(req: NextRequest) {
         vendor: {
           cityId,
           status: 'APPROVED',
+          OR: [
+            { vacationEnd: null },
+            { vacationEnd: { lt: new Date() } },
+          ],
         },
       },
       include: {
@@ -133,26 +140,33 @@ export async function GET(req: NextRequest) {
       const holidayOverride = holidayOverrides.get(slot.slug)
       if (holidayOverride?.blocked) return null
 
-      // Check if at least one vendor supports this slot and is open today
+      // Check if at least one vendor supports this slot and is open today.
+      // If vendor has no VendorSlot records at all, treat all slots as enabled
+      // (vendor hasn't customized slot preferences — default is all enabled).
       const qualifyingVendors = vendorProducts.filter(vp => {
         const vendor = vp.vendor
-        // Vendor has this slot enabled
-        const vendorSlot = vendor.slots.find(vs => vs.slotId === slot.id)
-        if (!vendorSlot?.isEnabled) return false
+        // Check vendor slot: if vendor has slot records, the specific slot must be enabled.
+        // If vendor has NO slot records at all, assume all slots enabled.
+        if (vendor.slots.length > 0) {
+          const vendorSlot = vendor.slots.find(vs => vs.slotId === slot.id)
+          if (vendorSlot && !vendorSlot.isEnabled) return false
+          // If vendor has some slot records but not this one, treat as enabled (not explicitly disabled)
+        }
         // Vendor is open on this day
         const wh = vendor.workingHours.find(w => w.dayOfWeek === dayOfWeek)
-        if (!wh || wh.isClosed) return false
+        // If no working hours defined, assume vendor is open (hasn't configured schedule)
+        if (wh && wh.isClosed) return false
         return true
       })
 
-      // Check capacity
+      // Check capacity — no capacity record means default capacity (not full)
       let isFull = false
       if (qualifyingVendors.length > 0) {
-        // Check if ALL qualifying vendors are at capacity
         const allFull = qualifyingVendors.every(vp => {
           const cap = vp.vendor.capacity.find(c => c.slotId === slot.id)
-          if (!cap) return false // No capacity record = unlimited
-          return cap.bookedOrders >= cap.maxOrders
+          if (!cap) return false // No capacity record = default available (not full)
+          const maxOrders = cap.maxOrders ?? 10
+          return cap.bookedOrders >= maxOrders
         })
         if (allFull) isFull = true
       }
@@ -234,13 +248,14 @@ export async function GET(req: NextRequest) {
             windowAvailable = false
           }
 
-          // Check capacity per window
+          // Check capacity per window — no record = default available
           let windowFull = false
           if (qualifyingVendors.length > 0) {
             const allFullForWindow = qualifyingVendors.every(vp => {
               const cap = vp.vendor.capacity.find(c => c.slotId === slot.id)
-              if (!cap) return false
-              return cap.bookedOrders >= cap.maxOrders
+              if (!cap) return false // No capacity record = available
+              const maxOrders = cap.maxOrders ?? 10
+              return cap.bookedOrders >= maxOrders
             })
             if (allFullForWindow) windowFull = true
           }

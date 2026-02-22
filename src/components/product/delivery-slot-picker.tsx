@@ -139,7 +139,7 @@ export function CalendarSection({
 
   const canGoPrev = !(year === todayDate.getFullYear() && month === todayDate.getMonth())
   const maxMonth = new Date(todayDate)
-  maxMonth.setMonth(maxMonth.getMonth() + 2)
+  maxMonth.setMonth(maxMonth.getMonth() + 1)
   const canGoNext = year < maxMonth.getFullYear() || (year === maxMonth.getFullYear() && month < maxMonth.getMonth())
 
   const monthLabel = new Date(year, month).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
@@ -286,7 +286,7 @@ export function DeliveryDatePicker({
     if (availableDatesSet.size > 0) return
 
     setLoadingDates(true)
-    const params = new URLSearchParams({ productId, cityId, months: '2' })
+    const params = new URLSearchParams({ productId, cityId, days: '15' })
     const controller = new AbortController()
 
     fetch(`/api/delivery/available-dates?${params}`, { signal: controller.signal })
