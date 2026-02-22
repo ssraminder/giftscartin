@@ -29,6 +29,7 @@ export interface CityContextValue {
   isServiceable: boolean | null  // null = not checked yet
   isSelected: boolean
   isHydrating: boolean  // true until localStorage has been read
+  /** @deprecated No longer used — site is browsable without city selection */
   shouldShowCityModal: boolean
   setCity: (city: CitySelection) => void
   setArea: (area: { name: string; pincode: string; isServiceable: boolean }) => void
@@ -151,10 +152,8 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
 
   // Don't render until loaded to prevent hydration mismatch
   const isSelected = loaded && selection !== null
-  const shouldShowCityModal =
-    !isSelected &&
-    loaded &&
-    !partner?.defaultCityId
+  // No longer block the site — location is optional until product page / checkout
+  const shouldShowCityModal = false
 
   const contextValue: CityContextValue = {
     cityId: selection?.cityId ?? null,

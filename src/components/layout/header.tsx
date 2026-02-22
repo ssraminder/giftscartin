@@ -9,7 +9,6 @@ import {
   ChevronDown,
   Gift,
   LogOut,
-  MapPin,
   Package,
   Search,
   ShoppingCart,
@@ -31,7 +30,6 @@ import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
 import { LocationSearch } from "@/components/location/location-search"
 import type { ResolvedLocation } from "@/components/location/location-search"
-import { POPULAR_CITIES } from "@/lib/cities-data"
 import { MegaMenu, MobileMegaMenu, type MenuNode } from "@/components/layout/mega-menu"
 
 const INTERNAL_HOSTS_HEADER = [
@@ -61,12 +59,11 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
-  const cityDropdownRef = useRef<HTMLDivElement>(null)
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false)
+  const locationDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
-  const { cityId, cityName, areaName, pincode: cityPincode, isSelected, setCity, clearCity, setArea } = useCity()
-  const [headerPincode, setHeaderPincode] = useState(cityPincode || "")
+  const { cityName, areaName, isSelected, setCity, clearCity } = useCity()
   const { partner } = usePartner()
   const router = useRouter()
 
@@ -85,11 +82,11 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
     setMounted(true)
   }, [])
 
-  // Close city dropdown on outside click
+  // Close location dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (cityDropdownRef.current && !cityDropdownRef.current.contains(e.target as Node)) {
-        setCityDropdownOpen(false)
+      if (locationDropdownRef.current && !locationDropdownRef.current.contains(e.target as Node)) {
+        setLocationDropdownOpen(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -103,6 +100,25 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
       setMobileSearchOpen(false)
     }
   }
+
+  function handleLocationSelect(location: ResolvedLocation) {
+    setCity({
+      cityId: location.cityId || '',
+      cityName: location.cityName || location.areaName || '',
+      citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
+      pincode: location.pincode || undefined,
+      areaName: location.areaName || undefined,
+      lat: location.lat || undefined,
+      lng: location.lng || undefined,
+      source: location.type,
+    })
+    setLocationDropdownOpen(false)
+  }
+
+  // Display text for location
+  const locationDisplayText = isSelected
+    ? (areaName || cityName || 'Location set')
+    : null
 
   return (
     <header className="w-full">
@@ -207,8 +223,58 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
             )}
           </Link>
 
-          {/* Search bar — center 50% on desktop */}
-          <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-xl mx-4 md:w-1/2">
+          {/* Location selector — FNP style */}
+          <div ref={locationDropdownRef} className="relative hidden sm:block">
+            <button
+              onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
+              className="flex items-center gap-1.5 text-sm hover:text-[#E91E63] transition-colors"
+            >
+              {/* India flag */}
+              <span className="text-base leading-none">{"\u{1F1EE}\u{1F1F3}"}</span>
+              <div className="flex flex-col items-start">
+                <span className="text-[10px] text-gray-400 leading-none">Where to deliver?</span>
+                {locationDisplayText ? (
+                  <span className="text-xs font-semibold text-gray-800 max-w-[140px] truncate leading-tight">
+                    {locationDisplayText}
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold text-red-500 leading-tight">
+                    Location missing
+                  </span>
+                )}
+              </div>
+              <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
+            </button>
+
+            {/* Location dropdown */}
+            {locationDropdownOpen && (
+              <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {isSelected ? `Delivering to ${cityName || 'your area'}` : 'Where should we deliver?'}
+                  </p>
+                  {isSelected && (
+                    <button
+                      onClick={() => {
+                        clearCity()
+                      }}
+                      className="text-xs text-pink-600 hover:underline"
+                    >
+                      Change
+                    </button>
+                  )}
+                </div>
+                <LocationSearch
+                  onSelect={handleLocationSelect}
+                  autoFocus
+                  compact
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Search bar — center on desktop */}
+          <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-xl mx-4">
             <div className="relative w-full">
               <input
                 type="text"
@@ -226,7 +292,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
             </div>
           </form>
 
-          {/* Right actions — 25% on desktop */}
+          {/* Right actions */}
           <div className="flex items-center gap-2 ml-auto md:w-1/4 md:justify-end">
             {/* Mobile search toggle */}
             <button
@@ -237,116 +303,46 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
               {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
             </button>
 
-            {/* City selector pill */}
-            <div ref={cityDropdownRef} className="relative">
-              <button
-                onClick={() => setCityDropdownOpen(!cityDropdownOpen)}
-                className={`flex items-center gap-1 text-sm transition-colors hover:text-[#E91E63] rounded-full border px-2.5 py-1.5 ${
-                  isSelected
-                    ? "border-gray-200 bg-white"
-                    : "border-[#E91E63]/30 bg-pink-50"
-                }`}
-              >
-                <MapPin className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-[#E91E63]' : 'text-[#E91E63] animate-pulse'}`} />
-                <span className="truncate max-w-[80px] sm:max-w-[120px] font-medium text-xs sm:text-sm">
-                  {isSelected ? (areaName || cityName) : "Select City"}
+            {/* Mobile location button — FNP style */}
+            <button
+              onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
+              className="sm:hidden flex items-center gap-1 text-sm"
+            >
+              <span className="text-base leading-none">{"\u{1F1EE}\u{1F1F3}"}</span>
+              {locationDisplayText ? (
+                <span className="text-xs font-semibold text-gray-800 max-w-[70px] truncate">
+                  {locationDisplayText}
                 </span>
-                <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
-              </button>
+              ) : (
+                <span className="text-xs font-semibold text-red-500">
+                  Location missing
+                </span>
+              )}
+              <ChevronDown className="h-3 w-3 text-gray-400" />
+            </button>
 
-              {/* City dropdown */}
-              {cityDropdownOpen && (
-                <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-4">
-                  {!cityId ? (
-                    <>
-                      <p className="text-sm font-medium text-gray-700 mb-2">Select delivery city</p>
-                      <LocationSearch
-                        onSelect={(location: ResolvedLocation) => {
-                          setCity({
-                            cityId: location.cityId || '',
-                            cityName: location.cityName || location.areaName || '',
-                            citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-                            pincode: location.pincode || undefined,
-                            areaName: location.areaName || undefined,
-                            lat: location.lat || undefined,
-                            lng: location.lng || undefined,
-                            source: location.type,
-                          })
-                          setHeaderPincode("")
-                          setCityDropdownOpen(false)
-                        }}
-                        autoFocus
-                        placeholder="Enter city, area or pincode"
-                      />
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs text-gray-400 mb-2">Popular Cities</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {POPULAR_CITIES.filter(c => !c.isComingSoon).map((city) => (
-                            <button
-                              key={city.citySlug}
-                              onClick={() => {
-                                setCity({
-                                  cityId: city.cityId,
-                                  cityName: city.cityName,
-                                  citySlug: city.citySlug,
-                                })
-                                setHeaderPincode("")
-                                setCityDropdownOpen(false)
-                              }}
-                              className="px-2.5 py-1 rounded-full border border-gray-200 text-xs font-medium text-gray-600 hover:border-[#E91E63] hover:text-[#E91E63] hover:bg-pink-50 transition-colors"
-                            >
-                              {city.cityName}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">{cityName}</span>
-                        <button
-                          onClick={() => {
-                            clearCity()
-                            setHeaderPincode("")
-                          }}
-                          className="text-xs text-pink-600 hover:underline"
-                        >
-                          Change city
-                        </button>
-                      </div>
-                      <LocationSearch
-                        onSelect={(location: ResolvedLocation) => {
-                          if (location.cityId) {
-                            setCity({
-                              cityId: location.cityId,
-                              cityName: location.cityName || '',
-                              citySlug: location.citySlug || '',
-                              pincode: location.pincode || undefined,
-                              areaName: location.areaName || undefined,
-                              lat: location.lat || undefined,
-                              lng: location.lng || undefined,
-                              source: location.type,
-                            })
-                          } else {
-                            setArea({
-                              name: location.areaName || '',
-                              pincode: location.pincode || '',
-                              isServiceable: location.isServiceable || false,
-                            })
-                          }
-                          setHeaderPincode("")
-                          setCityDropdownOpen(false)
-                        }}
-                        autoFocus
-                        placeholder="Enter area or pincode"
-                        defaultValue={headerPincode}
-                      />
-                    </div>
+            {/* Mobile location dropdown (below header) */}
+            {locationDropdownOpen && (
+              <div className="sm:hidden fixed inset-x-0 top-[56px] bg-white border-b border-gray-200 shadow-lg z-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-800">
+                    {isSelected ? `Delivering to ${cityName || 'your area'}` : 'Where should we deliver?'}
+                  </p>
+                  {isSelected && (
+                    <button
+                      onClick={() => clearCity()}
+                      className="text-xs text-pink-600 hover:underline"
+                    >
+                      Change
+                    </button>
                   )}
                 </div>
-              )}
-            </div>
+                <LocationSearch
+                  onSelect={handleLocationSelect}
+                  autoFocus
+                />
+              </div>
+            )}
 
             {/* Cart icon */}
             <Link

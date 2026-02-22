@@ -1,21 +1,38 @@
 "use client"
 
 import { useState } from "react"
-import { Gift, MapPin } from "lucide-react"
+import { Gift, X } from "lucide-react"
 import { useCity } from "@/hooks/use-city"
 import { LocationSearch } from "./location-search"
 import type { ResolvedLocation } from "./location-search"
-import { POPULAR_CITIES } from "@/lib/cities-data"
 import type { CitySelection } from "@/components/providers/city-provider"
 
-export function CityModal() {
+/**
+ * CityModal — Dismissible bottom sheet (FNP style).
+ *
+ * No longer blocks the site. Shows as an overlay that can be closed.
+ * Used when explicitly triggered (e.g. from a "Set location" button).
+ */
+interface CityModalProps {
+  onClose?: () => void
+}
+
+export function CityModal({ onClose }: CityModalProps) {
   const { setCity } = useCity()
   const [animateIn, setAnimateIn] = useState(true)
+
+  function dismiss() {
+    setAnimateIn(false)
+    setTimeout(() => {
+      onClose?.()
+    }, 150)
+  }
 
   function finishSelection(selection: CitySelection) {
     setAnimateIn(false)
     setTimeout(() => {
       setCity(selection)
+      onClose?.()
     }, 150)
   }
 
@@ -32,18 +49,13 @@ export function CityModal() {
     })
   }
 
-  function handleCityChipClick(city: typeof POPULAR_CITIES[number]) {
-    finishSelection({
-      cityId: city.cityId,
-      cityName: city.cityName,
-      citySlug: city.citySlug,
-    })
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      {/* Backdrop — clickable to dismiss */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={dismiss}
+      />
 
       {/* Modal Panel */}
       <div
@@ -53,6 +65,15 @@ export function CityModal() {
             : "translate-y-4 opacity-0"
         }`}
       >
+        {/* Close button */}
+        <button
+          onClick={dismiss}
+          className="absolute top-4 right-4 p-1 rounded-full hover:bg-gray-100 transition-colors z-10"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5 text-gray-400" />
+        </button>
+
         {/* Header */}
         <div className="px-6 pt-8 pb-4 text-center">
           <div className="flex justify-center mb-4">
@@ -67,35 +88,28 @@ export function CityModal() {
             </div>
           </div>
           <h2 className="text-xl font-bold text-gray-900">
-            Where should we deliver?
+            Let&apos;s Personalize Your Experience!
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Search by city, area, or pincode
+            Enter receiver&apos;s pincode, location, or area
           </p>
+        </div>
+
+        {/* Country indicator */}
+        <div className="px-6 pb-3">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+            <span className="text-lg">{"\u{1F1EE}\u{1F1F3}"}</span>
+            <span className="text-sm font-medium text-gray-700">India</span>
+          </div>
         </div>
 
         {/* Search */}
-        <div className="px-6 pb-4">
-          <LocationSearch onSelect={handleLocationSelect} autoFocus placeholder="Enter city, area or pincode" />
-        </div>
-
-        {/* Popular Cities */}
         <div className="px-6 pb-6">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-            Popular Cities
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {POPULAR_CITIES.map((city) => (
-              <button
-                key={city.citySlug}
-                onClick={() => handleCityChipClick(city)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-all hover:border-[#E91E63] hover:bg-pink-50 hover:text-[#E91E63] active:scale-95"
-              >
-                <MapPin className="h-3.5 w-3.5" />
-                {city.cityName}
-              </button>
-            ))}
-          </div>
+          <LocationSearch
+            onSelect={handleLocationSelect}
+            autoFocus
+            placeholder="Enter receiver's pincode, location, area"
+          />
         </div>
 
         <div className="h-safe-area-inset-bottom sm:hidden" />
