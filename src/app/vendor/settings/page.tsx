@@ -42,6 +42,7 @@ interface VendorSettings {
   bankAccountNo: string | null
   bankIfsc: string | null
   bankName: string | null
+  deliveryRadiusKm: number
   city: { id: string; name: string; slug: string }
   workingHours: {
     id: string
@@ -90,6 +91,7 @@ export default function VendorSettingsPage() {
     bankAccountNo: "",
     bankIfsc: "",
     bankName: "",
+    deliveryRadiusKm: "10",
   })
 
   const fetchSettings = async () => {
@@ -120,6 +122,7 @@ export default function VendorSettingsPage() {
           bankAccountNo: json.data.bankAccountNo || "",
           bankIfsc: json.data.bankIfsc || "",
           bankName: json.data.bankName || "",
+          deliveryRadiusKm: json.data.deliveryRadiusKm?.toString() ?? "10",
         })
       } else {
         setError(json.error || "Failed to load settings")
@@ -154,6 +157,7 @@ export default function VendorSettingsPage() {
           bankAccountNo: form.bankAccountNo || undefined,
           bankIfsc: form.bankIfsc || undefined,
           bankName: form.bankName || undefined,
+          deliveryRadiusKm: parseFloat(form.deliveryRadiusKm) || 10,
         }),
       })
       const json = await res.json()
@@ -349,9 +353,30 @@ export default function VendorSettingsPage() {
               className="w-full rounded-md border px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
             />
           </div>
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <MapPin className="h-4 w-4" />
-            City: {settings?.city.name}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <MapPin className="h-4 w-4" />
+              City: {settings?.city.name}
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Delivery Radius (km)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={form.deliveryRadiusKm}
+                onChange={(e) =>
+                  setForm({ ...form, deliveryRadiusKm: e.target.value })
+                }
+                className="w-full rounded-md border px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Maximum distance from your shop for deliveries
+              </p>
+            </div>
           </div>
 
           {/* Auto-accept toggle */}
