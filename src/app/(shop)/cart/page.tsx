@@ -2,16 +2,14 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2, Truck } from "lucide-react"
+import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2, CalendarDays } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { CartItem } from "@/components/cart/cart-item"
 import { CartSummary } from "@/components/cart/cart-summary"
 import { CouponInput } from "@/components/cart/coupon-input"
-import { DeliverySlotPicker, type DeliverySelection } from "@/components/product/delivery-slot-picker"
 import { useCart } from "@/hooks/use-cart"
-import { useCity } from "@/hooks/use-city"
 
 const BASE_DELIVERY_CHARGE = 49
 const FREE_DELIVERY_ABOVE = 499
@@ -29,12 +27,6 @@ export default function CartPage() {
   const [couponExpanded, setCouponExpanded] = useState(!!storedCouponCode)
   const [couponLoading, setCouponLoading] = useState(false)
   const [couponError, setCouponError] = useState<string | null>(null)
-
-  // City context
-  const { cityId } = useCity()
-
-  // Delivery slot state
-  const [deliverySelection, setDeliverySelection] = useState<DeliverySelection | null>(null)
 
   // Hydration guard for Zustand persisted store
   const [mounted, setMounted] = useState(false)
@@ -61,9 +53,17 @@ export default function CartPage() {
 
   const subtotal = getSubtotal()
   const baseDeliveryCharge = subtotal >= FREE_DELIVERY_ABOVE ? 0 : BASE_DELIVERY_CHARGE
-  const slotCharge = deliverySelection?.price ?? 0
-  const deliveryCharge = baseDeliveryCharge + slotCharge
-  const firstProductId = items.length > 0 ? items[0].productId : null
+  const deliveryCharge = baseDeliveryCharge
+
+  // Get delivery date from first cart item (all items share the same date)
+  const deliveryDateStr = items.length > 0 ? items[0].deliveryDate : null
+  const deliveryDateDisplay = deliveryDateStr
+    ? new Date(deliveryDateStr + "T00:00:00").toLocaleDateString("en-IN", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+      })
+    : null
 
   const handleApplyCoupon = async (code: string) => {
     setCouponLoading(true)
@@ -191,29 +191,23 @@ export default function CartPage() {
               ))}
             </div>
 
-            {/* Delivery Slot Section */}
-            <div className="card-premium overflow-hidden">
-              <div className="bg-[#FFF9F5] px-4 py-3 sm:px-5 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Truck className="h-5 w-5 text-[#E91E63]" />
-                  <h3 className="font-semibold text-gray-800">Delivery Schedule</h3>
+            {/* Delivery Date Display */}
+            {deliveryDateDisplay && (
+              <div className="card-premium overflow-hidden">
+                <div className="px-4 py-3 sm:px-5 flex items-center gap-3">
+                  <CalendarDays className="h-5 w-5 text-[#E91E63]" />
+                  <div>
+                    <p className="text-xs text-gray-500">Delivery Date</p>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {deliveryDateDisplay}
+                    </p>
+                  </div>
+                  <p className="ml-auto text-xs text-gray-400">
+                    Time slot selected at checkout
+                  </p>
                 </div>
               </div>
-              <div className="p-4 sm:p-5">
-                {firstProductId && cityId ? (
-                  <DeliverySlotPicker
-                    productId={firstProductId}
-                    cityId={cityId}
-                    onSelect={setDeliverySelection}
-                    initialSelection={deliverySelection ?? undefined}
-                  />
-                ) : (
-                  <p className="text-sm text-gray-500 text-center py-4">
-                    Select a city to see delivery options
-                  </p>
-                )}
-              </div>
-            </div>
+            )}
 
             {/* Coupon Section */}
             <div className="card-premium overflow-hidden">

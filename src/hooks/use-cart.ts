@@ -34,10 +34,12 @@ interface CartStore {
     variationId: string | null
     selectedAttributes: Record<string, string> | null
     addonSelections: AddonSelectionRecord[]
+    deliveryDate?: string | null
   }) => void
   removeItem: (itemId: string) => void
   updateQuantity: (itemId: string, quantity: number) => void
   updateDelivery: (itemId: string, date: string | null, slot: string | null, window?: string | null, charge?: number) => void
+  setDeliveryDateForAll: (date: string | null) => void
   setCoupon: (code: string | null, discount: number) => void
   clearCart: () => void
   getItemCount: () => number
@@ -119,7 +121,7 @@ export const useCart = create<CartStore>()(
       },
 
       // New addItemAdvanced for Phase D with full variation + addon group support
-      addItemAdvanced: ({ product, quantity, price, variationId, selectedAttributes, addonSelections }) => {
+      addItemAdvanced: ({ product, quantity, price, variationId, selectedAttributes, addonSelections, deliveryDate }) => {
         const normalizedProduct = { ...product, basePrice: Number(product.basePrice) }
 
         set((state) => {
@@ -138,7 +140,7 @@ export const useCart = create<CartStore>()(
                 variationId,
                 selectedAttributes,
                 addonSelections,
-                deliveryDate: null,
+                deliveryDate: deliveryDate ?? null,
                 deliverySlot: null,
                 deliveryWindow: null,
                 deliveryCharge: 0,
@@ -174,6 +176,15 @@ export const useCart = create<CartStore>()(
               ? { ...i, deliveryDate: date, deliverySlot: slot, deliveryWindow: window ?? null, deliveryCharge: charge }
               : i
           ),
+        }))
+      },
+
+      setDeliveryDateForAll: (date) => {
+        set((state) => ({
+          items: (Array.isArray(state.items) ? state.items : []).map((i) => ({
+            ...i,
+            deliveryDate: date,
+          })),
         }))
       },
 
