@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-interface UnifiedResult {
-  name: string
-  pincode: string | null
-  cityName: string | null
+export interface LocationResult {
+  type: 'area' | 'city' | 'google_place'
+  label: string
   cityId: string | null
+  cityName: string | null
   citySlug: string | null
+  pincode: string | null
+  areaName: string | null
   lat: number | null
   lng: number | null
-  state: string | null
+  placeId: string | null
   isActive: boolean
   isComingSoon: boolean
-  source: 'db' | 'google'
-  type: 'area' | 'city' | 'place'
 }
 
 const CACHE_HEADERS = {
@@ -26,44 +26,73 @@ export async function GET(request: NextRequest) {
 
     if (!q || q.length < 2) {
       return NextResponse.json(
-        { success: true, data: { results: [], areas: [], cities: [] } },
+        { success: true, data: { results: [] } },
         { headers: CACHE_HEADERS }
       )
     }
 
     const isDigits = /^\d+$/.test(q)
-    const dbResults: UnifiedResult[] = []
+    const isExactPincode = /^\d{6}$/.test(q)
+    const dbResults: LocationResult[] = []
 
     if (isDigits) {
-      // Pincode search — query service_areas by pincode prefix
-      const areas = await prisma.serviceArea.findMany({
-        where: {
-          pincode: { startsWith: q },
-          isActive: true,
-        },
-        include: { city: true },
-        take: 8,
-        orderBy: { pincode: 'asc' },
-      })
-
-      for (const a of areas) {
-        dbResults.push({
-          name: a.name,
-          pincode: a.pincode,
-          cityName: a.city.name,
-          cityId: a.city.id,
-          citySlug: a.city.slug,
-          lat: a.lat ? Number(a.lat) : null,
-          lng: a.lng ? Number(a.lng) : null,
-          state: a.state,
-          isActive: a.city.isActive,
-          isComingSoon: a.city.isComingSoon,
-          source: 'db',
-          type: 'area',
+      // Pincode search
+      if (isExactPincode) {
+        // Exact 6-digit pincode match first
+        const exactAreas = await prisma.serviceArea.findMany({
+          where: { pincode: q, isActive: true },
+          include: { city: true },
+          take: 8,
+          orderBy: { name: 'asc' },
         })
+
+        for (const a of exactAreas) {
+          dbResults.push({
+            type: 'area',
+            label: `${a.name}, ${a.city.name} \u2014 ${a.pincode}`,
+            cityId: a.city.id,
+            cityName: a.city.name,
+            citySlug: a.city.slug,
+            pincode: a.pincode,
+            areaName: a.name,
+            lat: a.lat ? Number(a.lat) : null,
+            lng: a.lng ? Number(a.lng) : null,
+            placeId: null,
+            isActive: a.city.isActive,
+            isComingSoon: a.city.isComingSoon,
+          })
+        }
+      } else {
+        // Partial pincode prefix match
+        const areas = await prisma.serviceArea.findMany({
+          where: {
+            pincode: { startsWith: q },
+            isActive: true,
+          },
+          include: { city: true },
+          take: 8,
+          orderBy: { pincode: 'asc' },
+        })
+
+        for (const a of areas) {
+          dbResults.push({
+            type: 'area',
+            label: `${a.name}, ${a.city.name} \u2014 ${a.pincode}`,
+            cityId: a.city.id,
+            cityName: a.city.name,
+            citySlug: a.city.slug,
+            pincode: a.pincode,
+            areaName: a.name,
+            lat: a.lat ? Number(a.lat) : null,
+            lng: a.lng ? Number(a.lng) : null,
+            placeId: null,
+            isActive: a.city.isActive,
+            isComingSoon: a.city.isComingSoon,
+          })
+        }
       }
     } else {
-      // Text search — search service_areas by name AND cities by name
+      // Text search: areas by name (case-insensitive), then cities by name
       const [areas, cities] = await Promise.all([
         prisma.serviceArea.findMany({
           where: {
@@ -83,104 +112,69 @@ export async function GET(request: NextRequest) {
 
       for (const a of areas) {
         dbResults.push({
-          name: a.name,
-          pincode: a.pincode,
-          cityName: a.city.name,
+          type: 'area',
+          label: a.pincode
+            ? `${a.name}, ${a.city.name} \u2014 ${a.pincode}`
+            : `${a.name}, ${a.city.name}`,
           cityId: a.city.id,
+          cityName: a.city.name,
           citySlug: a.city.slug,
+          pincode: a.pincode,
+          areaName: a.name,
           lat: a.lat ? Number(a.lat) : null,
           lng: a.lng ? Number(a.lng) : null,
-          state: a.state,
+          placeId: null,
           isActive: a.city.isActive,
           isComingSoon: a.city.isComingSoon,
-          source: 'db',
-          type: 'area',
         })
       }
 
       for (const c of cities) {
-        // Avoid duplicates — if city already in results from area match, skip
+        // Skip if city already covered by an area result
         const alreadyHasCity = dbResults.some(
           (r) => r.type === 'city' && r.cityId === c.id
         )
         if (!alreadyHasCity) {
           dbResults.push({
-            name: c.name,
-            pincode: null,
-            cityName: c.name,
+            type: 'city',
+            label: c.state ? `${c.name}, ${c.state}` : c.name,
             cityId: c.id,
+            cityName: c.name,
             citySlug: c.slug,
+            pincode: null,
+            areaName: null,
             lat: Number(c.lat),
             lng: Number(c.lng),
-            state: c.state,
+            placeId: null,
             isActive: c.isActive,
             isComingSoon: c.isComingSoon,
-            source: 'db',
-            type: 'city',
           })
         }
       }
     }
 
-    // If fewer than 3 DB results, supplement with Google Places Autocomplete
-    let googleResults: UnifiedResult[] = []
+    // If fewer than 3 DB results, supplement with Google Places
+    let googleResults: LocationResult[] = []
     if (dbResults.length < 3) {
       googleResults = await fetchGooglePlaces(q)
-      // Remove Google results that duplicate DB results (by name similarity)
+      // Remove duplicates against DB results
       googleResults = googleResults.filter((gr) => {
-        const grNameLower = gr.name.toLowerCase()
+        const grLabelLower = gr.label.toLowerCase()
         return !dbResults.some(
           (dr) =>
-            dr.name.toLowerCase() === grNameLower ||
+            dr.label.toLowerCase() === grLabelLower ||
             (gr.pincode && dr.pincode === gr.pincode)
         )
       })
     }
 
-    // Merge: DB first, then Google, limit 8
-    const combined = [...dbResults, ...googleResults].slice(0, 8)
-
-    // Also build legacy grouped format for backward compatibility
-    const areas = combined
-      .filter((r) => r.type === 'area' || r.type === 'place')
-      .map((r) => ({
-        id: r.type === 'area' ? r.name : `google-${r.name}`,
-        name: r.name,
-        pincode: r.pincode,
-        cityId: r.cityId,
-        cityName: r.cityName,
-        citySlug: r.citySlug,
-        state: r.state,
-        lat: r.lat,
-        lng: r.lng,
-        isActive: r.isActive,
-        isComingSoon: r.isComingSoon,
-        source: r.source,
-      }))
-
-    const cityResults = combined
-      .filter((r) => r.type === 'city')
-      .map((r) => ({
-        cityId: r.cityId,
-        cityName: r.cityName,
-        citySlug: r.citySlug,
-        state: r.state,
-        lat: r.lat,
-        lng: r.lng,
-        isActive: r.isActive,
-        isComingSoon: r.isComingSoon,
-        source: r.source,
-      }))
+    // Merge: areas first, then cities, then google_place results — max 8
+    const areaResults = dbResults.filter((r) => r.type === 'area')
+    const cityResults = dbResults.filter((r) => r.type === 'city')
+    const combined = [...areaResults, ...cityResults, ...googleResults].slice(0, 8)
 
     return NextResponse.json(
-      {
-        success: true,
-        data: {
-          results: combined,
-          areas,
-          cities: cityResults,
-        },
-      },
+      { success: true, data: { results: combined } },
       { headers: CACHE_HEADERS }
     )
   } catch (err) {
@@ -194,10 +188,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * Call Google Places Autocomplete API (New) to fill gaps when DB has < 3 results.
- * Uses the server-side key: GOOGLE_PLACES_API_KEY or falls back to NEXT_PUBLIC_GOOGLE_PLACES_API_KEY.
  */
-async function fetchGooglePlaces(query: string): Promise<UnifiedResult[]> {
-  // NOTE: Requires GOOGLE_PLACES_API_KEY (server-side) or NEXT_PUBLIC_GOOGLE_PLACES_API_KEY to be set
+async function fetchGooglePlaces(query: string): Promise<LocationResult[]> {
   const apiKey =
     process.env.GOOGLE_PLACES_API_KEY ||
     process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
@@ -217,7 +209,7 @@ async function fetchGooglePlaces(query: string): Promise<UnifiedResult[]> {
           includedRegionCodes: ['in'],
           languageCode: 'en',
         }),
-        signal: AbortSignal.timeout(3000), // 3s timeout to avoid slowing search
+        signal: AbortSignal.timeout(3000),
       }
     )
 
@@ -238,37 +230,34 @@ async function fetchGooglePlaces(query: string): Promise<UnifiedResult[]> {
       }
     }> = data.suggestions || []
 
-    // Fetch place details for each to get lat/lng and pincode
-    const results: UnifiedResult[] = []
-    // Only fetch details for up to 3 suggestions to limit API calls
+    const results: LocationResult[] = []
     const topSuggestions = suggestions.slice(0, 3)
 
     for (const suggestion of topSuggestions) {
       if (!suggestion.placePrediction?.placeId) continue
 
-      const detail = await fetchPlaceDetails(
-        suggestion.placePrediction.placeId,
-        apiKey
-      )
-
       const mainText =
         suggestion.placePrediction.structuredFormat?.mainText?.text ||
         suggestion.placePrediction.text?.text ||
         ''
+      const secondaryText =
+        suggestion.placePrediction.structuredFormat?.secondaryText?.text || ''
+
+      const label = secondaryText ? `${mainText}, ${secondaryText}` : mainText
 
       results.push({
-        name: mainText,
-        pincode: detail?.pincode || null,
-        cityName: detail?.city || null,
+        type: 'google_place',
+        label,
         cityId: null,
+        cityName: null,
         citySlug: null,
-        lat: detail?.lat || null,
-        lng: detail?.lng || null,
-        state: detail?.state || null,
+        pincode: null,
+        areaName: mainText,
+        lat: null,
+        lng: null,
+        placeId: suggestion.placePrediction.placeId,
         isActive: false,
         isComingSoon: false,
-        source: 'google',
-        type: 'place',
       })
     }
 
@@ -276,68 +265,5 @@ async function fetchGooglePlaces(query: string): Promise<UnifiedResult[]> {
   } catch (err) {
     console.error('[location/search] Google Places fetch failed:', err)
     return []
-  }
-}
-
-async function fetchPlaceDetails(
-  placeId: string,
-  apiKey: string
-): Promise<{
-  lat: number
-  lng: number
-  pincode: string | null
-  city: string | null
-  state: string | null
-} | null> {
-  try {
-    const res = await fetch(
-      `https://places.googleapis.com/v1/places/${placeId}`,
-      {
-        headers: {
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask':
-            'location,addressComponents',
-        },
-        signal: AbortSignal.timeout(3000),
-      }
-    )
-
-    if (!res.ok) return null
-
-    const data = await res.json()
-    const location = data.location as
-      | { latitude: number; longitude: number }
-      | undefined
-    const components = (data.addressComponents || []) as Array<{
-      types: string[]
-      longText?: string
-    }>
-
-    let pincode: string | null = null
-    let city: string | null = null
-    let state: string | null = null
-
-    for (const comp of components) {
-      const types = comp.types || []
-      if (types.includes('postal_code')) {
-        pincode = comp.longText || null
-      }
-      if (types.includes('locality') || types.includes('administrative_area_level_2')) {
-        if (!city) city = comp.longText || null
-      }
-      if (types.includes('administrative_area_level_1')) {
-        state = comp.longText || null
-      }
-    }
-
-    return {
-      lat: location?.latitude || 0,
-      lng: location?.longitude || 0,
-      pincode,
-      city,
-      state,
-    }
-  } catch {
-    return null
   }
 }

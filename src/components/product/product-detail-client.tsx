@@ -7,13 +7,15 @@ import Link from "next/link"
 import {
   MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
   CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
-  MessageSquare, Loader2, X, XCircle, Info,
+  MessageSquare, Info,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ProductGallery } from "@/components/product/product-gallery"
+import { LocationSearch } from "@/components/location/location-search"
+import type { ResolvedLocation } from "@/components/location/location-search"
 const DeliveryDatePicker = dynamic(
   () => import("@/components/product/delivery-slot-picker").then(mod => ({ default: mod.DeliveryDatePicker })),
   {
@@ -219,24 +221,19 @@ export default function ProductDetailClient({
   const [addedProduct, setAddedProduct] = useState<{ name: string; image: string; price: number } | null>(null)
   const [selectedDeliveryDate, setSelectedDeliveryDate] = useState<Date | null>(null)
   const [deliveryError, setDeliveryError] = useState(false)
-  const [pincode, setPincode] = useState("")
-  const [pincodeChecked, setPincodeChecked] = useState(false)
-  const [pincodeAvailable, setPincodeAvailable] = useState(true)
   const [comingSoon, setComingSoon] = useState(false)
   const [comingSoonMessage, setComingSoonMessage] = useState("")
-  const [pincodeChecking, setPincodeChecking] = useState(false)
   const [selectedWeight, setSelectedWeight] = useState<string | null>(null)
   const [giftMessageOpen, setGiftMessageOpen] = useState(false)
   const [giftMessage, setGiftMessage] = useState("")
 
-  // Sync local pincode with city context on every change
+  // Check serviceability when city context changes with a pincode
   useEffect(() => {
     if (cityPincode) {
-      setPincode(cityPincode)
-      checkServiceability(cityPincode)
+      handleServiceabilityCheck(cityPincode)
     } else {
-      // City changed but no pincode — clear local state so the input shows
-      setPincode("")
+      setComingSoon(false)
+      setComingSoonMessage("")
     }
   }, [cityPincode]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -463,31 +460,47 @@ export default function ProductDetailClient({
     }, 100)
   }, [handleAddToCart, router, variationError, addonErrors, deliveryError])
 
-  const checkServiceability = async (pincodeToCheck: string) => {
-    if (pincodeToCheck.length !== 6) return
-    setPincodeChecking(true)
+  const handleServiceabilityCheck = async (pincode: string) => {
+    if (pincode.length !== 6) return
     try {
       const res = await fetch("/api/serviceability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pincode: pincodeToCheck, productId: product.id }),
+        body: JSON.stringify({ pincode, productId: product.id }),
       })
       const json = await res.json()
-      const isAvailable = json.success && json.data?.isServiceable === true
       const isComingSoon = json.success && json.data?.comingSoon === true
-      setPincodeAvailable(isAvailable)
       setComingSoon(isComingSoon)
       setComingSoonMessage(isComingSoon ? (json.data?.message || "") : "")
-      setPincodeChecked(true)
     } catch {
-      setPincodeAvailable(false)
       setComingSoon(false)
       setComingSoonMessage("")
-      setPincodeChecked(true)
-    } finally {
-      setPincodeChecking(false)
     }
   }
+
+  const handleLocationSelect = useCallback((location: ResolvedLocation) => {
+    // Update city context
+    if (location.cityId) {
+      setArea({
+        name: location.areaName || '',
+        pincode: location.pincode || '',
+        isServiceable: location.isServiceable || false,
+      })
+    }
+
+    // Update local delivery state
+    if (location.comingSoon) {
+      setComingSoon(true)
+      setComingSoonMessage("We're coming to your area soon! Place your order and our team will confirm delivery.")
+    } else if (location.pincode) {
+      // Area/pincode selected — run serviceability check for comingSoon status
+      handleServiceabilityCheck(location.pincode)
+    } else {
+      // City-only selection — no serviceability check needed
+      setComingSoon(false)
+      setComingSoonMessage("")
+    }
+  }, [setArea]) // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const categorySlug = product.category?.slug || ""
@@ -639,9 +652,9 @@ export default function ProductDetailClient({
     </div>
   )
 
-  const serviceabilityStatus = pincodeChecked
-    ? (comingSoon ? 'comingSoon' : pincodeAvailable ? 'available' : 'unavailable')
-    : null
+  const deliverToDefaultValue = cityPincode
+    ? (cityAreaName ? `${cityAreaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
+    : ''
 
   const pincodeBlock = (
     <div className="mb-3">
@@ -650,72 +663,12 @@ export default function ProductDetailClient({
           <MapPin className="h-3.5 w-3.5 text-gray-400" />
           Deliver to:
         </label>
-        <div className="flex items-center border border-gray-300 rounded-lg focus-within:border-pink-500 focus-within:ring-1 focus-within:ring-pink-500 transition-colors overflow-hidden">
-          <div className="flex items-center pl-3 text-gray-400">
-            <MapPin className="h-4 w-4" />
-          </div>
-          <input
-            type="text"
-            inputMode="numeric"
-            maxLength={6}
-            value={pincode}
-            onChange={(e) => {
-              const val = e.target.value.replace(/\D/g, '')
-              setPincode(val)
-              if (val.length === 6) checkServiceability(val)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && pincode.length === 6) {
-                checkServiceability(pincode)
-              }
-            }}
-            placeholder={`Enter pincode in ${cityName || 'your city'}`}
-            className="flex-1 px-3 py-3 text-sm outline-none bg-transparent"
-          />
-          {pincode.length === 6 && (
-            <button
-              onClick={() => checkServiceability(pincode)}
-              className="px-3 py-3 text-xs text-pink-600 font-medium hover:text-pink-700"
-            >
-              Check
-            </button>
-          )}
-          {pincode && (
-            <button
-              onClick={() => {
-                setPincode("")
-                setArea({ name: "", pincode: "", isServiceable: false })
-              }}
-              className="px-3 py-2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        {pincodeChecking && (
-          <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Checking...
-          </p>
-        )}
-        {!pincodeChecking && serviceabilityStatus === 'available' && (
-          <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-            <CheckCircle className="h-3 w-3" />
-            Delivery available{cityAreaName ? ` in ${cityAreaName}` : ''}
-          </p>
-        )}
-        {!pincodeChecking && serviceabilityStatus === 'comingSoon' && (
-          <p className="text-xs text-blue-600 flex items-center gap-1 mt-1">
-            <Info className="h-3 w-3" />
-            {comingSoonMessage || "We're coming to your area soon!"}
-          </p>
-        )}
-        {!pincodeChecking && serviceabilityStatus === 'unavailable' && (
-          <p className="text-xs text-red-500 flex items-center gap-1 mt-1">
-            <XCircle className="h-3 w-3" />
-            Sorry, we don&apos;t deliver to this pincode yet
-          </p>
-        )}
+        <LocationSearch
+          onSelect={handleLocationSelect}
+          productId={product.id}
+          defaultValue={deliverToDefaultValue}
+          placeholder={`Enter area or pincode in ${cityName || 'your city'}`}
+        />
       </div>
     </div>
   )
