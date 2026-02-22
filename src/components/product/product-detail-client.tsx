@@ -629,6 +629,12 @@ export default function ProductDetailClient({
     </div>
   )
 
+  const locationNotSelected = !isSelected
+
+  const deliverToDefaultValue = cityPincode
+    ? (cityAreaName ? `${cityAreaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
+    : ''
+
   const deliveryBlock = (
     <div className="mb-3">
       <p className="font-medium text-sm text-gray-700 mb-2 flex items-center gap-1.5">
@@ -669,12 +675,6 @@ export default function ProductDetailClient({
       )}
     </div>
   )
-
-  const deliverToDefaultValue = cityPincode
-    ? (cityAreaName ? `${cityAreaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
-    : ''
-
-  const locationNotSelected = !isSelected
 
   // "Gift Receiver's Location" — prominent section (FNP style)
   const receiverLocationBlock = (
