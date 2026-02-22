@@ -13,7 +13,7 @@ export function nowIST(): Date {
 /** Get today's date at midnight in IST (as a local Date object) */
 export function getTodayIST(): Date {
   const ist = nowIST()
-  return new Date(ist.getFullYear(), ist.getMonth(), ist.getDate())
+  return new Date(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate())
 }
 
 /** Format a Date as 'YYYY-MM-DD' in IST */
@@ -33,7 +33,7 @@ export function isSameISTDate(date1: Date, date2: Date): boolean {
 /** Get current IST hour (0-23) and minute (0-59) */
 export function getISTHourMinute(): { hour: number; minute: number } {
   const ist = nowIST()
-  return { hour: ist.getHours(), minute: ist.getMinutes() }
+  return { hour: ist.getUTCHours(), minute: ist.getUTCMinutes() }
 }
 
 /** Parse a 'YYYY-MM-DD' string into a local Date at midnight (no timezone shift) */

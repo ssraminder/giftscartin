@@ -35,8 +35,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const istNow = nowIST()
-    const currentHourIST = istNow.getHours()
-    const currentMinuteIST = istNow.getMinutes()
+    const currentHourIST = istNow.getUTCHours()
+    const currentMinuteIST = istNow.getUTCMinutes()
     const todayIST = toISTDateString(new Date())
     const isToday = dateStr === todayIST
     const deliveryDate = parseLocalDate(dateStr)
