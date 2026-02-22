@@ -28,6 +28,7 @@ import { AddonGroup } from "@/components/product/addon-group"
 import { UpsellProducts } from "@/components/product/upsell-products"
 import { ReviewList } from "@/components/product/review-list"
 import { ProductCard } from "@/components/product/product-card"
+import { CartConfirmationBanner } from "@/components/product/cart-confirmation-banner"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import { usePartner } from "@/hooks/use-partner"
@@ -216,6 +217,8 @@ export default function ProductDetailClient({
   const [addonErrors, setAddonErrors] = useState<Set<string>>(new Set())
   const [variationError, setVariationError] = useState(false)
   const [addedToCart, setAddedToCart] = useState(false)
+  const [showCartBanner, setShowCartBanner] = useState(false)
+  const [addedProduct, setAddedProduct] = useState<{ name: string; image: string; price: number } | null>(null)
   const [selectedDeliveryDate, setSelectedDeliveryDate] = useState<Date | null>(null)
   const [deliveryError, setDeliveryError] = useState(false)
   const [pincode, setPincode] = useState("")
@@ -444,7 +447,8 @@ export default function ProductDetailClient({
     })
 
     setAddedToCart(true)
-    setTimeout(() => setAddedToCart(false), 2000)
+    setAddedProduct({ name: product.name, image: product.images[0], price: unitPrice })
+    setShowCartBanner(true)
   }, [product, selectedDeliveryDate, isVariable, matchedVariation, addonGroups, addonSelections, addItemAdvanced, quantity, unitPrice, buildAddonRecords])
 
   const handleBuyNow = useCallback(() => {
@@ -1001,6 +1005,19 @@ export default function ProductDetailClient({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Cart Confirmation Banner */}
+      {showCartBanner && addedProduct && (
+        <CartConfirmationBanner
+          product={addedProduct}
+          onViewCart={() => router.push('/cart')}
+          onContinueShopping={() => {
+            setShowCartBanner(false)
+            setAddedToCart(false)
+            setAddedProduct(null)
+          }}
+        />
       )}
     </div>
   )

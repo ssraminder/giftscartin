@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2, CalendarDays } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { CartItem } from "@/components/cart/cart-item"
 import { CartSummary } from "@/components/cart/cart-summary"
@@ -166,14 +165,16 @@ export default function CartPage() {
               </p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground hover:text-destructive hover:bg-red-50 rounded-lg"
-            onClick={clearCart}
+          <button
+            className="text-sm text-gray-500 hover:text-red-500 underline underline-offset-2 transition-colors"
+            onClick={() => {
+              if (confirm('Remove all items from cart?')) {
+                clearCart()
+              }
+            }}
           >
-            Clear All
-          </Button>
+            Clear Cart
+          </button>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
