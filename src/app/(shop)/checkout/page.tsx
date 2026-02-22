@@ -5,12 +5,28 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Check, ChevronDown, ChevronUp, Loader2, Plus } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Loader2, Plus, Calendar as CalendarIcon } from "lucide-react"
 
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { useCurrency } from "@/hooks/use-currency"
 import { useReferral } from "@/components/providers/referral-provider"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from "@/components/ui/sheet"
+import { Button } from "@/components/ui/button"
+import {
+  CalendarSection,
+  toDateString,
+  formatDateDisplay,
+  type SlotOption,
+  type SurchargeInfo,
+  type AvailabilityResponse,
+} from "@/components/product/delivery-slot-picker"
 
 type StepNumber = 1 | 2 | 3
 
@@ -18,19 +34,8 @@ type StepNumber = 1 | 2 | 3
 
 const STEPS: { number: StepNumber; label: string; emoji: string }[] = [
   { number: 1, label: "Delivery Address", emoji: "\uD83D\uDCCD" },
-  { number: 2, label: "Date & Time", emoji: "\uD83D\uDCC5" },
+  { number: 2, label: "Delivery Options", emoji: "\uD83D\uDCC5" },
   { number: 3, label: "Payment", emoji: "\uD83D\uDCB3" },
-]
-
-// ─── Delivery Slots ───
-
-const DELIVERY_SLOTS = [
-  { slug: "standard", emoji: "🕘", name: "Standard Delivery", time: "9 AM – 9 PM", charge: 0 },
-  { slug: "morning", emoji: "🕑", name: "Morning Slot", time: "9 AM – 11 AM", charge: 75 },
-  { slug: "afternoon", emoji: "☀️", name: "Afternoon Slot", time: "12 PM – 2 PM", charge: 50 },
-  { slug: "evening", emoji: "🌆", name: "Evening Slot", time: "6 PM – 8 PM", charge: 100 },
-  { slug: "midnight", emoji: "🌙", name: "Midnight Delivery", time: "11 PM – 11:59 PM", charge: 199 },
-  { slug: "express", emoji: "⚡", name: "Express Delivery", time: "Within 3 Hours", charge: 249 },
 ]
 
 // ─── Hardcoded Coupons (placeholder) ───
@@ -54,25 +59,131 @@ interface SavedAddress {
   isDefault: boolean
 }
 
-// ─── Helper: generate next 7 days ───
+// ─── Slot Card Component ───
 
-function getNext7Days(): { date: Date; iso: string; dayAbbr: string; dateNum: number; isToday: boolean }[] {
-  const days: { date: Date; iso: string; dayAbbr: string; dateNum: number; isToday: boolean }[] = []
-  const today = new Date()
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+function SlotCard({
+  slot,
+  isSelected,
+  selectedWindow,
+  onSelect,
+  onWindowSelect,
+}: {
+  slot: SlotOption
+  isSelected: boolean
+  selectedWindow: string | null
+  onSelect: () => void
+  onWindowSelect: (windowLabel: string) => void
+}) {
+  const disabled = !slot.isAvailable || slot.isFull
 
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today)
-    d.setDate(today.getDate() + i)
-    days.push({
-      date: d,
-      iso: d.toISOString().split("T")[0],
-      dayAbbr: dayNames[d.getDay()],
-      dateNum: d.getDate(),
-      isToday: i === 0,
-    })
-  }
-  return days
+  return (
+    <div
+      className={`rounded-xl border-2 transition-all ${
+        isSelected
+          ? 'border-pink-500 bg-pink-50'
+          : disabled
+            ? 'border-gray-100 bg-gray-50 opacity-60'
+            : 'border-gray-200 bg-white hover:border-pink-300'
+      }`}
+    >
+      <button
+        onClick={() => !disabled && onSelect()}
+        disabled={disabled}
+        className={`flex w-full items-center justify-between p-4 text-left ${
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          {/* Radio indicator */}
+          <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 shrink-0 ${
+            isSelected ? 'border-pink-600' : 'border-gray-300'
+          }`}>
+            {isSelected && <div className="h-2.5 w-2.5 rounded-full bg-pink-600" />}
+          </div>
+          <div>
+            <p className={`text-sm font-semibold ${isSelected ? 'text-pink-700' : 'text-gray-800'}`}>
+              {slot.name}
+            </p>
+            <p className="text-xs text-gray-500">
+              {slot.windows && slot.windows.length > 0 ? 'Choose your 2-hour window' : `${slot.startTime} \u2013 ${slot.endTime}`}
+            </p>
+          </div>
+        </div>
+
+        <div className="text-right shrink-0">
+          {slot.isFull ? (
+            <span className="inline-block rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
+              FULL
+            </span>
+          ) : (
+            <span className={`text-sm font-semibold ${
+              slot.price === 0
+                ? 'text-green-600'
+                : isSelected ? 'text-pink-600' : 'text-gray-700'
+            }`}>
+              {slot.priceLabel}
+            </span>
+          )}
+        </div>
+      </button>
+
+      {/* Fixed slot windows (only shown when selected) */}
+      {isSelected && slot.windows && slot.windows.length > 0 && (
+        <div className="border-t border-pink-200 px-4 py-3 space-y-2">
+          {slot.windows.map((w) => {
+            const wDisabled = !w.isAvailable || w.isFull
+            const wSelected = selectedWindow === w.label
+            return (
+              <button
+                key={w.label}
+                onClick={() => !wDisabled && onWindowSelect(w.label)}
+                disabled={wDisabled}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-all ${
+                  wSelected
+                    ? 'bg-pink-100 text-pink-700 font-medium'
+                    : wDisabled
+                      ? 'text-gray-300 cursor-not-allowed'
+                      : 'text-gray-700 hover:bg-pink-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                    wSelected ? 'border-pink-600' : 'border-gray-300'
+                  }`}>
+                    {wSelected && <div className="h-2 w-2 rounded-full bg-pink-600" />}
+                  </div>
+                  <span>{w.label}</span>
+                </div>
+                {w.isFull && (
+                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
+                    FULL
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Unavailable reason tooltip */}
+      {!slot.isAvailable && !slot.isFull && slot.reason && (
+        <p className="px-4 pb-2 text-xs text-gray-400">{slot.reason}</p>
+      )}
+    </div>
+  )
+}
+
+// ─── Mobile helper ───
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+  return isMobile
 }
 
 // ─── Component ───
@@ -81,12 +192,14 @@ export default function CheckoutPage() {
   const router = useRouter()
   const { data: session } = useSession()
   const { formatPrice } = useCurrency()
-  const { cityName } = useCity()
+  const { cityName, cityId } = useCity()
   const { clearReferral } = useReferral()
+  const isMobile = useIsMobile()
 
   const items = useCart((s) => s.items)
   const getSubtotal = useCart((s) => s.getSubtotal)
   const clearCart = useCart((s) => s.clearCart)
+  const setDeliveryDateForAll = useCart((s) => s.setDeliveryDateForAll)
 
   const [currentStep, setCurrentStep] = useState<StepNumber>(1)
 
@@ -112,6 +225,9 @@ export default function CheckoutPage() {
     // Step 2
     deliveryDate: null as string | null,
     deliverySlot: null as string | null,
+    deliverySlotName: null as string | null,
+    deliverySlotSlug: null as string | null,
+    deliveryWindow: null as string | null,
     slotCharge: 0,
     giftMessage: "",
     specialInstructions: "",
@@ -122,6 +238,22 @@ export default function CheckoutPage() {
     couponDiscount: 0,
     couponApplied: false,
   })
+
+  // Step 2 extra state — slots from API
+  const [slotsData, setSlotsData] = useState<SlotOption[]>([])
+  const [slotsLoading, setSlotsLoading] = useState(false)
+  const [fullyBlocked, setFullyBlocked] = useState(false)
+  const [blockReason, setBlockReason] = useState<string | undefined>()
+  const [surchargeInfo, setSurchargeInfo] = useState<SurchargeInfo | undefined>()
+
+  // Step 2 — date change calendar state
+  const [changeDateOpen, setChangeDateOpen] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
+    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
+    return new Date(nowIST.getFullYear(), nowIST.getMonth(), 1)
+  })
+  const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set())
+  const [loadingDates, setLoadingDates] = useState(false)
 
   // Step 3 extra state
   const [codFee, setCodFee] = useState(0)
@@ -136,6 +268,14 @@ export default function CheckoutPage() {
   const [orderError, setOrderError] = useState("")
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
+  // ─── Initialize delivery date from cart ───
+
+  useEffect(() => {
+    if (items.length > 0 && items[0].deliveryDate && !formData.deliveryDate) {
+      setFormData((prev) => ({ ...prev, deliveryDate: items[0].deliveryDate }))
+    }
+  }, [items, formData.deliveryDate])
 
   // ─── Fetch Saved Addresses ───
 
@@ -170,6 +310,57 @@ export default function CheckoutPage() {
       setFormData((prev) => ({ ...prev, city: cityName }))
     }
   }, [cityName, formData.city])
+
+  // ─── Fetch slots when Step 2 is entered and date is set ───
+
+  const fetchSlots = useCallback(async (dateStr: string) => {
+    const firstProductId = items.length > 0 ? items[0].productId : null
+    if (!firstProductId || !cityId || !dateStr) return
+
+    setSlotsLoading(true)
+    try {
+      const params = new URLSearchParams({ productId: firstProductId, cityId, date: dateStr })
+      const res = await fetch(`/api/delivery/availability?${params}`)
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error)
+      const data: AvailabilityResponse = json.data
+      setSlotsData(data.slots)
+      setFullyBlocked(data.fullyBlocked)
+      setBlockReason(data.reason)
+      setSurchargeInfo(data.surcharge)
+    } catch {
+      setSlotsData([])
+    } finally {
+      setSlotsLoading(false)
+    }
+  }, [items, cityId])
+
+  // Fetch available dates when "Change Date" is opened
+  const fetchAvailableDates = useCallback(async () => {
+    const firstProductId = items.length > 0 ? items[0].productId : null
+    if (!firstProductId || !cityId) return
+
+    setLoadingDates(true)
+    try {
+      const params = new URLSearchParams({ productId: firstProductId, cityId, months: '2' })
+      const res = await fetch(`/api/delivery/available-dates?${params}`)
+      const json = await res.json()
+      if (json.success && json.data?.availableDates) {
+        setAvailableDatesSet(new Set(json.data.availableDates as string[]))
+      }
+    } catch {
+      setAvailableDatesSet(new Set())
+    } finally {
+      setLoadingDates(false)
+    }
+  }, [items, cityId])
+
+  // Load slots when entering Step 2
+  useEffect(() => {
+    if (currentStep === 2 && formData.deliveryDate) {
+      fetchSlots(formData.deliveryDate)
+    }
+  }, [currentStep, formData.deliveryDate, fetchSlots])
 
   // ─── Navigation Helpers ───
 
@@ -303,18 +494,73 @@ export default function CheckoutPage() {
 
   // ─── Step 2 Helpers ───
 
-  const next7Days = useMemo(() => getNext7Days(), [])
+  const handleSlotSelect = useCallback((slotId: string) => {
+    const slot = slotsData.find(s => s.id === slotId)
+    if (!slot || !slot.isAvailable || slot.isFull) return
+
+    setFormData((prev) => ({
+      ...prev,
+      deliverySlot: slot.id,
+      deliverySlotName: slot.name,
+      deliverySlotSlug: slot.slug,
+      deliveryWindow: null,
+      slotCharge: slot.price,
+    }))
+  }, [slotsData])
+
+  const handleWindowSelect = useCallback((windowLabel: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      deliveryWindow: windowLabel,
+    }))
+  }, [])
+
+  const handleChangeDate = useCallback((date: Date) => {
+    const dateStr = toDateString(date)
+    setFormData((prev) => ({
+      ...prev,
+      deliveryDate: dateStr,
+      deliverySlot: null,
+      deliverySlotName: null,
+      deliverySlotSlug: null,
+      deliveryWindow: null,
+      slotCharge: 0,
+    }))
+    // Update cart items with new date
+    setDeliveryDateForAll(dateStr)
+    setChangeDateOpen(false)
+    // Fetch slots for the new date
+    fetchSlots(dateStr)
+  }, [setDeliveryDateForAll, fetchSlots])
+
+  // Check if slot selection is complete
+  const isSlotComplete = useMemo(() => {
+    if (!formData.deliverySlot) return false
+    const slot = slotsData.find(s => s.id === formData.deliverySlot)
+    if (!slot) return false
+    // Fixed slot requires window selection
+    if (slot.windows && slot.windows.length > 0 && !formData.deliveryWindow) return false
+    return true
+  }, [formData.deliverySlot, formData.deliveryWindow, slotsData])
 
   const handleContinueStep2 = useCallback(() => {
-    if (formData.deliveryDate && formData.deliverySlot) {
+    if (formData.deliveryDate && isSlotComplete) {
       goToStep(3)
     }
-  }, [formData.deliveryDate, formData.deliverySlot, goToStep])
+  }, [formData.deliveryDate, isSlotComplete, goToStep])
 
-  const selectedSlotObj = useMemo(
-    () => DELIVERY_SLOTS.find((s) => s.slug === formData.deliverySlot),
-    [formData.deliverySlot]
-  )
+  // Formatted date for display
+  const deliveryDateDisplay = useMemo(() => {
+    if (!formData.deliveryDate) return ""
+    const d = new Date(formData.deliveryDate + "T00:00:00")
+    return formatDateDisplay(d)
+  }, [formData.deliveryDate])
+
+  const getFormattedDate = useCallback(() => {
+    if (!formData.deliveryDate) return ""
+    const d = new Date(formData.deliveryDate + "T00:00:00")
+    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })
+  }, [formData.deliveryDate])
 
   // ─── Step 3 Helpers ───
 
@@ -353,12 +599,6 @@ export default function CheckoutPage() {
       pincode: formData.pincode,
     }
   }, [formData.selectedAddressId, formData.recipientName, formData.address, formData.pincode, savedAddresses])
-
-  const getFormattedDate = useCallback(() => {
-    if (!formData.deliveryDate) return ""
-    const d = new Date(formData.deliveryDate + "T00:00:00")
-    return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })
-  }, [formData.deliveryDate])
 
   // ─── Place Order ───
 
@@ -410,7 +650,7 @@ export default function CheckoutPage() {
           },
         }),
         deliveryDate: formData.deliveryDate,
-        deliverySlot: formData.deliverySlot,
+        deliverySlot: formData.deliverySlotSlug || formData.deliverySlot,
         giftMessage: formData.giftMessage || undefined,
         specialInstructions: formData.specialInstructions || undefined,
         couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
@@ -804,12 +1044,12 @@ export default function CheckoutPage() {
                   disabled={isContinueDisabled}
                   className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl text-base font-semibold transition-colors"
                 >
-                  Continue to Date &amp; Time &rarr;
+                  Continue to Delivery Options &rarr;
                 </button>
               </div>
             )}
 
-            {/* ═══════════════════════ STEP 2 ═══════════════════════ */}
+            {/* ═══════════════════════ STEP 2 — DELIVERY OPTIONS ═══════════════════════ */}
             {currentStep === 2 && (
               <div>
                 {/* Back link */}
@@ -820,87 +1060,125 @@ export default function CheckoutPage() {
                   &larr; Back
                 </button>
 
-                {/* 1. Delivery Date */}
-                <h2 className="font-semibold mb-3">Select Delivery Date</h2>
-                <div className="flex gap-2 overflow-x-auto pb-2">
-                  {next7Days.map((day) => {
-                    const isSelected = formData.deliveryDate === day.iso
-                    return (
-                      <button
-                        key={day.iso}
-                        onClick={() => updateField("deliveryDate", day.iso)}
-                        className={`flex-none w-16 rounded-xl border-2 py-2 text-center cursor-pointer transition-all ${
-                          isSelected
-                            ? "border-pink-500 bg-pink-500 text-white"
-                            : "border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        <div className={`text-xs ${isSelected ? "text-white" : "text-gray-500"}`}>
-                          {day.dayAbbr}
-                        </div>
-                        <div className={`text-lg font-bold ${isSelected ? "text-white" : ""}`}>
-                          {day.dateNum}
-                        </div>
-                        {day.isToday && (
-                          <div className={`text-xs ${isSelected ? "text-white" : "text-pink-500"}`}>
-                            Today
-                          </div>
-                        )}
-                      </button>
-                    )
-                  })}
+                <h1 className="text-xl font-semibold mb-6">Delivery Options</h1>
+
+                {/* 1. Delivery Date Display */}
+                <div className="flex items-center justify-between rounded-xl border-2 border-pink-200 bg-pink-50 p-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <CalendarIcon className="h-5 w-5 text-pink-600" />
+                    <div>
+                      <p className="text-xs text-gray-500">Delivering on</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {deliveryDateDisplay || "No date selected"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setChangeDateOpen(true)
+                      fetchAvailableDates()
+                    }}
+                    className="text-sm text-pink-600 hover:text-pink-700 font-semibold"
+                  >
+                    Change Date
+                  </button>
                 </div>
 
-                {/* 2. Delivery Time Slot */}
-                <h2 className="font-semibold mb-3 mt-6">Select Time Slot</h2>
-                <div>
-                  {DELIVERY_SLOTS.map((slot) => {
-                    const isSelected = formData.deliverySlot === slot.slug
-                    return (
-                      <div
-                        key={slot.slug}
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            deliverySlot: slot.slug,
-                            slotCharge: slot.charge,
-                          }))
-                        }}
-                        className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer mb-2 transition-all ${
-                          isSelected
-                            ? "border-pink-500 bg-pink-50"
-                            : "border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {/* Radio dot */}
-                          <div
-                            className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                              isSelected ? "border-pink-500" : "border-gray-300"
-                            }`}
-                          >
-                            {isSelected && (
-                              <div className="h-2 w-2 rounded-full bg-pink-500" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium">
-                              {slot.emoji} {slot.name}
-                            </p>
-                            <p className="text-sm text-gray-500">{slot.time}</p>
-                          </div>
-                        </div>
-                        <span
-                          className={`font-semibold ${
-                            slot.charge === 0 ? "text-green-600" : "text-pink-600"
-                          }`}
-                        >
-                          {slot.charge === 0 ? "FREE" : `+₹${slot.charge}`}
-                        </span>
+                {/* Change Date Calendar Sheet/Modal */}
+                {isMobile ? (
+                  <Sheet open={changeDateOpen} onOpenChange={setChangeDateOpen}>
+                    <SheetContent side="bottom" className="h-[70vh] overflow-y-auto rounded-t-2xl px-4 pb-0">
+                      <SheetHeader className="pb-2">
+                        <SheetTitle className="text-left">Change Delivery Date</SheetTitle>
+                      </SheetHeader>
+                      <div className="pb-24">
+                        <CalendarSection
+                          selectedDate={formData.deliveryDate ? new Date(formData.deliveryDate + "T00:00:00") : null}
+                          selectedMonth={calendarMonth}
+                          availableDates={availableDatesSet}
+                          loadingDates={loadingDates}
+                          onDateSelect={handleChangeDate}
+                          onMonthChange={setCalendarMonth}
+                        />
                       </div>
-                    )
-                  })}
-                </div>
+                      <SheetFooter className="fixed bottom-0 left-0 right-0 border-t bg-white p-4">
+                        <Button
+                          onClick={() => setChangeDateOpen(false)}
+                          variant="outline"
+                          className="w-full py-3 rounded-xl font-semibold"
+                        >
+                          Cancel
+                        </Button>
+                      </SheetFooter>
+                    </SheetContent>
+                  </Sheet>
+                ) : (
+                  changeDateOpen && (
+                    <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-semibold text-gray-900">Select a new date</p>
+                        <button
+                          onClick={() => setChangeDateOpen(false)}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <CalendarSection
+                        selectedDate={formData.deliveryDate ? new Date(formData.deliveryDate + "T00:00:00") : null}
+                        selectedMonth={calendarMonth}
+                        availableDates={availableDatesSet}
+                        loadingDates={loadingDates}
+                        onDateSelect={handleChangeDate}
+                        onMonthChange={setCalendarMonth}
+                      />
+                    </div>
+                  )
+                )}
+
+                {/* 2. Select Time Slot */}
+                <h2 className="font-semibold mb-3">
+                  Select Time Slot <span className="text-red-500">*</span>
+                </h2>
+
+                {/* Surcharge banner */}
+                {surchargeInfo?.surchargeActive && (
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-3 text-sm text-amber-800">
+                    <span>&#x1F389;</span>
+                    <span>
+                      {surchargeInfo.surchargeName}: &#x20B9;{surchargeInfo.surchargeAmount} surcharge applies to {surchargeInfo.surchargeAppliesTo} on this date
+                    </span>
+                  </div>
+                )}
+
+                {slotsLoading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
+                    ))}
+                  </div>
+                ) : fullyBlocked ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
+                    Delivery not available on this date.{blockReason ? ` ${blockReason}.` : ''} Please select another date.
+                  </div>
+                ) : slotsData.length > 0 ? (
+                  <div className="space-y-2">
+                    {slotsData.map(slot => (
+                      <SlotCard
+                        key={slot.id}
+                        slot={slot}
+                        isSelected={formData.deliverySlot === slot.id}
+                        selectedWindow={formData.deliverySlot === slot.id ? formData.deliveryWindow : null}
+                        onSelect={() => handleSlotSelect(slot.id)}
+                        onWindowSelect={handleWindowSelect}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-4 text-center text-sm text-gray-500">
+                    No delivery slots available for this date. Please choose another date.
+                  </p>
+                )}
 
                 {/* 3. Gift Message */}
                 <div className="mt-6">
@@ -937,7 +1215,7 @@ export default function CheckoutPage() {
                 {/* 5. Continue Button */}
                 <button
                   onClick={handleContinueStep2}
-                  disabled={!formData.deliveryDate || !formData.deliverySlot}
+                  disabled={!formData.deliveryDate || !isSlotComplete}
                   className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl text-base font-semibold transition-colors"
                 >
                   Continue to Payment &rarr;
@@ -961,7 +1239,7 @@ export default function CheckoutPage() {
                   {/* Address row */}
                   <div className="flex items-start justify-between mb-2">
                     <p className="text-sm text-gray-700">
-                      📍 {getAddressDisplay().name}, {getAddressDisplay().address}
+                      {"\uD83D\uDCCD"} {getAddressDisplay().name}, {getAddressDisplay().address}
                     </p>
                     <button
                       onClick={() => goToStep(1)}
@@ -973,7 +1251,8 @@ export default function CheckoutPage() {
                   {/* Date/slot row */}
                   <div className="flex items-start justify-between mb-2">
                     <p className="text-sm text-gray-700">
-                      📅 {getFormattedDate()} | {selectedSlotObj?.name || formData.deliverySlot}
+                      {"\uD83D\uDCC5"} {getFormattedDate()} | {formData.deliverySlotName || formData.deliverySlot}
+                      {formData.deliveryWindow ? ` (${formData.deliveryWindow})` : ""}
                     </p>
                     <button
                       onClick={() => goToStep(2)}
@@ -985,7 +1264,7 @@ export default function CheckoutPage() {
                   {/* Gift message row */}
                   {formData.giftMessage && (
                     <p className="text-sm text-gray-500">
-                      💌 {formData.giftMessage.length > 50
+                      {"\uD83D\uDC8C"} {formData.giftMessage.length > 50
                         ? formData.giftMessage.slice(0, 50) + "..."
                         : formData.giftMessage}
                     </p>
@@ -1016,8 +1295,8 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <div>
-                          <p className="font-medium">⚡ UPI</p>
-                          <span className="text-xs text-green-600 font-medium">Instant · Most Preferred</span>
+                          <p className="font-medium">{"\u26A1"} UPI</p>
+                          <span className="text-xs text-green-600 font-medium">Instant &middot; Most Preferred</span>
                         </div>
                       </div>
                     </div>
@@ -1055,7 +1334,7 @@ export default function CheckoutPage() {
                             <div className="h-2 w-2 rounded-full bg-pink-500" />
                           )}
                         </div>
-                        <p className="font-medium">💳 Credit or Debit Card</p>
+                        <p className="font-medium">{"\uD83D\uDCB3"} Credit or Debit Card</p>
                       </div>
                     </div>
                     {formData.paymentMethod === "card" && (
@@ -1114,7 +1393,7 @@ export default function CheckoutPage() {
                             <div className="h-2 w-2 rounded-full bg-pink-500" />
                           )}
                         </div>
-                        <p className="font-medium">🏦 Net Banking</p>
+                        <p className="font-medium">{"\uD83C\uDFE6"} Net Banking</p>
                       </div>
                     </div>
                     {formData.paymentMethod === "netbanking" && (
@@ -1157,14 +1436,14 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium">🤝 Cash on Delivery</p>
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">₹50 COD fee</span>
+                          <p className="font-medium">{"\uD83E\uDD1D"} Cash on Delivery</p>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{"\u20B9"}50 COD fee</span>
                         </div>
                       </div>
                     </div>
                     {formData.paymentMethod === "cod" && (
                       <p className="text-sm text-gray-500 mt-2 ml-7 mr-4">
-                        Please keep exact change ready. COD fee of ₹50 is non-refundable.
+                        Please keep exact change ready. COD fee of {"\u20B9"}50 is non-refundable.
                       </p>
                     )}
                   </div>
@@ -1177,7 +1456,7 @@ export default function CheckoutPage() {
                       onClick={() => setCouponExpanded(!couponExpanded)}
                       className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-800"
                     >
-                      🏷️ Have a promo code?
+                      {"\uD83C\uDFF7\uFE0F"} Have a promo code?
                       {couponExpanded ? (
                         <ChevronUp className="h-4 w-4" />
                       ) : (
@@ -1205,14 +1484,14 @@ export default function CheckoutPage() {
                       </div>
                     )}
                     {couponError && (
-                      <p className="text-sm text-red-500 mt-1">❌ {couponError}</p>
+                      <p className="text-sm text-red-500 mt-1">{"\u274C"} {couponError}</p>
                     )}
                   </div>
                 )}
 
                 {formData.couponApplied && (
                   <p className="text-sm text-green-600 mt-4">
-                    ✅ Coupon applied! You saved {formatPrice(formData.couponDiscount)}
+                    {"\u2705"} Coupon applied! You saved {formatPrice(formData.couponDiscount)}
                   </p>
                 )}
 
@@ -1269,7 +1548,7 @@ export default function CheckoutPage() {
                       Placing Order...
                     </>
                   ) : (
-                    "Place Order →"
+                    "Place Order \u2192"
                   )}
                 </button>
               </div>

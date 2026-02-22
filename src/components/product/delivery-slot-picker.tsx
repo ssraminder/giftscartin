@@ -8,10 +8,9 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
   SheetFooter,
 } from '@/components/ui/sheet'
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
 // -- Types -------------------------------------------------------------------
 
@@ -46,26 +45,34 @@ export interface DeliverySelection {
   price: number
 }
 
-export interface DeliverySlotPickerProps {
+export interface DatePickerProps {
   productId: string
   cityId: string
-  onSelect: (selection: DeliverySelection) => void
-  initialSelection?: DeliverySelection
+  onDateSelect: (date: Date) => void
+  initialDate?: Date
 }
 
-interface SurchargeInfo {
+export interface SurchargeInfo {
   surchargeActive: boolean
   surchargeAmount: number
   surchargeAppliesTo: string
   surchargeName: string
 }
 
-interface AvailabilityResponse {
+export interface AvailabilityResponse {
   slots: SlotOption[]
   fullyBlocked: boolean
   reason?: string
   surcharge?: SurchargeInfo
   date: string
+}
+
+// Keep old props interface for backward compatibility with imports
+export interface DeliverySlotPickerProps {
+  productId: string
+  cityId: string
+  onSelect: (selection: DeliverySelection) => void
+  initialSelection?: DeliverySelection
 }
 
 // -- Helpers -----------------------------------------------------------------
@@ -81,18 +88,6 @@ function useIsMobile() {
   return isMobile
 }
 
-function formatDateLabel(date: Date): string {
-  const todayIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-  const today = new Date(todayIST.getFullYear(), todayIST.getMonth(), todayIST.getDate())
-  const tomorrow = new Date(today)
-  tomorrow.setDate(today.getDate() + 1)
-
-  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  if (dateOnly.getTime() === today.getTime()) return 'Today'
-  if (dateOnly.getTime() === tomorrow.getTime()) return 'Tomorrow'
-  return date.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
-}
-
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate()
 }
@@ -101,16 +96,20 @@ function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay()
 }
 
-function toDateString(d: Date): string {
+export function toDateString(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
 
-// -- Calendar Component ------------------------------------------------------
+export function formatDateDisplay(date: Date): string {
+  return date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+}
 
-function CalendarSection({
+// -- Calendar Component (exported for reuse in checkout) ---------------------
+
+export function CalendarSection({
   selectedDate,
   selectedMonth,
   availableDates,
@@ -213,7 +212,8 @@ function CalendarSection({
           const cellDate = new Date(year, month, dayNum)
           const dateStr = toDateString(cellDate)
           const isPast = dateStr < todayStr
-          const isAvailable = availableDates.has(dateStr)
+          // While loading, treat all future dates as available
+          const isAvailable = loadingDates || availableDates.size === 0 || availableDates.has(dateStr)
           const isSelected = selectedDate ? toDateString(selectedDate) === dateStr : false
           const isToday = dateStr === todayStr
           const isTomorrow = dateStr === tomorrowStr
@@ -257,474 +257,102 @@ function CalendarSection({
   )
 }
 
-// -- Slot Card Component -----------------------------------------------------
+// -- Date-Only Picker for Product Page ----------------------------------------
 
-function SlotCard({
-  slot,
-  isSelected,
-  selectedWindow,
-  onSelect,
-  onWindowSelect,
-}: {
-  slot: SlotOption
-  isSelected: boolean
-  selectedWindow: string | null
-  onSelect: () => void
-  onWindowSelect: (windowLabel: string) => void
-}) {
-  const disabled = !slot.isAvailable || slot.isFull
-
-  return (
-    <div
-      className={`rounded-lg border-2 transition-all ${
-        isSelected
-          ? 'border-pink-500 bg-pink-50'
-          : disabled
-            ? 'border-gray-100 bg-gray-50 opacity-60'
-            : 'border-gray-200 bg-white hover:border-pink-300'
-      }`}
-    >
-      <button
-        onClick={() => !disabled && onSelect()}
-        disabled={disabled}
-        className={`flex w-full items-center justify-between p-3.5 text-left ${
-          disabled ? 'cursor-not-allowed' : 'cursor-pointer'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          {/* Radio indicator */}
-          <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 shrink-0 ${
-            isSelected ? 'border-pink-600' : 'border-gray-300'
-          }`}>
-            {isSelected && <div className="h-2.5 w-2.5 rounded-full bg-pink-600" />}
-          </div>
-          <div>
-            <p className={`text-sm font-semibold ${isSelected ? 'text-pink-700' : 'text-gray-800'}`}>
-              {slot.name}
-            </p>
-            <p className="text-xs text-gray-500">
-              {slot.windows ? 'Choose your 2-hour window' : `${slot.startTime} \u2013 ${slot.endTime}`}
-            </p>
-          </div>
-        </div>
-
-        <div className="text-right shrink-0">
-          {slot.isFull ? (
-            <span className="inline-block rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
-              FULL
-            </span>
-          ) : (
-            <span className={`text-sm font-semibold ${isSelected ? 'text-pink-600' : 'text-gray-700'}`}>
-              {slot.priceLabel}
-            </span>
-          )}
-        </div>
-      </button>
-
-      {/* Fixed slot windows (only shown when selected) */}
-      {isSelected && slot.windows && slot.windows.length > 0 && (
-        <div className="border-t border-pink-200 px-3.5 py-2.5 space-y-1.5">
-          {slot.windows.map((w) => {
-            const wDisabled = !w.isAvailable || w.isFull
-            const wSelected = selectedWindow === w.label
-            return (
-              <button
-                key={w.label}
-                onClick={() => !wDisabled && onWindowSelect(w.label)}
-                disabled={wDisabled}
-                className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-sm transition-all ${
-                  wSelected
-                    ? 'bg-pink-100 text-pink-700 font-medium'
-                    : wDisabled
-                      ? 'text-gray-300 cursor-not-allowed'
-                      : 'text-gray-700 hover:bg-pink-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <div className={`flex h-4 w-4 items-center justify-center rounded-full border ${
-                    wSelected ? 'border-pink-600' : 'border-gray-300'
-                  }`}>
-                    {wSelected && <div className="h-2 w-2 rounded-full bg-pink-600" />}
-                  </div>
-                  <span>{w.label}</span>
-                </div>
-                {w.isFull && (
-                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
-                    FULL
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Unavailable reason tooltip */}
-      {!slot.isAvailable && !slot.isFull && slot.reason && (
-        <p className="px-3.5 pb-2 text-xs text-gray-400">{slot.reason}</p>
-      )}
-    </div>
-  )
-}
-
-// -- Slot Section Component --------------------------------------------------
-
-function SlotSection({
-  slots,
-  fullyBlocked,
-  blockReason,
-  surcharge,
-  loadingSlots,
-  selectedSlotId,
-  selectedWindow,
-  onSlotSelect,
-  onWindowSelect,
-}: {
-  slots: SlotOption[]
-  fullyBlocked: boolean
-  blockReason?: string
-  surcharge?: SurchargeInfo
-  loadingSlots: boolean
-  selectedSlotId: string | null
-  selectedWindow: string | null
-  onSlotSelect: (slotId: string) => void
-  onWindowSelect: (windowLabel: string) => void
-}) {
-  if (loadingSlots) {
-    return (
-      <div className="space-y-2.5 mt-4">
-        {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 rounded-lg" />)}
-      </div>
-    )
-  }
-
-  if (fullyBlocked) {
-    return (
-      <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
-        Delivery not available on this date.{blockReason ? ` ${blockReason}.` : ''} Please select another date.
-      </div>
-    )
-  }
-
-  return (
-    <div className="mt-4 space-y-3">
-      {/* Surcharge banner */}
-      {surcharge?.surchargeActive && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          <span>&#x1F389;</span>
-          <span>
-            {surcharge.surchargeName}: &#x20B9;{surcharge.surchargeAmount} surcharge applies to {surcharge.surchargeAppliesTo} on this date
-          </span>
-        </div>
-      )}
-
-      {/* Slot cards */}
-      {slots.length > 0 ? (
-        <div className="space-y-2">
-          {slots.map(slot => (
-            <SlotCard
-              key={slot.id}
-              slot={slot}
-              isSelected={selectedSlotId === slot.id}
-              selectedWindow={selectedSlotId === slot.id ? selectedWindow : null}
-              onSelect={() => onSlotSelect(slot.id)}
-              onWindowSelect={onWindowSelect}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="py-4 text-center text-sm text-gray-500">
-          No delivery slots available for this date. Please choose another date.
-        </p>
-      )}
-    </div>
-  )
-}
-
-// -- Main Picker Content Component -------------------------------------------
-
-function PickerContent({
-  selectedDate,
-  selectedMonth,
-  selectedSlotId,
-  selectedWindow,
-  availableDates,
-  slots,
-  fullyBlocked,
-  blockReason,
-  surcharge,
-  loadingDates,
-  loadingSlots,
-  onDateSelect,
-  onMonthChange,
-  onSlotSelect,
-  onWindowSelect,
-}: {
-  selectedDate: Date | null
-  selectedMonth: Date
-  selectedSlotId: string | null
-  selectedWindow: string | null
-  availableDates: Set<string>
-  slots: SlotOption[]
-  fullyBlocked: boolean
-  blockReason?: string
-  surcharge?: SurchargeInfo
-  loadingDates: boolean
-  loadingSlots: boolean
-  onDateSelect: (date: Date) => void
-  onMonthChange: (date: Date) => void
-  onSlotSelect: (slotId: string) => void
-  onWindowSelect: (windowLabel: string) => void
-}) {
-  return (
-    <div className="space-y-4">
-      <CalendarSection
-        selectedDate={selectedDate}
-        selectedMonth={selectedMonth}
-        availableDates={availableDates}
-        loadingDates={loadingDates}
-        onDateSelect={onDateSelect}
-        onMonthChange={onMonthChange}
-      />
-
-      {selectedDate && (
-        <SlotSection
-          slots={slots}
-          fullyBlocked={fullyBlocked}
-          blockReason={blockReason}
-          surcharge={surcharge}
-          loadingSlots={loadingSlots}
-          selectedSlotId={selectedSlotId}
-          selectedWindow={selectedWindow}
-          onSlotSelect={onSlotSelect}
-          onWindowSelect={onWindowSelect}
-        />
-      )}
-    </div>
-  )
-}
-
-// -- Main Component ----------------------------------------------------------
-
-export function DeliverySlotPicker({
+export function DeliveryDatePicker({
   productId,
   cityId,
-  onSelect,
-  initialSelection,
-}: DeliverySlotPickerProps) {
+  onDateSelect,
+  initialDate,
+}: DatePickerProps) {
   const isMobile = useIsMobile()
 
-  // State
-  const [selectedDate, setSelectedDate] = useState<Date | null>(initialSelection?.date ?? null)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(initialDate ?? null)
   const [selectedMonth, setSelectedMonth] = useState<Date>(() => {
     const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-    return initialSelection?.date
-      ? new Date(initialSelection.date.getFullYear(), initialSelection.date.getMonth(), 1)
+    return initialDate
+      ? new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
       : new Date(nowIST.getFullYear(), nowIST.getMonth(), 1)
   })
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(initialSelection?.slotId ?? null)
-  const [selectedWindow, setSelectedWindow] = useState<string | null>(initialSelection?.window ?? null)
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set())
-  const [slots, setSlots] = useState<SlotOption[]>([])
-  const [fullyBlocked, setFullyBlocked] = useState(false)
-  const [blockReason, setBlockReason] = useState<string | undefined>()
-  const [surcharge, setSurcharge] = useState<SurchargeInfo | undefined>()
-  const [loadingDates, setLoadingDates] = useState(true)
-  const [loadingSlots, setLoadingSlots] = useState(false)
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadingDates, setLoadingDates] = useState(false)
+  const [calendarOpen, setCalendarOpen] = useState(false)
 
-  // Fetch available dates on mount
-  const fetchAvailableDates = useCallback(async () => {
-    if (!productId || !cityId) return
-    setLoadingDates(true)
-    setError(null)
-    try {
-      const params = new URLSearchParams({ productId, cityId, months: '2' })
-      const res = await fetch(`/api/delivery/available-dates?${params}`)
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error)
-      setAvailableDatesSet(new Set(json.data.availableDates as string[]))
-    } catch {
-      setError('Unable to load delivery options. Please try again.')
-    } finally {
-      setLoadingDates(false)
-    }
-  }, [productId, cityId])
-
-  useEffect(() => { fetchAvailableDates() }, [fetchAvailableDates])
-
-  // Fetch slots when date is selected
-  const fetchSlots = useCallback(async (date: Date) => {
-    if (!productId || !cityId) return
-    setLoadingSlots(true)
-    try {
-      const dateStr = toDateString(date)
-      const params = new URLSearchParams({ productId, cityId, date: dateStr })
-      const res = await fetch(`/api/delivery/availability?${params}`)
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error)
-      const data: AvailabilityResponse = json.data
-      setSlots(data.slots)
-      setFullyBlocked(data.fullyBlocked)
-      setBlockReason(data.reason)
-      setSurcharge(data.surcharge)
-
-      // Clear slot selection if previously selected slot is no longer available
-      if (selectedSlotId) {
-        const stillAvailable = data.slots.find(s => s.id === selectedSlotId && s.isAvailable)
-        if (!stillAvailable) {
-          setSelectedSlotId(null)
-          setSelectedWindow(null)
-        }
-      }
-    } catch {
-      setSlots([])
-      setError('Unable to load delivery options. Please try again.')
-    } finally {
-      setLoadingSlots(false)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, cityId])
-
+  // Fetch available dates in background, non-blocking
   useEffect(() => {
-    if (selectedDate) {
-      fetchSlots(selectedDate)
-    }
-  }, [selectedDate, fetchSlots])
+    if (!productId || !cityId) return
+    const timer = setTimeout(() => {
+      setLoadingDates(true)
+      const params = new URLSearchParams({ productId, cityId, months: '2' })
+      fetch(`/api/delivery/available-dates?${params}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.data?.availableDates) {
+            setAvailableDatesSet(new Set(data.data.availableDates as string[]))
+          }
+        })
+        .catch(() => setAvailableDatesSet(new Set()))
+        .finally(() => setLoadingDates(false))
+    }, 500) // 500ms delay so page renders first
 
-  // Handle date selection
+    return () => clearTimeout(timer)
+  }, [productId, cityId])
+
   const handleDateSelect = useCallback((date: Date) => {
     setSelectedDate(date)
-    setSelectedSlotId(null)
-    setSelectedWindow(null)
-  }, [])
+    onDateSelect(date)
+    setCalendarOpen(false)
+  }, [onDateSelect])
 
-  // Handle slot selection
-  const handleSlotSelect = useCallback((slotId: string) => {
-    setSelectedSlotId(slotId)
-    setSelectedWindow(null)
+  const dateLabel = useMemo(() => {
+    if (!selectedDate) return null
+    return formatDateDisplay(selectedDate)
+  }, [selectedDate])
 
-    // For non-fixed slots, fire onSelect immediately
-    const slot = slots.find(s => s.id === slotId)
-    if (slot && (!slot.windows || slot.windows.length === 0) && selectedDate) {
-      onSelect({
-        date: selectedDate,
-        slotId: slot.id,
-        slotName: slot.name,
-        slotSlug: slot.slug,
-        price: slot.price,
-      })
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slots, selectedDate, onSelect])
-
-  // Handle window selection (fixed slot)
-  const handleWindowSelect = useCallback((windowLabel: string) => {
-    setSelectedWindow(windowLabel)
-
-    if (selectedDate && selectedSlotId) {
-      const slot = slots.find(s => s.id === selectedSlotId)
-      if (slot) {
-        onSelect({
-          date: selectedDate,
-          slotId: slot.id,
-          slotName: slot.name,
-          slotSlug: slot.slug,
-          window: windowLabel,
-          price: slot.price,
-        })
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, selectedSlotId, slots, onSelect])
-
-  // Selection summary for trigger button
-  const selectionSummary = useMemo(() => {
-    if (!selectedDate || !selectedSlotId) return null
-    const slot = slots.find(s => s.id === selectedSlotId)
-    if (!slot) return null
-    const dateLabel = formatDateLabel(selectedDate)
-    const windowLabel = selectedWindow ? ` (${selectedWindow})` : ''
-    return `${dateLabel} \u2022 ${slot.name}${windowLabel}`
-  }, [selectedDate, selectedSlotId, selectedWindow, slots])
-
-  // Check if selection is complete
-  const isComplete = useMemo(() => {
-    if (!selectedDate || !selectedSlotId) return false
-    const slot = slots.find(s => s.id === selectedSlotId)
-    if (!slot) return false
-    // Fixed slot requires window selection
-    if (slot.windows && slot.windows.length > 0 && !selectedWindow) return false
-    return true
-  }, [selectedDate, selectedSlotId, selectedWindow, slots])
-
-  const pickerContent = (
-    <PickerContent
+  const calendarContent = (
+    <CalendarSection
       selectedDate={selectedDate}
       selectedMonth={selectedMonth}
-      selectedSlotId={selectedSlotId}
-      selectedWindow={selectedWindow}
       availableDates={availableDatesSet}
-      slots={slots}
-      fullyBlocked={fullyBlocked}
-      blockReason={blockReason}
-      surcharge={surcharge}
       loadingDates={loadingDates}
-      loadingSlots={loadingSlots}
       onDateSelect={handleDateSelect}
       onMonthChange={setSelectedMonth}
-      onSlotSelect={handleSlotSelect}
-      onWindowSelect={handleWindowSelect}
     />
   )
-
-  if (error && !loadingDates) {
-    return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-center text-sm text-red-600">
-        {error}
-        <button
-          onClick={fetchAvailableDates}
-          className="ml-2 underline hover:no-underline"
-        >
-          Retry
-        </button>
-      </div>
-    )
-  }
 
   // MOBILE: Sheet (bottom drawer)
   if (isMobile) {
     return (
       <div>
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger asChild>
-            <button
-              className={`flex w-full items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
-                selectionSummary
-                  ? 'border-pink-500 bg-pink-50'
-                  : 'border-gray-200 bg-white hover:border-pink-300'
-              }`}
-            >
-              <Calendar className={`h-5 w-5 shrink-0 ${selectionSummary ? 'text-pink-600' : 'text-gray-400'}`} />
-              <span className={`text-sm ${selectionSummary ? 'text-pink-700 font-medium' : 'text-gray-500'}`}>
-                {selectionSummary || 'Select Delivery Date & Time'}
-              </span>
-            </button>
-          </SheetTrigger>
-          <SheetContent side="bottom" className="h-[85vh] overflow-y-auto rounded-t-2xl px-4 pb-0">
+        <button
+          onClick={() => setCalendarOpen(true)}
+          className={`w-full flex items-center justify-between border-2 rounded-lg px-4 py-3 text-left transition-colors ${
+            selectedDate
+              ? 'border-pink-500 bg-pink-50'
+              : 'border-gray-200 hover:border-pink-400'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Calendar className={`h-5 w-5 ${selectedDate ? 'text-pink-600' : 'text-pink-500'}`} />
+            <span className={selectedDate ? "text-gray-900 font-medium" : "text-gray-400"}>
+              {dateLabel || "Select Delivery Date"}
+            </span>
+          </div>
+          <ChevronDown className="h-4 w-4 text-gray-400" />
+        </button>
+
+        <Sheet open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <SheetContent side="bottom" className="h-[70vh] overflow-y-auto rounded-t-2xl px-4 pb-0">
             <SheetHeader className="pb-2">
-              <SheetTitle className="text-left">Select Delivery</SheetTitle>
+              <SheetTitle className="text-left">Select Delivery Date</SheetTitle>
             </SheetHeader>
-
             <div className="pb-24">
-              {pickerContent}
+              {calendarContent}
             </div>
-
             <SheetFooter className="fixed bottom-0 left-0 right-0 border-t bg-white p-4">
               <Button
-                onClick={() => setSheetOpen(false)}
-                disabled={!isComplete}
+                onClick={() => setCalendarOpen(false)}
+                disabled={!selectedDate}
                 className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-xl font-semibold disabled:opacity-50"
               >
                 Confirm
@@ -736,10 +364,60 @@ export function DeliverySlotPicker({
     )
   }
 
-  // DESKTOP: Inline
+  // DESKTOP: Button + dropdown panel
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      {pickerContent}
+    <div className="relative">
+      <button
+        onClick={() => setCalendarOpen(!calendarOpen)}
+        className={`w-full flex items-center justify-between border-2 rounded-lg px-4 py-3 text-left transition-colors ${
+          selectedDate
+            ? 'border-pink-500 bg-pink-50'
+            : 'border-gray-200 hover:border-pink-400'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <Calendar className={`h-5 w-5 ${selectedDate ? 'text-pink-600' : 'text-pink-500'}`} />
+          <span className={selectedDate ? "text-gray-900 font-medium" : "text-gray-400"}>
+            {dateLabel || "Select Delivery Date"}
+          </span>
+        </div>
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${calendarOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {calendarOpen && (
+        <div className="absolute z-20 top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-lg p-4">
+          {calendarContent}
+        </div>
+      )}
     </div>
+  )
+}
+
+// -- Legacy DeliverySlotPicker (kept for backward compatibility) ---------------
+// This was the old combined date+slot picker. Now just wraps DeliveryDatePicker.
+// Checkout page has its own slot picker built inline.
+
+export function DeliverySlotPicker({
+  productId,
+  cityId,
+  onSelect,
+  initialSelection,
+}: DeliverySlotPickerProps) {
+  return (
+    <DeliveryDatePicker
+      productId={productId}
+      cityId={cityId}
+      onDateSelect={(date) => {
+        // Fire a partial selection with just date — no slot info
+        onSelect({
+          date,
+          slotId: '',
+          slotName: '',
+          slotSlug: '',
+          price: 0,
+        })
+      }}
+      initialDate={initialSelection?.date}
+    />
   )
 }

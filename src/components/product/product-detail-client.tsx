@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { ProductGallery } from "@/components/product/product-gallery"
-import { DeliverySlotPicker, type DeliverySelection } from "@/components/product/delivery-slot-picker"
+import { DeliveryDatePicker } from "@/components/product/delivery-slot-picker"
 import { VariationSelector } from "@/components/product/variation-selector"
 import { AddonGroup } from "@/components/product/addon-group"
 import { UpsellProducts } from "@/components/product/upsell-products"
@@ -206,7 +206,7 @@ export default function ProductDetailClient({
   const [addonErrors, setAddonErrors] = useState<Set<string>>(new Set())
   const [variationError, setVariationError] = useState(false)
   const [addedToCart, setAddedToCart] = useState(false)
-  const [deliverySelection, setDeliverySelection] = useState<DeliverySelection | null>(null)
+  const [selectedDeliveryDate, setSelectedDeliveryDate] = useState<Date | null>(null)
   const [deliveryError, setDeliveryError] = useState(false)
   const [pincode, setPincode] = useState("")
   const [pincodeChecked, setPincodeChecked] = useState(false)
@@ -381,8 +381,8 @@ export default function ProductDetailClient({
   const handleAddToCart = useCallback(() => {
     if (!product) return // defensive guard
 
-    // Validate: delivery selection required
-    if (!deliverySelection) {
+    // Validate: delivery date required
+    if (!selectedDeliveryDate) {
       setDeliveryError(true)
       return
     }
@@ -417,6 +417,11 @@ export default function ProductDetailClient({
       return
     }
 
+    // Build ISO date string from selected date
+    const dateStr = selectedDeliveryDate
+      ? `${selectedDeliveryDate.getFullYear()}-${String(selectedDeliveryDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDeliveryDate.getDate()).padStart(2, '0')}`
+      : null
+
     addItemAdvanced({
       product: product as Product,
       quantity,
@@ -424,20 +429,21 @@ export default function ProductDetailClient({
       variationId: matchedVariation?.id ?? null,
       selectedAttributes: matchedVariation ? (matchedVariation.attributes as Record<string, string>) : null,
       addonSelections: buildAddonRecords(),
+      deliveryDate: dateStr,
     })
 
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
-  }, [product, deliverySelection, isVariable, matchedVariation, addonGroups, addonSelections, addItemAdvanced, quantity, unitPrice, buildAddonRecords])
+  }, [product, selectedDeliveryDate, isVariable, matchedVariation, addonGroups, addonSelections, addItemAdvanced, quantity, unitPrice, buildAddonRecords])
 
   const handleBuyNow = useCallback(() => {
     handleAddToCart()
     setTimeout(() => {
-      if (!variationError && addonErrors.size === 0) {
+      if (!variationError && addonErrors.size === 0 && !deliveryError) {
         router.push("/cart")
       }
     }, 100)
-  }, [handleAddToCart, router, variationError, addonErrors])
+  }, [handleAddToCart, router, variationError, addonErrors, deliveryError])
 
   const handleCheckPincode = async () => {
     if (pincode.length !== 6) return
@@ -578,20 +584,20 @@ export default function ProductDetailClient({
     <div className="mb-4">
       <p className="font-medium text-sm text-gray-700 mb-2 flex items-center gap-1.5">
         <Calendar className="h-4 w-4" />
-        Select Delivery Date &amp; Time
+        Select Delivery Date
       </p>
-      {deliveryError && !deliverySelection && (
-        <p className="text-sm text-red-500 font-medium mb-2">Please select a delivery date and time slot</p>
+      {deliveryError && !selectedDeliveryDate && (
+        <p className="text-sm text-red-500 font-medium mb-2">Please select a delivery date</p>
       )}
       {product && cityId && (
-        <DeliverySlotPicker
+        <DeliveryDatePicker
           productId={product.id}
           cityId={cityId}
-          onSelect={(sel) => {
-            setDeliverySelection(sel)
+          onDateSelect={(date) => {
+            setSelectedDeliveryDate(date)
             setDeliveryError(false)
           }}
-          initialSelection={deliverySelection ?? undefined}
+          initialDate={selectedDeliveryDate ?? undefined}
         />
       )}
     </div>
