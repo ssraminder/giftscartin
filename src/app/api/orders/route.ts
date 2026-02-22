@@ -228,11 +228,13 @@ export async function POST(request: NextRequest) {
     const isGuest = !user
 
     const body = await request.json()
+    console.log('Order creation attempt:', JSON.stringify(body, null, 2))
     const parsed = createOrderBodySchema.safeParse(body)
 
     if (!parsed.success) {
+      console.log('Zod validation failed:', JSON.stringify(parsed.error.issues, null, 2))
       return NextResponse.json(
-        { success: false, error: parsed.error.issues[0].message },
+        { success: false, error: 'Validation failed', details: parsed.error.issues },
         { status: 400 }
       )
     }
