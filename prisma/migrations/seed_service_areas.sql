@@ -185,9 +185,10 @@ ON CONFLICT DO NOTHING;
 
 -- ============================================================
 -- 7. Insert Patiala city (if not exists)
+-- NOTE: cities table uses camelCase columns (no @map in Prisma)
 -- ============================================================
-INSERT INTO cities (id, name, slug, state, is_active, lat, lng,
-  base_delivery_charge, free_delivery_above, updated_at)
+INSERT INTO cities (id, name, slug, state, "isActive", lat, lng,
+  "baseDeliveryCharge", "freeDeliveryAbove", "updatedAt")
 VALUES (
   gen_random_uuid()::text, 'Patiala', 'patiala', 'Punjab',
   true, 30.3398, 76.3869, 49, 499, now()
@@ -239,21 +240,22 @@ ON CONFLICT DO NOTHING;
 
 -- ============================================================
 -- 9. Seed city_slot_cutoff for Patiala
+-- NOTE: delivery_slots table uses camelCase columns (no @map in Prisma)
 -- ============================================================
 INSERT INTO city_slot_cutoff
   (id, city_id, slot_id, slot_name, slot_slug, slot_start, slot_end,
    cutoff_hours, base_charge, min_vendors, is_available)
 SELECT
   gen_random_uuid()::text,
-  c.id, ds.id, ds.name, ds.slug, ds.start_time, ds.end_time,
+  c.id, ds.id, ds.name, ds.slug, ds."startTime", ds."endTime",
   CASE
     WHEN ds.slug = 'midnight'      THEN 6
     WHEN ds.slug = 'early-morning' THEN 12
     WHEN ds.slug = 'express'       THEN 2
     ELSE 4
   END,
-  ds.base_charge, 0, false
+  ds."baseCharge", 0, false
 FROM cities c
 CROSS JOIN delivery_slots ds
-WHERE c.slug = 'patiala' AND ds.is_active = true
+WHERE c.slug = 'patiala' AND ds."isActive" = true
 ON CONFLICT (city_id, slot_id) DO NOTHING;
