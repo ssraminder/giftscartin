@@ -15,7 +15,10 @@ const updateVendorSchema = z.object({
 const fullUpdateVendorSchema = z.object({
   businessName: z.string().min(2).max(200).optional(),
   ownerName: z.string().min(2).max(200).optional(),
-  phone: z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid Indian phone number').optional(),
+  phone: z.string()
+    .regex(/^(\+91)?[6-9]\d{9}$/, 'Must be a 10-digit Indian mobile number starting with 6-9')
+    .optional()
+    .or(z.literal('')),
   email: z.string().email('Invalid email address').optional(),
   cityId: z.string().optional(),
   address: z.string().min(5).max(500).optional(),
@@ -226,11 +229,14 @@ export async function PUT(
 
     const data = parsed.data
 
+    // Strip +91 prefix from phone so DB always stores 10-digit format
+    const cleanPhone = data.phone ? data.phone.replace(/^\+91/, '') : data.phone
+
     // Build vendor update data (exclude working hours and pincodes)
     const vendorUpdate: Record<string, unknown> = {}
     if (data.businessName !== undefined) vendorUpdate.businessName = data.businessName
     if (data.ownerName !== undefined) vendorUpdate.ownerName = data.ownerName
-    if (data.phone !== undefined) vendorUpdate.phone = data.phone
+    if (cleanPhone !== undefined) vendorUpdate.phone = cleanPhone
     if (data.email !== undefined) vendorUpdate.email = data.email
     if (data.cityId !== undefined) vendorUpdate.cityId = data.cityId
     if (data.address !== undefined) vendorUpdate.address = data.address

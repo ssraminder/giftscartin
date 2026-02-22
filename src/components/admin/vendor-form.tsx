@@ -177,8 +177,8 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       showToast("error", "Owner name is required.")
       return
     }
-    if (!/^\+91[6-9]\d{9}$/.test(phone)) {
-      showToast("error", "Invalid phone number. Must be +91 followed by 10 digits starting with 6-9.")
+    if (!/^(\+91)?[6-9]\d{9}$/.test(phone)) {
+      showToast("error", "Invalid phone number. Must be a 10-digit Indian mobile number starting with 6-9.")
       return
     }
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -202,10 +202,13 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
     const parsedPincodes = parsePincodes(pincodesText)
     const chargeNum = parseFloat(deliveryCharge) || 0
 
+    // Strip +91 prefix so DB always stores 10-digit format
+    const cleanPhone = phone.trim().replace(/^\+91/, '')
+
     const payload: Record<string, unknown> = {
       businessName: businessName.trim(),
       ownerName: ownerName.trim(),
-      phone: phone.trim(),
+      phone: cleanPhone,
       email: email.trim(),
       cityId,
       address: addressData
@@ -325,9 +328,9 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
                 setPhone(e.target.value)
               }
               placeholder="e.g. 9876543210"
-              maxLength={10}
+              maxLength={13}
             />
-            <p className="text-xs text-slate-500">10-digit Indian mobile number</p>
+            <p className="text-xs text-slate-500">10-digit Indian mobile number (with or without +91)</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
