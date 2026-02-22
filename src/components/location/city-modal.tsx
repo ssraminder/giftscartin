@@ -66,7 +66,7 @@ export function CityModal() {
 
         {/* Search */}
         <div className="px-6 pb-4">
-          <CitySearch onSelect={handleCitySelect} autoFocus placeholder="Search city or enter pincode..." />
+          <CitySearch onSelect={handleCitySelect} autoFocus placeholder="Enter city, area or pincode" />
         </div>
 
         {/* Popular Cities */}
