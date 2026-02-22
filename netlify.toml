@@ -2,6 +2,9 @@
   command = "npm run build"
   publish = ".next"
 
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_GOOGLE_PLACES_API_KEY"
+
 [functions]
   directory = "netlify/functions"
 

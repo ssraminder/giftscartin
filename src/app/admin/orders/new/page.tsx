@@ -15,6 +15,7 @@ import {
   UserCheck,
 } from "lucide-react"
 
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -448,10 +449,13 @@ function StepProducts({
                   onClick={() => openAddDialog(product)}
                   className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-slate-50 border-b last:border-b-0"
                 >
-                  <img
+                  <Image
                     src={product.images?.[0] || "/placeholder-product.svg"}
                     alt=""
+                    width={40}
+                    height={40}
                     className="w-10 h-10 rounded object-cover bg-slate-100"
+                    unoptimized
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">
@@ -479,10 +483,13 @@ function StepProducts({
           {items.map((item, index) => (
             <Card key={index} className="p-3">
               <div className="flex items-center gap-3">
-                <img
+                <Image
                   src={item.image}
                   alt=""
+                  width={48}
+                  height={48}
                   className="w-12 h-12 rounded object-cover bg-slate-100 shrink-0"
+                  unoptimized
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{item.productName}</p>
@@ -553,10 +560,13 @@ function StepProducts({
           {selectedProduct && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <img
+                <Image
                   src={selectedProduct.images?.[0] || "/placeholder-product.svg"}
                   alt=""
+                  width={64}
+                  height={64}
                   className="w-16 h-16 rounded object-cover bg-slate-100"
+                  unoptimized
                 />
                 <div>
                   <p className="font-medium">{selectedProduct.name}</p>
