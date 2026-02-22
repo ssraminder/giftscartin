@@ -16,7 +16,6 @@ const listSchema = z.object({
   type: z.enum(['SIMPLE', 'VARIABLE']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
   isActive: z.enum(['true', 'false']).optional(),
-  isSameDayEligible: z.enum(['true', 'false']).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 })
@@ -33,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const params = listSchema.parse(Object.fromEntries(searchParams))
-    const { search, category, categorySlug, type, status, isActive, isSameDayEligible, page, pageSize } = params
+    const { search, category, categorySlug, type, status, isActive, page, pageSize } = params
 
     const where: Record<string, unknown> = {}
 
@@ -55,12 +54,6 @@ export async function GET(request: NextRequest) {
     } else if (status === 'inactive' || isActive === 'false') {
       where.isActive = false
     }
-    if (isSameDayEligible === 'true') {
-      where.isSameDayEligible = true
-    } else if (isSameDayEligible === 'false') {
-      where.isSameDayEligible = false
-    }
-
     const [items, total] = await Promise.all([
       prisma.product.findMany({
         where,
@@ -82,7 +75,6 @@ export async function GET(request: NextRequest) {
       productType: item.productType,
       basePrice: Number(item.basePrice),
       isActive: item.isActive,
-      isSameDayEligible: item.isSameDayEligible,
       images: item.images,
       category: item.category,
       _count: item._count,

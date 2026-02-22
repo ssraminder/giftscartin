@@ -11,6 +11,7 @@ const bulkAssignSchema = z.object({
     costPrice: z.number().min(0).optional(),
     preparationTime: z.number().int().min(0).optional(),
     dailyLimit: z.number().int().min(1).nullable().optional(),
+    isSameDayEligible: z.boolean().default(false),
   })).min(1, 'At least one product required'),
 })
 

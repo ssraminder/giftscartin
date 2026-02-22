@@ -560,9 +560,10 @@ model VendorProduct {
   productId       String
   costPrice       Decimal @db.Decimal(10, 2)
   sellingPrice    Decimal? @db.Decimal(10, 2)
-  isAvailable     Boolean @default(true)
-  preparationTime Int     @default(120)
-  dailyLimit      Int?
+  isAvailable       Boolean @default(true)
+  preparationTime   Int     @default(120)
+  dailyLimit        Int?
+  isSameDayEligible Boolean @default(false)
 
   vendor          Vendor  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   product         Product @relation(fields: [productId], references: [id], onDelete: Cascade)
