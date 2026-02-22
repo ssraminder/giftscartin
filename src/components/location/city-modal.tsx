@@ -3,7 +3,8 @@
 import { useState } from "react"
 import { Gift, MapPin } from "lucide-react"
 import { useCity } from "@/hooks/use-city"
-import { CitySearch } from "./city-search"
+import { LocationSearch } from "./location-search"
+import type { ResolvedLocation } from "./location-search"
 import { POPULAR_CITIES } from "@/lib/cities-data"
 import type { CitySelection } from "@/components/providers/city-provider"
 
@@ -18,8 +19,17 @@ export function CityModal() {
     }, 150)
   }
 
-  function handleCitySelect(selection: CitySelection) {
-    finishSelection(selection)
+  function handleLocationSelect(location: ResolvedLocation) {
+    finishSelection({
+      cityId: location.cityId || '',
+      cityName: location.cityName || location.areaName || '',
+      citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
+      pincode: location.pincode || undefined,
+      areaName: location.areaName || undefined,
+      lat: location.lat || undefined,
+      lng: location.lng || undefined,
+      source: location.type,
+    })
   }
 
   function handleCityChipClick(city: typeof POPULAR_CITIES[number]) {
@@ -66,7 +76,7 @@ export function CityModal() {
 
         {/* Search */}
         <div className="px-6 pb-4">
-          <CitySearch onSelect={handleCitySelect} autoFocus placeholder="Enter city, area or pincode" />
+          <LocationSearch onSelect={handleLocationSelect} autoFocus placeholder="Enter city, area or pincode" />
         </div>
 
         {/* Popular Cities */}

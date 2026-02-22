@@ -29,7 +29,8 @@ import {
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
-import { CitySearch } from "@/components/location/city-search"
+import { LocationSearch } from "@/components/location/location-search"
+import type { ResolvedLocation } from "@/components/location/location-search"
 import { POPULAR_CITIES } from "@/lib/cities-data"
 import { MegaMenu, MobileMegaMenu, type MenuNode } from "@/components/layout/mega-menu"
 
@@ -64,7 +65,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
-  const { cityId, cityName, citySlug, areaName, pincode: cityPincode, isSelected, setCity, clearCity, setArea } = useCity()
+  const { cityId, cityName, areaName, pincode: cityPincode, isSelected, setCity, clearCity, setArea } = useCity()
   const [headerPincode, setHeaderPincode] = useState(cityPincode || "")
   const { partner } = usePartner()
   const router = useRouter()
@@ -101,12 +102,6 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
       router.push(withRef(`/category/cakes?search=${encodeURIComponent(searchQuery.trim())}`))
       setMobileSearchOpen(false)
     }
-  }
-
-  function handlePincodeSubmit(val: string) {
-    if (val.length !== 6 || !cityId || !citySlug || !cityName) return
-    setArea({ name: "", pincode: val, isServiceable: true })
-    setCityDropdownOpen(false)
   }
 
   return (
@@ -265,10 +260,20 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
                   {!cityId ? (
                     <>
                       <p className="text-sm font-medium text-gray-700 mb-2">Select delivery city</p>
-                      <CitySearch
-                        onSelect={(selection) => {
-                          setCity(selection)
+                      <LocationSearch
+                        onSelect={(location: ResolvedLocation) => {
+                          setCity({
+                            cityId: location.cityId || '',
+                            cityName: location.cityName || location.areaName || '',
+                            citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
+                            pincode: location.pincode || undefined,
+                            areaName: location.areaName || undefined,
+                            lat: location.lat || undefined,
+                            lng: location.lng || undefined,
+                            source: location.type,
+                          })
                           setHeaderPincode("")
+                          setCityDropdownOpen(false)
                         }}
                         autoFocus
                         placeholder="Enter city, area or pincode"
@@ -286,6 +291,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
                                   citySlug: city.citySlug,
                                 })
                                 setHeaderPincode("")
+                                setCityDropdownOpen(false)
                               }}
                               className="px-2.5 py-1 rounded-full border border-gray-200 text-xs font-medium text-gray-600 hover:border-[#E91E63] hover:text-[#E91E63] hover:bg-pink-50 transition-colors"
                             >
@@ -309,21 +315,32 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
                           Change city
                         </button>
                       </div>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        placeholder="Enter delivery pincode"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        value={headerPincode}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '')
-                          setHeaderPincode(val)
-                          if (val.length === 6) {
-                            handlePincodeSubmit(val)
+                      <LocationSearch
+                        onSelect={(location: ResolvedLocation) => {
+                          if (location.cityId) {
+                            setCity({
+                              cityId: location.cityId,
+                              cityName: location.cityName || '',
+                              citySlug: location.citySlug || '',
+                              pincode: location.pincode || undefined,
+                              areaName: location.areaName || undefined,
+                              lat: location.lat || undefined,
+                              lng: location.lng || undefined,
+                              source: location.type,
+                            })
+                          } else {
+                            setArea({
+                              name: location.areaName || '',
+                              pincode: location.pincode || '',
+                              isServiceable: location.isServiceable || false,
+                            })
                           }
+                          setHeaderPincode("")
+                          setCityDropdownOpen(false)
                         }}
                         autoFocus
+                        placeholder="Enter area or pincode"
+                        defaultValue={headerPincode}
                       />
                     </div>
                   )}
