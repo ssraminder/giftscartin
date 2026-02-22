@@ -24,10 +24,30 @@ import {
   CalendarSection,
   toDateString,
   formatDateDisplay,
-  type SlotOption,
-  type SurchargeInfo,
-  type AvailabilityResponse,
 } from "@/components/product/delivery-slot-picker"
+
+// ─── Slot API Response Types ───
+
+interface FixedWindow {
+  label: string
+  start: string
+  end: string
+  charge: number
+  available: boolean
+}
+
+interface SlotsApiData {
+  standard: { available: boolean; charge: number }
+  fixedWindows: FixedWindow[]
+  earlyMorning: { available: boolean; charge: number; cutoffPassed: boolean }
+  express: { available: boolean; charge: number }
+  midnight: { available: boolean; charge: number; cutoffPassed: boolean }
+  surcharge: { name: string; amount: number } | null
+  fullyBlocked: boolean
+  holidayReason: string | null
+}
+
+type SlotType = 'standard' | 'fixed' | 'early-morning' | 'express' | 'midnight'
 
 type StepNumber = 1 | 2 | 3
 
@@ -60,116 +80,14 @@ interface SavedAddress {
   isDefault: boolean
 }
 
-// ─── Slot Card Component ───
+// ─── Radio Indicator ───
 
-function SlotCard({
-  slot,
-  isSelected,
-  selectedWindow,
-  onSelect,
-  onWindowSelect,
-}: {
-  slot: SlotOption
-  isSelected: boolean
-  selectedWindow: string | null
-  onSelect: () => void
-  onWindowSelect: (windowLabel: string) => void
-}) {
-  const disabled = !slot.isAvailable || slot.isFull
-
+function RadioDot({ selected }: { selected: boolean }) {
   return (
-    <div
-      className={`rounded-xl border-2 transition-all ${
-        isSelected
-          ? 'border-pink-500 bg-pink-50'
-          : disabled
-            ? 'border-gray-100 bg-gray-50 opacity-60'
-            : 'border-gray-200 bg-white hover:border-pink-300'
-      }`}
-    >
-      <button
-        onClick={() => !disabled && onSelect()}
-        disabled={disabled}
-        className={`flex w-full items-center justify-between p-4 text-left ${
-          disabled ? 'cursor-not-allowed' : 'cursor-pointer'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          {/* Radio indicator */}
-          <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 shrink-0 ${
-            isSelected ? 'border-pink-600' : 'border-gray-300'
-          }`}>
-            {isSelected && <div className="h-2.5 w-2.5 rounded-full bg-pink-600" />}
-          </div>
-          <div>
-            <p className={`text-sm font-semibold ${isSelected ? 'text-pink-700' : 'text-gray-800'}`}>
-              {slot.name}
-            </p>
-            <p className="text-xs text-gray-500">
-              {slot.windows && slot.windows.length > 0 ? 'Choose your 2-hour window' : `${slot.startTime} \u2013 ${slot.endTime}`}
-            </p>
-          </div>
-        </div>
-
-        <div className="text-right shrink-0">
-          {slot.isFull ? (
-            <span className="inline-block rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-600">
-              FULL
-            </span>
-          ) : (
-            <span className={`text-sm font-semibold ${
-              slot.price === 0
-                ? 'text-green-600'
-                : isSelected ? 'text-pink-600' : 'text-gray-700'
-            }`}>
-              {slot.priceLabel}
-            </span>
-          )}
-        </div>
-      </button>
-
-      {/* Fixed slot windows (only shown when selected) */}
-      {isSelected && slot.windows && slot.windows.length > 0 && (
-        <div className="border-t border-pink-200 px-4 py-3 space-y-2">
-          {slot.windows.map((w) => {
-            const wDisabled = !w.isAvailable || w.isFull
-            const wSelected = selectedWindow === w.label
-            return (
-              <button
-                key={w.label}
-                onClick={() => !wDisabled && onWindowSelect(w.label)}
-                disabled={wDisabled}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-all ${
-                  wSelected
-                    ? 'bg-pink-100 text-pink-700 font-medium'
-                    : wDisabled
-                      ? 'text-gray-300 cursor-not-allowed'
-                      : 'text-gray-700 hover:bg-pink-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <div className={`flex h-4 w-4 items-center justify-center rounded-full border ${
-                    wSelected ? 'border-pink-600' : 'border-gray-300'
-                  }`}>
-                    {wSelected && <div className="h-2 w-2 rounded-full bg-pink-600" />}
-                  </div>
-                  <span>{w.label}</span>
-                </div>
-                {w.isFull && (
-                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-600">
-                    FULL
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Unavailable reason tooltip */}
-      {!slot.isAvailable && !slot.isFull && slot.reason && (
-        <p className="px-4 pb-2 text-xs text-gray-400">{slot.reason}</p>
-      )}
+    <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 shrink-0 ${
+      selected ? 'border-pink-600' : 'border-gray-300'
+    }`}>
+      {selected && <div className="h-2.5 w-2.5 rounded-full bg-pink-600" />}
     </div>
   )
 }
@@ -240,12 +158,10 @@ export default function CheckoutPage() {
     couponApplied: false,
   })
 
-  // Step 2 extra state — slots from API
-  const [slotsData, setSlotsData] = useState<SlotOption[]>([])
+  // Step 2 extra state — slots from API (new shape)
+  const [slotsApiData, setSlotsApiData] = useState<SlotsApiData | null>(null)
   const [slotsLoading, setSlotsLoading] = useState(false)
-  const [fullyBlocked, setFullyBlocked] = useState(false)
-  const [blockReason, setBlockReason] = useState<string | undefined>()
-  const [surchargeInfo, setSurchargeInfo] = useState<SurchargeInfo | undefined>()
+  const [fixedExpanded, setFixedExpanded] = useState(false)
 
   // Step 2 — date change calendar state
   const [changeDateOpen, setChangeDateOpen] = useState(false)
@@ -315,26 +231,21 @@ export default function CheckoutPage() {
   // ─── Fetch slots when Step 2 is entered and date is set ───
 
   const fetchSlots = useCallback(async (dateStr: string) => {
-    const firstProductId = items.length > 0 ? items[0].productId : null
-    if (!firstProductId || !cityId || !dateStr) return
+    if (!cityId || !dateStr) return
 
     setSlotsLoading(true)
     try {
-      const params = new URLSearchParams({ productId: firstProductId, cityId, date: dateStr })
-      const res = await fetch(`/api/delivery/availability?${params}`)
+      const params = new URLSearchParams({ cityId, date: dateStr })
+      const res = await fetch(`/api/delivery/slots?${params}`)
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
-      const data: AvailabilityResponse = json.data
-      setSlotsData(data.slots)
-      setFullyBlocked(data.fullyBlocked)
-      setBlockReason(data.reason)
-      setSurchargeInfo(data.surcharge)
+      setSlotsApiData(json.data as SlotsApiData)
     } catch {
-      setSlotsData([])
+      setSlotsApiData(null)
     } finally {
       setSlotsLoading(false)
     }
-  }, [items, cityId])
+  }, [cityId])
 
   // Fetch available dates when "Change Date" is opened
   const fetchAvailableDates = useCallback(async () => {
@@ -495,24 +406,36 @@ export default function CheckoutPage() {
 
   // ─── Step 2 Helpers ───
 
-  const handleSlotSelect = useCallback((slotId: string) => {
-    const slot = slotsData.find(s => s.id === slotId)
-    if (!slot || !slot.isAvailable || slot.isFull) return
-
+  const handleSlotSelect = useCallback((slotType: SlotType, charge: number, name: string) => {
+    if (slotType === 'fixed') {
+      // Selecting "Choose a Time Window" just expands — no charge until sub-window picked
+      setFixedExpanded(true)
+      setFormData((prev) => ({
+        ...prev,
+        deliverySlot: 'fixed',
+        deliverySlotName: name,
+        deliverySlotSlug: 'fixed',
+        deliveryWindow: null,
+        slotCharge: 0, // will be set when window is picked
+      }))
+      return
+    }
+    setFixedExpanded(false)
     setFormData((prev) => ({
       ...prev,
-      deliverySlot: slot.id,
-      deliverySlotName: slot.name,
-      deliverySlotSlug: slot.slug,
+      deliverySlot: slotType,
+      deliverySlotName: name,
+      deliverySlotSlug: slotType,
       deliveryWindow: null,
-      slotCharge: slot.price,
+      slotCharge: charge,
     }))
-  }, [slotsData])
+  }, [])
 
-  const handleWindowSelect = useCallback((windowLabel: string) => {
+  const handleWindowSelect = useCallback((windowLabel: string, windowCharge: number) => {
     setFormData((prev) => ({
       ...prev,
       deliveryWindow: windowLabel,
+      slotCharge: windowCharge,
     }))
   }, [])
 
@@ -527,22 +450,19 @@ export default function CheckoutPage() {
       deliveryWindow: null,
       slotCharge: 0,
     }))
-    // Update cart items with new date
+    setFixedExpanded(false)
     setDeliveryDateForAll(dateStr)
     setChangeDateOpen(false)
-    // Fetch slots for the new date
     fetchSlots(dateStr)
   }, [setDeliveryDateForAll, fetchSlots])
 
   // Check if slot selection is complete
   const isSlotComplete = useMemo(() => {
     if (!formData.deliverySlot) return false
-    const slot = slotsData.find(s => s.id === formData.deliverySlot)
-    if (!slot) return false
-    // Fixed slot requires window selection
-    if (slot.windows && slot.windows.length > 0 && !formData.deliveryWindow) return false
+    // Fixed slot requires a sub-window selection
+    if (formData.deliverySlot === 'fixed' && !formData.deliveryWindow) return false
     return true
-  }, [formData.deliverySlot, formData.deliveryWindow, slotsData])
+  }, [formData.deliverySlot, formData.deliveryWindow])
 
   const handleContinueStep2 = useCallback(() => {
     if (formData.deliveryDate && isSlotComplete) {
@@ -682,8 +602,9 @@ export default function CheckoutPage() {
   // ─── Derived Values ───
 
   const subtotal = getSubtotal()
-  const deliveryCharge = 0 // From city config — placeholder
-  const total = subtotal + deliveryCharge + formData.slotCharge + codFee - formData.couponDiscount
+  // Delivery charge = slot charge (standard free/₹39, or specialized slot price)
+  const deliveryCharge = formData.slotCharge
+  const total = subtotal + deliveryCharge + codFee - formData.couponDiscount
 
   const isNewAddressFormVisible =
     formData.showNewAddressForm || savedAddresses.length === 0
@@ -1150,11 +1071,11 @@ export default function CheckoutPage() {
                 </h2>
 
                 {/* Surcharge banner */}
-                {surchargeInfo?.surchargeActive && (
+                {slotsApiData?.surcharge && (
                   <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-3 text-sm text-amber-800">
                     <span>&#x1F389;</span>
                     <span>
-                      {surchargeInfo.surchargeName}: &#x20B9;{surchargeInfo.surchargeAmount} surcharge applies to {surchargeInfo.surchargeAppliesTo} on this date
+                      Festival surcharge: &#x20B9;{slotsApiData.surcharge.amount} added to all orders on this date
                     </span>
                   </div>
                 )}
@@ -1165,22 +1086,226 @@ export default function CheckoutPage() {
                       <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
                     ))}
                   </div>
-                ) : fullyBlocked ? (
+                ) : slotsApiData?.fullyBlocked ? (
                   <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
-                    Delivery not available on this date.{blockReason ? ` ${blockReason}.` : ''} Please select another date.
+                    Delivery not available on this date.{slotsApiData.holidayReason ? ` ${slotsApiData.holidayReason}.` : ''} Please select another date.
                   </div>
-                ) : slotsData.length > 0 ? (
-                  <div className="space-y-2">
-                    {slotsData.map(slot => (
-                      <SlotCard
-                        key={slot.id}
-                        slot={slot}
-                        isSelected={formData.deliverySlot === slot.id}
-                        selectedWindow={formData.deliverySlot === slot.id ? formData.deliveryWindow : null}
-                        onSelect={() => handleSlotSelect(slot.id)}
-                        onWindowSelect={handleWindowSelect}
-                      />
-                    ))}
+                ) : slotsApiData ? (
+                  <div className="space-y-5">
+
+                    {/* ─── SECTION 1: Standard Delivery ─── */}
+                    {slotsApiData.standard.available && (
+                      <div>
+                        <div
+                          onClick={() => {
+                            const charge = subtotal >= 499 ? 0 : slotsApiData.standard.charge || 39
+                            handleSlotSelect('standard', charge, 'Standard Delivery')
+                          }}
+                          className={`rounded-xl border transition-all cursor-pointer ${
+                            formData.deliverySlot === 'standard'
+                              ? 'border-pink-500 bg-pink-50'
+                              : 'border-gray-200 bg-white hover:border-pink-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between p-4">
+                            <div className="flex items-center gap-3">
+                              <RadioDot selected={formData.deliverySlot === 'standard'} />
+                              <div>
+                                <p className={`text-sm font-semibold ${formData.deliverySlot === 'standard' ? 'text-pink-700' : 'text-gray-800'}`}>
+                                  Standard Delivery
+                                </p>
+                                <p className="text-xs text-gray-500">9:00 AM &ndash; 9:00 PM</p>
+                                <p className="text-xs text-gray-400">Delivered anytime during the day</p>
+                              </div>
+                            </div>
+                            <span className={`text-sm font-semibold shrink-0 ${
+                              subtotal >= 499 ? 'text-green-600' : 'text-gray-700'
+                            }`}>
+                              {subtotal >= 499 ? 'Free' : `\u20B9${slotsApiData.standard.charge || 39}`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ─── SECTION 2: Fixed Time Slots ─── */}
+                    {slotsApiData.fixedWindows.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Fixed Time Slots</p>
+                        <div
+                          onClick={() => handleSlotSelect('fixed', 0, 'Choose a Time Window')}
+                          className={`rounded-xl border transition-all cursor-pointer ${
+                            formData.deliverySlot === 'fixed'
+                              ? 'border-pink-500 bg-pink-50'
+                              : 'border-gray-200 bg-white hover:border-pink-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between p-4">
+                            <div className="flex items-center gap-3">
+                              <RadioDot selected={formData.deliverySlot === 'fixed'} />
+                              <div>
+                                <p className={`text-sm font-semibold ${formData.deliverySlot === 'fixed' ? 'text-pink-700' : 'text-gray-800'}`}>
+                                  Choose a Time Window
+                                </p>
+                                <p className="text-xs text-gray-500">Pick a 2-hour delivery slot</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-sm font-semibold text-gray-700">
+                                From &#x20B9;{Math.min(...slotsApiData.fixedWindows.map(w => w.charge))}
+                              </span>
+                              {formData.deliverySlot === 'fixed' ? (
+                                <ChevronUp className="h-4 w-4 text-pink-500" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-gray-400" />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Expanded sub-windows */}
+                          {formData.deliverySlot === 'fixed' && fixedExpanded && (
+                            <div className="border-t border-pink-200 px-4 py-3 ml-4 border-l-2 border-l-pink-200 space-y-1.5">
+                              {slotsApiData.fixedWindows.map((w) => {
+                                const wSelected = formData.deliveryWindow === w.label
+                                return (
+                                  <button
+                                    key={w.label}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleWindowSelect(w.label, w.charge)
+                                    }}
+                                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-all ${
+                                      wSelected
+                                        ? 'bg-pink-100 text-pink-700 font-medium'
+                                        : 'text-gray-700 hover:bg-pink-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <div className={`flex h-4 w-4 items-center justify-center rounded-full border ${
+                                        wSelected ? 'border-pink-600' : 'border-gray-300'
+                                      }`}>
+                                        {wSelected && <div className="h-2 w-2 rounded-full bg-pink-600" />}
+                                      </div>
+                                      <span>{w.label}</span>
+                                    </div>
+                                    <span className={`font-semibold ${wSelected ? 'text-pink-600' : 'text-gray-600'}`}>
+                                      &#x20B9;{w.charge}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ─── SECTION 3: Specialized Delivery ─── */}
+                    {(slotsApiData.earlyMorning.charge > 0 || slotsApiData.express.charge > 0 || slotsApiData.midnight.charge > 0) && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Specialized Delivery</p>
+                        <div className="space-y-2">
+
+                          {/* Early Morning */}
+                          {slotsApiData.earlyMorning.charge > 0 && (
+                            <div
+                              onClick={() => !slotsApiData.earlyMorning.cutoffPassed && handleSlotSelect('early-morning', slotsApiData.earlyMorning.charge, 'Early Morning')}
+                              className={`rounded-xl border transition-all ${
+                                slotsApiData.earlyMorning.cutoffPassed
+                                  ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                                  : formData.deliverySlot === 'early-morning'
+                                    ? 'border-pink-500 bg-pink-50 cursor-pointer'
+                                    : 'border-gray-200 bg-white hover:border-pink-300 cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between p-4">
+                                <div className="flex items-center gap-3">
+                                  <RadioDot selected={formData.deliverySlot === 'early-morning'} />
+                                  <div>
+                                    <p className={`text-sm font-semibold ${formData.deliverySlot === 'early-morning' ? 'text-pink-700' : 'text-gray-800'}`}>
+                                      &#x1F305; Early Morning
+                                    </p>
+                                    <p className="text-xs text-gray-500">6:00 AM &ndash; 8:00 AM</p>
+                                    <p className="text-xs text-gray-400">
+                                      {slotsApiData.earlyMorning.cutoffPassed
+                                        ? 'Booking closed for today'
+                                        : 'Must order by previous day 6 PM'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-semibold text-gray-700 shrink-0">
+                                  &#x20B9;{slotsApiData.earlyMorning.charge}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Express */}
+                          {slotsApiData.express.charge > 0 && slotsApiData.express.available && (
+                            <div
+                              onClick={() => handleSlotSelect('express', slotsApiData.express.charge, 'Express Delivery')}
+                              className={`rounded-xl border transition-all cursor-pointer ${
+                                formData.deliverySlot === 'express'
+                                  ? 'border-pink-500 bg-pink-50'
+                                  : 'border-gray-200 bg-white hover:border-pink-300'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between p-4">
+                                <div className="flex items-center gap-3">
+                                  <RadioDot selected={formData.deliverySlot === 'express'} />
+                                  <div>
+                                    <p className={`text-sm font-semibold ${formData.deliverySlot === 'express' ? 'text-pink-700' : 'text-gray-800'}`}>
+                                      &#x26A1; Express Delivery
+                                    </p>
+                                    <p className="text-xs text-gray-500">Within 2&ndash;3 hours</p>
+                                    <p className="text-xs text-gray-400">Order now, delivered fast</p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-semibold text-gray-700 shrink-0">
+                                  &#x20B9;{slotsApiData.express.charge}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Midnight */}
+                          {slotsApiData.midnight.charge > 0 && (
+                            <div
+                              onClick={() => !slotsApiData.midnight.cutoffPassed && handleSlotSelect('midnight', slotsApiData.midnight.charge, 'Midnight Delivery')}
+                              className={`rounded-xl border transition-all ${
+                                slotsApiData.midnight.cutoffPassed
+                                  ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
+                                  : formData.deliverySlot === 'midnight'
+                                    ? 'border-pink-500 bg-pink-50 cursor-pointer'
+                                    : 'border-gray-200 bg-white hover:border-pink-300 cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between p-4">
+                                <div className="flex items-center gap-3">
+                                  <RadioDot selected={formData.deliverySlot === 'midnight'} />
+                                  <div>
+                                    <p className={`text-sm font-semibold ${formData.deliverySlot === 'midnight' ? 'text-pink-700' : 'text-gray-800'}`}>
+                                      &#x1F319; Midnight Delivery
+                                    </p>
+                                    <p className="text-xs text-gray-500">11:00 PM &ndash; 11:59 PM</p>
+                                    <p className="text-xs text-gray-400">
+                                      {slotsApiData.midnight.cutoffPassed
+                                        ? 'Booking closed for today'
+                                        : 'Must order by 6 PM today'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-semibold text-gray-700 shrink-0">
+                                  &#x20B9;{slotsApiData.midnight.charge}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 ) : (
                   <p className="py-4 text-center text-sm text-gray-500">
@@ -1510,15 +1635,12 @@ export default function CheckoutPage() {
                     <span>{formatPrice(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Delivery charge</span>
+                    <span className="text-gray-600">
+                      Delivery
+                      {formData.deliverySlotName && <span className="text-xs text-gray-400 ml-1">({formData.deliverySlotName})</span>}
+                    </span>
                     <span>{deliveryCharge === 0 ? <span className="text-green-600">Free</span> : formatPrice(deliveryCharge)}</span>
                   </div>
-                  {formData.slotCharge > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Slot charge</span>
-                      <span>{formatPrice(formData.slotCharge)}</span>
-                    </div>
-                  )}
                   {formData.couponDiscount > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
                       <span>Coupon</span>
@@ -1638,23 +1760,20 @@ export default function CheckoutPage() {
 
                 {/* Delivery */}
                 <div className="flex justify-between text-sm mt-1.5">
-                  <span className="text-gray-600">Delivery</span>
-                  {deliveryCharge === 0 ? (
-                    <span className="text-gray-400 text-xs">
-                      {currentStep >= 2 ? "Free" : "Calculated in next step"}
-                    </span>
+                  <span className="text-gray-600">
+                    Delivery
+                    {formData.deliverySlotName && currentStep >= 2 && (
+                      <span className="text-xs text-gray-400 ml-1">({formData.deliverySlotName})</span>
+                    )}
+                  </span>
+                  {currentStep < 2 ? (
+                    <span className="text-gray-400 text-xs">Calculated in next step</span>
+                  ) : deliveryCharge === 0 ? (
+                    <span className="text-green-600 font-medium">Free</span>
                   ) : (
                     <span className="text-gray-800">{formatPrice(deliveryCharge)}</span>
                   )}
                 </div>
-
-                {/* Slot charge */}
-                {formData.slotCharge > 0 && (
-                  <div className="flex justify-between text-sm mt-1.5">
-                    <span className="text-gray-600">Slot charge</span>
-                    <span className="text-gray-800">{formatPrice(formData.slotCharge)}</span>
-                  </div>
-                )}
 
                 {/* Coupon discount */}
                 {formData.couponDiscount > 0 && (
