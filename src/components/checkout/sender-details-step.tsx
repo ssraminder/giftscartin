@@ -41,9 +41,10 @@ interface SenderDetailsStepProps {
   onChange: (details: SenderDetails) => void
   onContinue: () => void
   onBack: () => void
+  hideButtons?: boolean
 }
 
-export function SenderDetailsStep({ value, onChange, onContinue, onBack }: SenderDetailsStepProps) {
+export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideButtons }: SenderDetailsStepProps) {
   const { data: session } = useSession()
   const [errors, setErrors] = useState<Partial<Record<keyof SenderDetails, string>>>({})
 
@@ -191,24 +192,26 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack }: Sende
       </div>
 
       {/* Navigation buttons */}
-      <div className="flex gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onBack}
-          className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-600
-                     font-medium hover:bg-gray-50 transition-colors"
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={handleContinue}
-          className="flex-[2] py-3 bg-pink-500 hover:bg-pink-600 text-white
-                     rounded-xl font-semibold transition-colors"
-        >
-          Continue to Delivery Slot
-        </button>
-      </div>
+      {!hideButtons && (
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-600
+                       font-medium hover:bg-gray-50 transition-colors"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={handleContinue}
+            className="flex-[2] py-3 bg-pink-500 hover:bg-pink-600 text-white
+                       rounded-xl font-semibold transition-colors"
+          >
+            Continue to Delivery Slot
+          </button>
+        </div>
+      )}
     </div>
   )
 }
