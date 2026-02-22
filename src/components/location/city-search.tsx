@@ -160,8 +160,71 @@ export function CitySearch({
     try {
       const res = await fetch(`/api/location/search?q=${encodeURIComponent(searchQuery)}`)
       const json = await res.json()
-      if (json.success && json.data) {
-        const data = json.data as SearchResults
+      if (json.success && json.data?.results) {
+        const flat = json.data.results as Array<{
+          type: 'area' | 'city' | 'google_place'
+          label: string
+          cityId: string | null
+          cityName: string | null
+          citySlug: string | null
+          pincode: string | null
+          areaName: string | null
+          lat: number | null
+          lng: number | null
+          placeId: string | null
+          isActive: boolean
+          isComingSoon: boolean
+        }>
+        const areas: AreaResult[] = flat
+          .filter(r => r.type === 'area')
+          .map((r, i) => ({
+            id: `area-${i}-${r.pincode || r.areaName}`,
+            name: r.areaName || r.label,
+            pincode: r.pincode,
+            cityId: r.cityId,
+            cityName: r.cityName,
+            citySlug: r.citySlug,
+            state: null,
+            lat: r.lat,
+            lng: r.lng,
+            isActive: r.isActive,
+            isComingSoon: r.isComingSoon,
+            source: 'db' as const,
+          }))
+        const cities: CityResult[] = flat
+          .filter(r => r.type === 'city')
+          .map(r => ({
+            cityId: r.cityId,
+            cityName: r.cityName,
+            citySlug: r.citySlug,
+            state: null,
+            lat: r.lat,
+            lng: r.lng,
+            isActive: r.isActive,
+            isComingSoon: r.isComingSoon,
+            source: 'db' as const,
+          }))
+        // Google Places results show as areas
+        const googleAreas: AreaResult[] = flat
+          .filter(r => r.type === 'google_place')
+          .map((r, i) => ({
+            id: `google-${i}-${r.placeId}`,
+            name: r.areaName || r.label,
+            pincode: r.pincode,
+            cityId: r.cityId,
+            cityName: r.cityName,
+            citySlug: r.citySlug,
+            state: null,
+            lat: r.lat,
+            lng: r.lng,
+            isActive: r.isActive,
+            isComingSoon: r.isComingSoon,
+            source: 'google' as const,
+          }))
+        const data: SearchResults = {
+          areas: [...areas, ...googleAreas],
+          cities,
+        }
         setResults(data)
         setShowDropdown(true)
         const empty = data.areas.length === 0 && data.cities.length === 0
