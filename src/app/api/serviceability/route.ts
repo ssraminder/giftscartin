@@ -44,6 +44,31 @@ export async function POST(request: NextRequest) {
     })
 
     if (zones.length === 0) {
+      // Fallback: check service_areas table for "coming soon" coverage
+      const serviceArea = await prisma.serviceArea.findFirst({
+        where: {
+          pincode,
+          isActive: true,
+        },
+      })
+
+      if (serviceArea) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            isServiceable: true,
+            serviceable: true,
+            comingSoon: true,
+            message: "We're coming to your area soon! Place your order and our team will confirm delivery.",
+            vendorCount: 0,
+            deliveryCharge: 0,
+            availableSlots: [],
+            cityName: serviceArea.cityName,
+            freeDeliveryAbove: 0,
+          },
+        })
+      }
+
       return NextResponse.json({
         success: true,
         data: {

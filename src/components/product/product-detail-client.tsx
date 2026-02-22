@@ -7,7 +7,7 @@ import Link from "next/link"
 import {
   MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
   CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
-  MessageSquare, Loader2, X, XCircle,
+  MessageSquare, Loader2, X, XCircle, Info,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -222,6 +222,8 @@ export default function ProductDetailClient({
   const [pincode, setPincode] = useState("")
   const [pincodeChecked, setPincodeChecked] = useState(false)
   const [pincodeAvailable, setPincodeAvailable] = useState(true)
+  const [comingSoon, setComingSoon] = useState(false)
+  const [comingSoonMessage, setComingSoonMessage] = useState("")
   const [pincodeChecking, setPincodeChecking] = useState(false)
   const [selectedWeight, setSelectedWeight] = useState<string | null>(null)
   const [giftMessageOpen, setGiftMessageOpen] = useState(false)
@@ -472,10 +474,15 @@ export default function ProductDetailClient({
       })
       const json = await res.json()
       const isAvailable = json.success && json.data?.isServiceable === true
+      const isComingSoon = json.success && json.data?.comingSoon === true
       setPincodeAvailable(isAvailable)
+      setComingSoon(isComingSoon)
+      setComingSoonMessage(isComingSoon ? (json.data?.message || "") : "")
       setPincodeChecked(true)
     } catch {
       setPincodeAvailable(false)
+      setComingSoon(false)
+      setComingSoonMessage("")
       setPincodeChecked(true)
     } finally {
       setPincodeChecking(false)
@@ -604,25 +611,36 @@ export default function ProductDetailClient({
         <Calendar className="h-4 w-4" />
         Select Delivery Date
       </p>
-      {deliveryError && !selectedDeliveryDate && (
-        <p className="text-sm text-red-500 font-medium mb-2">Please select a delivery date</p>
-      )}
-      {product && cityId && (
-        <DeliveryDatePicker
-          productId={product.id}
-          cityId={cityId}
-          onDateSelect={(date) => {
-            setSelectedDeliveryDate(date)
-            setDeliveryError(false)
-          }}
-          initialDate={selectedDeliveryDate ?? undefined}
-        />
+      {comingSoon ? (
+        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
+          <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+          <p className="text-sm text-blue-700">
+            {comingSoonMessage || "We're coming to your area soon! Place your order and our team will confirm delivery."}
+          </p>
+        </div>
+      ) : (
+        <>
+          {deliveryError && !selectedDeliveryDate && (
+            <p className="text-sm text-red-500 font-medium mb-2">Please select a delivery date</p>
+          )}
+          {product && cityId && (
+            <DeliveryDatePicker
+              productId={product.id}
+              cityId={cityId}
+              onDateSelect={(date) => {
+                setSelectedDeliveryDate(date)
+                setDeliveryError(false)
+              }}
+              initialDate={selectedDeliveryDate ?? undefined}
+            />
+          )}
+        </>
       )}
     </div>
   )
 
   const serviceabilityStatus = pincodeChecked
-    ? (pincodeAvailable ? 'available' : 'unavailable')
+    ? (comingSoon ? 'comingSoon' : pincodeAvailable ? 'available' : 'unavailable')
     : null
 
   const pincodeBlock = (
@@ -684,6 +702,12 @@ export default function ProductDetailClient({
           <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
             <CheckCircle className="h-3 w-3" />
             Delivery available{cityAreaName ? ` in ${cityAreaName}` : ''}
+          </p>
+        )}
+        {!pincodeChecking && serviceabilityStatus === 'comingSoon' && (
+          <p className="text-xs text-blue-600 flex items-center gap-1 mt-1">
+            <Info className="h-3 w-3" />
+            {comingSoonMessage || "We're coming to your area soon!"}
           </p>
         )}
         {!pincodeChecking && serviceabilityStatus === 'unavailable' && (
