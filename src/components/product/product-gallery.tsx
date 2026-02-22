@@ -16,7 +16,7 @@ export function ProductGallery({ images, name }: ProductGalleryProps) {
   return (
     <div className="flex flex-col gap-3">
       {/* Main image */}
-      <div className="relative w-full aspect-square max-h-[400px] overflow-hidden rounded-xl bg-muted">
+      <div className="relative w-full aspect-[4/3] lg:aspect-square max-h-[300px] lg:max-h-[400px] overflow-hidden rounded-xl bg-muted">
         <Image
           src={processImageUrl(displayImages[selectedIndex])}
           alt={name}
