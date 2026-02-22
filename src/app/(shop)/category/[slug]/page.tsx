@@ -6,6 +6,22 @@ import { Breadcrumb } from '@/components/seo/breadcrumb'
 import { CategoryProductGrid } from '@/components/category/category-product-grid'
 import { Sparkles } from 'lucide-react'
 
+// Cache page for 1 hour, then regenerate on next request
+export const revalidate = 3600
+
+// Pre-build all active category pages at deploy time
+export async function generateStaticParams() {
+  try {
+    const categories = await prisma.category.findMany({
+      where: { isActive: true },
+      select: { slug: true },
+    })
+    return categories.map((c) => ({ slug: c.slug }))
+  } catch {
+    return []
+  }
+}
+
 export async function generateMetadata(
   { params }: { params: { slug: string } }
 ): Promise<Metadata> {

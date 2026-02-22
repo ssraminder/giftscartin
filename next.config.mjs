@@ -4,10 +4,15 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'saeditdtacprxcnlgips.supabase.co',
-        pathname: '/storage/v1/object/public/**',
+        hostname: '*.supabase.co',
+        pathname: '/storage/v1/**',
       },
     ],
+    // Limit image sizes to avoid generating too many variants
+    deviceSizes: [640, 750, 828, 1080, 1200],
+    imageSizes: [64, 96, 128, 256, 384],
+    // Use webp format for better compression
+    formats: ['image/webp'],
   },
 };
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { cn } from "@/lib/utils"
+import { cn, processImageUrl } from "@/lib/utils"
 
 interface ProductGalleryProps {
   images: string[]
@@ -16,13 +16,14 @@ export function ProductGallery({ images, name }: ProductGalleryProps) {
   return (
     <div className="flex flex-col gap-3">
       {/* Main image */}
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-muted">
+      <div className="relative w-full aspect-square max-h-[400px] overflow-hidden rounded-xl bg-muted">
         <Image
-          src={displayImages[selectedIndex]}
+          src={processImageUrl(displayImages[selectedIndex])}
           alt={name}
           fill
           className="object-cover"
-          sizes="(max-width: 768px) 100vw, 50vw"
+          sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 600px"
+          quality={75}
           priority
         />
       </div>
@@ -42,11 +43,13 @@ export function ProductGallery({ images, name }: ProductGalleryProps) {
               )}
             >
               <Image
-                src={img}
-                alt={`${name} - Image ${idx + 1}`}
+                src={processImageUrl(img, 120, 70)}
+                alt={`${name} view ${idx + 1}`}
                 fill
                 className="object-cover"
-                sizes="64px"
+                sizes="120px"
+                quality={70}
+                loading="lazy"
               />
             </button>
           ))}
