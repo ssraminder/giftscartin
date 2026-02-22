@@ -1,21 +1,30 @@
-interface NominatimResult {
+interface NominatimReverseResult {
   address: string
   pincode: string
   city: string
   state: string
 }
 
+interface NominatimLookupResult {
+  pincode: string
+  city: string
+  state: string
+  areaName: string
+  lat: number
+  lng: number
+  valid: boolean
+}
+
 export async function reverseGeocode(
   lat: number,
   lng: number
-): Promise<NominatimResult | null> {
+): Promise<NominatimReverseResult | null> {
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`,
       {
         headers: {
-          // Required by Nominatim usage policy
-          'User-Agent': 'GiftsCart/1.0 (giftscart.in)'
+          'User-Agent': 'GiftsCart/1.0 (noreply@cethos.com)'
         }
       }
     )
@@ -29,6 +38,43 @@ export async function reverseGeocode(
       pincode: a.postcode || '',
       city: a.city || a.town || a.village || a.county || '',
       state: a.state || '',
+    }
+  } catch {
+    return null
+  }
+}
+
+// Rate limit: 1 req/sec per Nominatim usage policy.
+// Only called as fallback when pincode not in service_areas.
+export async function lookupPincode(
+  pincode: string
+): Promise<NominatimLookupResult | null> {
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/search` +
+      `?postalcode=${pincode}&country=IN&format=json&addressdetails=1&limit=1`
+
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'GiftsCart/1.0 (noreply@cethos.com)' },
+      next: { revalidate: 86400 }, // cache 24hrs in Next.js
+    })
+
+    if (!res.ok) return null
+
+    const data = await res.json()
+    if (!data.length) return null
+
+    const result = data[0]
+    const addr = result.address
+
+    return {
+      pincode,
+      city: addr.city || addr.town || addr.county || '',
+      state: addr.state || '',
+      areaName: addr.suburb || addr.neighbourhood || addr.city || '',
+      lat: parseFloat(result.lat),
+      lng: parseFloat(result.lon),
+      valid: true,
     }
   } catch {
     return null

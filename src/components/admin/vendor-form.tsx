@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, CheckCircle, AlertCircle, AlertTriangle } from "lucide-react"
+import { VendorCoverageByArea, VendorCoverageByRadius } from "./vendor-coverage"
 import { VendorAddressInput, type VendorAddressResult } from "@/components/vendor/address-input/vendor-address-input"
 
 // ==================== Types ====================
@@ -42,6 +43,8 @@ interface VendorData {
   autoAccept: boolean
   status: string
   isOnline: boolean
+  coverageMethod?: string
+  coverageRadiusKm?: number | null
   workingHours: WorkingHoursData[]
   pincodes: PincodeData[]
 }
@@ -124,12 +127,18 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       : DEFAULT_WORKING_HOURS
   )
 
-  // Pincodes
+  // Pincodes / Coverage
   const [pincodesText, setPincodesText] = useState(
     vendor?.pincodes?.map((p) => p.pincode).join("\n") ?? ""
   )
   const [deliveryCharge, setDeliveryCharge] = useState(
     vendor?.pincodes?.[0]?.deliveryCharge?.toString() ?? "0"
+  )
+  const [coverageMethod, setCoverageMethod] = useState(
+    vendor?.coverageMethod || "pincode"
+  )
+  const [currentPincodes, setCurrentPincodes] = useState<string[]>(
+    vendor?.pincodes?.map((p) => p.pincode) || []
   )
 
   // UI state
@@ -502,49 +511,99 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
         </div>
       </div>
 
-      {/* Delivery Pincodes */}
+      {/* Delivery Coverage */}
       <div className="space-y-4 rounded-lg border bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Delivery Pincodes</h2>
-        <p className="text-xs text-slate-500">
-          Pincodes this vendor delivers to. One per line or comma-separated.
-        </p>
+        <h2 className="text-lg font-semibold text-slate-900">Delivery Coverage</h2>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Pincodes</Label>
-            <textarea
-              value={pincodesText}
-              onChange={(e) => setPincodesText(e.target.value)}
-              placeholder={"160001\n160002\n160003"}
-              rows={5}
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            />
-            <p className="text-xs text-slate-500">
-              {parsePincodes(pincodesText).length} valid pincode
-              {parsePincodes(pincodesText).length !== 1 ? "s" : ""}
-            </p>
-          </div>
+        {isEdit ? (
+          <div className="space-y-3">
+            {/* Method tabs */}
+            <div className="flex gap-2">
+              {(["pincode", "radius"] as const).map((method) => (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setCoverageMethod(method)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    coverageMethod === method
+                      ? "bg-pink-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {method === "pincode" ? "By Area" : "By Radius"}
+                </button>
+              ))}
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="deliveryCharge">
-              Extra Delivery Charge (&#8377;)
-            </Label>
-            <Input
-              id="deliveryCharge"
-              type="number"
-              min="0"
-              step="1"
-              value={deliveryCharge}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setDeliveryCharge(e.target.value)
-              }
-              placeholder="0"
-            />
-            <p className="text-xs text-slate-500">
-              Applied to all pincodes above.
-            </p>
+            {coverageMethod === "pincode" ? (
+              <VendorCoverageByArea
+                vendorId={vendor?.id || ""}
+                cityId={cityId}
+                currentPincodes={currentPincodes}
+                onSave={setCurrentPincodes}
+              />
+            ) : (
+              <VendorCoverageByRadius
+                vendorId={vendor?.id || ""}
+                vendorLat={addressData?.lat}
+                vendorLng={addressData?.lng}
+                currentRadius={
+                  vendor?.coverageRadiusKm
+                    ? Number(vendor.coverageRadiusKm)
+                    : 8
+                }
+                onSave={(km) => {
+                  // Coverage saved via API directly
+                  console.log("radius saved", km)
+                }}
+              />
+            )}
           </div>
-        </div>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500">
+              Pincodes this vendor delivers to. One per line or comma-separated.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Pincodes</Label>
+                <textarea
+                  value={pincodesText}
+                  onChange={(e) => setPincodesText(e.target.value)}
+                  placeholder={"160001\n160002\n160003"}
+                  rows={5}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+                <p className="text-xs text-slate-500">
+                  {parsePincodes(pincodesText).length} valid pincode
+                  {parsePincodes(pincodesText).length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deliveryCharge">
+                  Extra Delivery Charge (&#8377;)
+                </Label>
+                <Input
+                  id="deliveryCharge"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={deliveryCharge}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setDeliveryCharge(e.target.value)
+                  }
+                  placeholder="0"
+                />
+                <p className="text-xs text-slate-500">
+                  Applied to all pincodes above.
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-amber-600">
+              After creating the vendor, you can configure area-based or radius-based coverage from the edit page.
+            </p>
+          </>
+        )}
       </div>
 
       {/* Submit */}
