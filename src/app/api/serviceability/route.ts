@@ -7,6 +7,14 @@ const serviceabilitySchema = z.object({
   productId: z.string().optional(),
 })
 
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -41,7 +49,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Step 3a: No service_areas row → not serviceable
+    // No service_areas row → not serviceable
     if (!serviceArea) {
       return NextResponse.json({
         success: true,
@@ -59,25 +67,49 @@ export async function POST(request: NextRequest) {
 
     const cityId = serviceArea.cityId
 
-    // Step 2: Find capable vendors in this city serving this pincode
-    const vendorWhere = {
-      cityId,
-      status: 'APPROVED' as const,
-      isOnline: true,
-      pincodes: { some: { pincode, isActive: true } },
-      ...(productId
-        ? { products: { some: { productId, isAvailable: true } } }
-        : {}),
-    }
+    // Step 2: Find vendors via all three methods (any match = serviceable)
 
-    const vendors = await prisma.vendor.findMany({
-      where: vendorWhere,
-      select: { id: true },
+    // Method 1: Pincode match
+    const pincodeVendorIds = await prisma.vendorPincode.findMany({
+      where: {
+        pincode,
+        isActive: true,
+        vendor: { status: 'APPROVED' },
+      },
+      select: { vendorId: true },
     })
 
-    const vendorCount = vendors.length
+    // Method 2: Zone match
+    const zones = await prisma.cityZone.findMany({
+      where: {
+        pincodes: { has: pincode },
+        isActive: true,
+        cityId,
+      },
+    })
+    const zoneIds = zones.map((z) => z.id)
+    const zoneVendorIds = zoneIds.length > 0
+      ? await prisma.vendorZone.findMany({
+          where: {
+            zoneId: { in: zoneIds },
+            vendor: { status: 'APPROVED' },
+          },
+          select: { vendorId: true },
+        })
+      : []
 
-    // Step 3b: No vendors but service_areas row exists → coming soon
+    // Method 3: Radius match (universal fallback)
+    const radiusVendorIds = await getRadiusVendorIds(serviceArea)
+
+    // Merge all vendor IDs (deduplicate)
+    const allVendorIdSet = new Set<string>()
+    for (const v of pincodeVendorIds) allVendorIdSet.add(v.vendorId)
+    for (const v of zoneVendorIds) allVendorIdSet.add(v.vendorId)
+    for (const id of radiusVendorIds) allVendorIdSet.add(id)
+
+    const vendorCount = allVendorIdSet.size
+
+    // Step 3: No vendors but service_areas row exists → coming soon
     if (vendorCount === 0) {
       return NextResponse.json({
         success: true,
@@ -97,7 +129,23 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Step 3c: Vendors found → full serviceable response
+    // Step 4: Vendors found → full serviceable response
+
+    // If a specific product is requested, check vendor availability
+    let productAvailable = true
+    if (productId) {
+      const vendorProduct = await prisma.vendorProduct.findFirst({
+        where: {
+          productId,
+          isAvailable: true,
+          vendor: {
+            status: 'APPROVED',
+            id: { in: Array.from(allVendorIdSet) },
+          },
+        },
+      })
+      productAvailable = !!vendorProduct
+    }
 
     // Get available delivery slots for this city
     const deliveryConfigs = await prisma.cityDeliveryConfig.findMany({
@@ -147,7 +195,7 @@ export async function POST(request: NextRequest) {
         city: serviceArea.city,
         areaName: serviceArea.name,
         vendorCount,
-        productAvailable: true,
+        productAvailable,
         deliveryCharge,
         freeDeliveryAbove,
         availableSlots,
@@ -161,4 +209,42 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/** Get vendor IDs within delivery radius of a pincode's service area coordinates */
+async function getRadiusVendorIds(
+  serviceArea: { lat: unknown; lng: unknown } | null,
+): Promise<string[]> {
+  const areaLat = serviceArea?.lat ? Number(serviceArea.lat) : null
+  const areaLng = serviceArea?.lng ? Number(serviceArea.lng) : null
+
+  if (areaLat === null || areaLng === null) return []
+
+  // Fetch all approved vendors with coordinates
+  const vendors = await prisma.vendor.findMany({
+    where: {
+      status: 'APPROVED',
+      lat: { not: null },
+      lng: { not: null },
+    },
+    select: {
+      id: true,
+      lat: true,
+      lng: true,
+      deliveryRadiusKm: true,
+    },
+  })
+
+  const matchedIds: string[] = []
+  for (const vendor of vendors) {
+    const vLat = Number(vendor.lat)
+    const vLng = Number(vendor.lng)
+    const radius = Number(vendor.deliveryRadiusKm)
+    const distance = haversineKm(areaLat, areaLng, vLat, vLng)
+    if (distance <= radius) {
+      matchedIds.push(vendor.id)
+    }
+  }
+
+  return matchedIds
 }
