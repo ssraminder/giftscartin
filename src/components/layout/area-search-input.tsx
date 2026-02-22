@@ -43,7 +43,7 @@ async function reverseGeocodeForPincode(lat: number, lng: number): Promise<strin
 
 export function AreaSearchInput({
   onAreaSelect,
-  // cityName, placeholder, defaultValue unused — PlaceAutocompleteElement renders its own input
+  placeholder = 'Search area, locality or pincode',
 }: AreaSearchInputProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const placeElementRef = useRef<HTMLElement | null>(null)
@@ -68,6 +68,17 @@ export function AreaSearchInput({
 
         containerRef.current.appendChild(element)
         placeElementRef.current = element
+
+        // Set placeholder on the inner input once it renders
+        const setPlaceholder = () => {
+          const input = element.querySelector?.('input') ?? containerRef.current?.querySelector('input')
+          if (input) {
+            input.setAttribute('placeholder', placeholder)
+          }
+        }
+        setPlaceholder()
+        // Retry in case shadow DOM renders asynchronously
+        setTimeout(setPlaceholder, 100)
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         element.addEventListener('gmp-placeselect', async (event: any) => {
@@ -128,7 +139,10 @@ export function AreaSearchInput({
 
   return (
     <div className="relative">
-      <div ref={containerRef} className="w-full" />
+      <div
+        ref={containerRef}
+        className="w-full border border-gray-300 rounded-lg px-3 py-3 flex items-center gap-2 cursor-text hover:border-gray-400 focus-within:border-pink-500 focus-within:ring-1 focus-within:ring-pink-500 transition-colors [&_input]:border-none [&_input]:outline-none [&_input]:w-full [&_input]:bg-transparent [&_input]:text-sm [&_input]:text-gray-900 [&_input]:placeholder-gray-400"
+      />
       {error && (
         <input
           type="text"
