@@ -7,12 +7,11 @@ import Link from "next/link"
 import {
   MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
   CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
-  MessageSquare,
+  MessageSquare, Loader2,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { ProductGallery } from "@/components/product/product-gallery"
 const DeliveryDatePicker = dynamic(
@@ -33,6 +32,8 @@ import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
 import { usePartner } from "@/hooks/use-partner"
 import { useCity } from "@/hooks/use-city"
+import { AreaSearchInput } from "@/components/layout/area-search-input"
+import type { AreaResult } from "@/components/layout/area-search-input"
 import type {
   Product,
   ProductAttribute,
@@ -201,7 +202,7 @@ export default function ProductDetailClient({
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
   const { partner } = usePartner()
-  const { pincode: cityPincode, cityId } = useCity()
+  const { pincode: cityPincode, cityId, cityName, areaName: cityAreaName, setArea } = useCity()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // Product data — initialized from server (no client-side fetch needed)
@@ -225,10 +226,11 @@ export default function ProductDetailClient({
   const [giftMessageOpen, setGiftMessageOpen] = useState(false)
   const [giftMessage, setGiftMessage] = useState("")
 
-  // Pre-fill pincode from city context
+  // Auto-check serviceability when city pincode is available
   useEffect(() => {
     if (cityPincode && !pincode) {
       setPincode(cityPincode)
+      checkServiceability(cityPincode)
     }
   }, [cityPincode]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -454,23 +456,33 @@ export default function ProductDetailClient({
     }, 100)
   }, [handleAddToCart, router, variationError, addonErrors, deliveryError])
 
-  const handleCheckPincode = async () => {
-    if (pincode.length !== 6) return
+  const checkServiceability = async (pincodeToCheck: string) => {
+    if (pincodeToCheck.length !== 6) return
     setPincodeChecking(true)
     try {
-      const res = await fetch("/api/city/resolve", {
+      const res = await fetch("/api/serviceability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: pincode }),
+        body: JSON.stringify({ pincode: pincodeToCheck, productId: product.id }),
       })
       const json = await res.json()
-      setPincodeAvailable(json.success && json.data?.cities?.length > 0)
+      const isAvailable = json.success && json.data?.isServiceable === true
+      setPincodeAvailable(isAvailable)
       setPincodeChecked(true)
     } catch {
       setPincodeAvailable(false)
       setPincodeChecked(true)
     } finally {
       setPincodeChecking(false)
+    }
+  }
+
+  const handleAreaSelect = (area: AreaResult) => {
+    if (area.pincode) {
+      setPincode(area.pincode)
+      setPincodeChecked(false)
+      checkServiceability(area.pincode)
+      setArea({ name: area.displayName, pincode: area.pincode, isServiceable: true })
     }
   }
 
@@ -511,7 +523,7 @@ export default function ProductDetailClient({
       )}
 
       {/* Price Display */}
-      <div className="mb-4">
+      <div className="mb-3">
         {isVariable ? (
           matchedVariation ? (
             <div className="flex items-baseline gap-2">
@@ -550,7 +562,7 @@ export default function ProductDetailClient({
   )
 
   const weightSelectorBlock = weightOptions && weightOptions.length > 1 && (
-    <div className="mb-4">
+    <div className="mb-3">
       <p className="font-medium text-sm text-gray-700 mb-2">Select Weight:</p>
       <div className="flex flex-wrap gap-2">
         {weightOptions.map((opt) => (
@@ -571,11 +583,11 @@ export default function ProductDetailClient({
   )
 
   const singleWeightDisplay = product.weight && !weightOptions && (
-    <p className="text-sm text-gray-500 mb-4">Weight: {product.weight}</p>
+    <p className="text-sm text-gray-500 mb-3">Weight: {product.weight}</p>
   )
 
   const variationBlock = isVariable && attributes.length > 0 && (
-    <div className="mb-4">
+    <div className="mb-3">
       {variationError && (
         <p className="text-sm text-red-500 font-medium mb-2">Please select all options</p>
       )}
@@ -590,7 +602,7 @@ export default function ProductDetailClient({
   )
 
   const deliveryBlock = (
-    <div className="mb-4">
+    <div className="mb-3">
       <p className="font-medium text-sm text-gray-700 mb-2 flex items-center gap-1.5">
         <Calendar className="h-4 w-4" />
         Select Delivery Date
@@ -613,51 +625,56 @@ export default function ProductDetailClient({
   )
 
   const pincodeBlock = (
-    <div className="mb-4">
-      <p className="font-medium text-sm text-gray-700 mb-2">Deliver to:</p>
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            type="text"
-            placeholder="Enter 6-digit pincode"
-            maxLength={6}
-            value={pincode}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              setPincode(e.target.value.replace(/\D/g, ""))
-              setPincodeChecked(false)
-            }}
-            className="pl-10 h-10 text-base"
-          />
+    <div className="mb-3">
+      {pincode ? (
+        /* Pincode is set (from city context or area search) — show inline result */
+        <div className="text-sm">
+          {pincodeChecking ? (
+            <p className="text-gray-500 flex items-center gap-1.5">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking delivery to {cityAreaName ? `${cityAreaName} (${pincode})` : pincode}...
+            </p>
+          ) : pincodeChecked ? (
+            <p className={`flex items-center gap-1.5 ${pincodeAvailable ? "text-green-600" : "text-red-500"}`}>
+              {pincodeAvailable ? (
+                <>
+                  <CheckCircle className="h-4 w-4" />
+                  Delivery available to {cityAreaName ? `${cityAreaName} (${pincode})` : pincode}
+                </>
+              ) : (
+                <>
+                  <MapPin className="h-4 w-4" />
+                  Delivery not available to {pincode}
+                </>
+              )}
+            </p>
+          ) : null}
         </div>
-        <Button
-          variant="outline"
-          className="h-10 px-4 border-pink-600 text-pink-600 hover:bg-pink-50 hover:text-pink-600 font-semibold text-sm"
-          onClick={handleCheckPincode}
-          disabled={pincode.length !== 6 || pincodeChecking}
-        >
-          {pincodeChecking ? "..." : "Check"}
-        </Button>
-      </div>
-      {pincodeChecked && (
-        <p className={`mt-2 flex items-center gap-1.5 text-sm ${pincodeAvailable ? "text-green-600" : "text-red-500"}`}>
-          {pincodeAvailable ? (
-            <>
-              <CheckCircle className="h-4 w-4" />
-              Delivery available to {pincode}
-            </>
-          ) : (
-            <>
-              <span>Not serviceable at {pincode}</span>
-            </>
+      ) : (
+        /* No pincode — show area search */
+        <div>
+          <p className="font-medium text-sm text-gray-700 mb-2 flex items-center gap-1.5">
+            <MapPin className="h-4 w-4" />
+            Deliver to:
+          </p>
+          <AreaSearchInput
+            cityName={cityName || ""}
+            onAreaSelect={handleAreaSelect}
+            placeholder="Search area or enter pincode"
+          />
+          {pincodeChecked && !pincodeAvailable && (
+            <p className="mt-2 text-sm text-red-500 flex items-center gap-1.5">
+              <MapPin className="h-4 w-4" />
+              Delivery not available to this area
+            </p>
           )}
-        </p>
+        </div>
       )}
     </div>
   )
 
   const giftMessageBlock = (
-    <div className="mb-4">
+    <div className="mb-3">
       <button
         type="button"
         onClick={() => setGiftMessageOpen(!giftMessageOpen)}
@@ -684,11 +701,11 @@ export default function ProductDetailClient({
   )
 
   const addonBlock = addonGroups.length > 0 && (
-    <div ref={addonSectionRef} className="mb-4">
+    <div ref={addonSectionRef} className="mb-3">
       <p className="font-medium text-sm text-gray-700 mb-3">Make it more special:</p>
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-hide">
         {addonGroups.map((group) => (
-          <div key={group.id} className="min-w-[200px] flex-shrink-0 lg:min-w-0 lg:flex-shrink">
+          <div key={group.id} className="w-36 min-w-[144px] flex-shrink-0 lg:min-w-0 lg:w-auto lg:flex-shrink">
             <AddonGroup
               group={group}
               value={addonSelections.get(group.id) || getDefaultAddonSelection(group)}
@@ -702,7 +719,7 @@ export default function ProductDetailClient({
   )
 
   const quantityBlock = (
-    <div className="flex items-center gap-4 mb-4">
+    <div className="flex items-center gap-4 mb-3">
       <span className="text-sm font-medium text-gray-700">Quantity</span>
       <div className="flex items-center rounded-full border border-gray-200">
         <button
@@ -727,7 +744,7 @@ export default function ProductDetailClient({
   )
 
   const actionButtons = (
-    <div className="space-y-2 mb-4">
+    <div className="space-y-2 mb-3">
       <button
         className="w-full bg-pink-600 hover:bg-pink-700 text-white py-3 rounded-xl font-semibold text-base flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
         style={partner?.primaryColor ? { background: partner.primaryColor } : {}}
@@ -906,7 +923,7 @@ export default function ProductDetailClient({
             <ProductGallery images={product.images} name={product.name} />
 
             {/* Mobile-only: product info + controls */}
-            <div className="lg:hidden mt-6 space-y-0">
+            <div className="lg:hidden mt-3">
               {productInfoBlock}
               {weightSelectorBlock}
               {singleWeightDisplay}
@@ -921,7 +938,7 @@ export default function ProductDetailClient({
             </div>
 
             {/* Description Accordion */}
-            <div className="mt-8">
+            <div className="mt-4 lg:mt-8">
               {descriptionAccordion}
             </div>
 
