@@ -714,6 +714,39 @@ export default function AdminOrderDetailPage() {
         </Card>
       )}
 
+      {/* ==================== SENDER DETAILS ==================== */}
+      {(order.senderName || order.senderPhone) && (
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold mb-3">Sender Details</h2>
+          <div className="space-y-2 text-sm">
+            {order.senderName && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Name</span>
+                <span className="font-medium">{order.senderName}</span>
+              </div>
+            )}
+            {order.senderPhone && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Phone</span>
+                <span className="font-medium">{order.senderPhone}</span>
+              </div>
+            )}
+            {order.senderEmail && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Email</span>
+                <span className="font-medium">{order.senderEmail}</span>
+              </div>
+            )}
+            {order.occasion && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Occasion</span>
+                <span className="font-medium">{order.occasion}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* ==================== SPECIAL INSTRUCTIONS ==================== */}
       {order.specialInstructions && (
         <Card className="p-4">

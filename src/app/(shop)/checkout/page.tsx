@@ -7,6 +7,8 @@ import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { Check, ChevronDown, ChevronUp, Loader2, Plus, Calendar as CalendarIcon } from "lucide-react"
 
+import { SenderDetailsStep } from "@/components/checkout/sender-details-step"
+import type { SenderDetails } from "@/components/checkout/sender-details-step"
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { useCurrency } from "@/hooks/use-currency"
@@ -128,7 +130,13 @@ export default function CheckoutPage() {
   const [addressesLoading, setAddressesLoading] = useState(false)
 
   const [formData, setFormData] = useState({
-    // Step 1
+    // Step 1 — Sender details
+    senderName: "",
+    senderPhone: "",
+    senderEmail: "",
+    occasion: "",
+
+    // Step 1 — Recipient / address
     selectedAddressId: null as string | null,
     recipientName: "",
     recipientPhone: "",
@@ -362,10 +370,21 @@ export default function CheckoutPage() {
   // ─── Step 1 Validation ───
 
   const validateStep1 = useCallback((): boolean => {
-    // If a saved address is selected, we're good
-    if (formData.selectedAddressId) return true
-
     const errors: Record<string, string> = {}
+
+    // Sender validation (always required)
+    if (!formData.senderName.trim()) {
+      errors.senderName = "Please enter your name"
+    }
+    if (!formData.senderPhone.match(/^\d{10}$/)) {
+      errors.senderPhone = "Please enter a valid 10-digit phone number"
+    }
+
+    // If a saved address is selected, skip address field validation
+    if (formData.selectedAddressId) {
+      setFormErrors(errors)
+      return Object.keys(errors).length === 0
+    }
 
     if (!formData.recipientName.trim()) {
       errors.recipientName = "Recipient name is required"
@@ -572,6 +591,10 @@ export default function CheckoutPage() {
         }),
         deliveryDate: formData.deliveryDate,
         deliverySlot: formData.deliverySlotSlug || formData.deliverySlot,
+        senderName: formData.senderName || undefined,
+        senderPhone: formData.senderPhone || undefined,
+        senderEmail: formData.senderEmail || undefined,
+        occasion: formData.occasion || undefined,
         giftMessage: formData.giftMessage || undefined,
         specialInstructions: formData.specialInstructions || undefined,
         couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
@@ -694,9 +717,34 @@ export default function CheckoutPage() {
             {/* ═══════════════════════ STEP 1 ═══════════════════════ */}
             {currentStep === 1 && (
               <div>
-                <h1 className="text-xl font-semibold mb-6">
-                  Where should we deliver?
-                </h1>
+                {/* ── Sender Details ── */}
+                <div className="mb-6">
+                  <SenderDetailsStep
+                    value={{
+                      senderName: formData.senderName,
+                      senderPhone: formData.senderPhone,
+                      senderEmail: formData.senderEmail,
+                      occasion: formData.occasion,
+                      giftMessage: formData.giftMessage,
+                    }}
+                    onChange={(details: SenderDetails) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        senderName: details.senderName,
+                        senderPhone: details.senderPhone,
+                        senderEmail: details.senderEmail,
+                        occasion: details.occasion,
+                        giftMessage: details.giftMessage,
+                      }))
+                    }
+                    onContinue={() => {}}
+                    onBack={() => router.push("/cart")}
+                  />
+                </div>
+
+                <h2 className="text-lg font-semibold mb-4">
+                  Recipient Details
+                </h2>
 
                 {/* ── Saved Addresses Section ── */}
                 {session?.user && (
