@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import {
   MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
@@ -14,7 +15,15 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { ProductGallery } from "@/components/product/product-gallery"
-import { DeliveryDatePicker } from "@/components/product/delivery-slot-picker"
+const DeliveryDatePicker = dynamic(
+  () => import("@/components/product/delivery-slot-picker").then(mod => ({ default: mod.DeliveryDatePicker })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-12 bg-gray-100 rounded-lg animate-pulse" />
+    ),
+  }
+)
 import { VariationSelector } from "@/components/product/variation-selector"
 import { AddonGroup } from "@/components/product/addon-group"
 import { UpsellProducts } from "@/components/product/upsell-products"

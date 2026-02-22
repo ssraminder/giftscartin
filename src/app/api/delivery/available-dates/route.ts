@@ -115,10 +115,12 @@ export async function GET(req: NextRequest) {
       availableDates.push(dateStr)
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: { availableDates },
     })
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
+    return response
   } catch (error) {
     console.error('[delivery/available-dates]', error)
     return NextResponse.json(
