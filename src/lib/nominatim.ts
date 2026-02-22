@@ -36,24 +36,32 @@ export async function reverseGeocode(
 }
 
 export function parseGoogleAddressComponents(
-  components: google.maps.GeocoderAddressComponent[]
+  components: Array<{
+    types?: string[]
+    longText?: string      // New API uses longText
+    long_name?: string     // Legacy API uses long_name
+  }>
 ): { pincode: string; city: string; state: string } {
   let pincode = ''
   let city = ''
   let state = ''
 
   for (const component of components) {
-    if (component.types.includes('postal_code')) {
-      pincode = component.long_name
+    const types = component.types || []
+    // Support both new API (longText) and legacy (long_name)
+    const value = component.longText || component.long_name || ''
+
+    if (types.includes('postal_code')) {
+      pincode = value
     }
     if (
-      component.types.includes('locality') ||
-      component.types.includes('administrative_area_level_2')
+      types.includes('locality') ||
+      types.includes('administrative_area_level_2')
     ) {
-      city = component.long_name
+      if (!city) city = value
     }
-    if (component.types.includes('administrative_area_level_1')) {
-      state = component.long_name
+    if (types.includes('administrative_area_level_1')) {
+      state = value
     }
   }
 
