@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
-import { Check, ChevronDown, ChevronUp, Loader2, Plus, Calendar as CalendarIcon } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Calendar as CalendarIcon } from "lucide-react"
 
 import { SenderDetailsStep } from "@/components/checkout/sender-details-step"
 import type { SenderDetails } from "@/components/checkout/sender-details-step"
@@ -114,7 +114,7 @@ export default function CheckoutPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
   const { formatPrice } = useCurrency()
-  const { cityName, cityId } = useCity()
+  const { cityName, cityId, pincode: contextPincode, areaName } = useCity()
   const { clearReferral } = useReferral()
   const isMobile = useIsMobile()
 
@@ -125,6 +125,9 @@ export default function CheckoutPage() {
 
   const [currentStep, setCurrentStep] = useState<StepNumber>(1)
   const [guestConfirmed, setGuestConfirmed] = useState(false)
+
+  // Track whether pincode field is in locked (pre-filled) or edit mode
+  const [pincodeEditMode, setPincodeEditMode] = useState(!contextPincode)
 
   // ─── Step 1 State ───
 
@@ -230,13 +233,24 @@ export default function CheckoutPage() {
       .finally(() => setAddressesLoading(false))
   }, [session?.user?.id])
 
-  // ─── Pre-fill city from context ───
+  // ─── Pre-fill city + pincode from context ───
 
   useEffect(() => {
-    if (cityName && !formData.city) {
-      setFormData((prev) => ({ ...prev, city: cityName }))
+    setFormData((prev) => ({
+      ...prev,
+      city: cityName ?? prev.city,
+      pincode: contextPincode ?? prev.pincode,
+    }))
+  }, [cityName, contextPincode])
+
+  // ─── Run serviceability check on mount if pincode available ───
+
+  useEffect(() => {
+    if (contextPincode && contextPincode.length === 6) {
+      checkPincode(contextPincode)
     }
-  }, [cityName, formData.city])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally only on mount
 
   // ─── Fetch slots when Step 2 is entered and date is set ───
 
@@ -333,6 +347,13 @@ export default function CheckoutPage() {
       setFormData((prev) => ({ ...prev, pincodeStatus: "invalid" }))
     }
   }, [])
+
+  // ─── Edit Pincode (switch from locked to editable) ───
+
+  function handleEditPincode() {
+    setPincodeEditMode(true)
+    setFormData((prev) => ({ ...prev, pincodeStatus: "idle", pincode: "" }))
+  }
 
   // ─── Form Helpers ───
 
@@ -1015,55 +1036,84 @@ export default function CheckoutPage() {
 
                     {/* Row 3: Pincode */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Pincode <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            maxLength={6}
-                            value={formData.pincode}
-                            onChange={(e) => {
-                              const val = e.target.value
-                                .replace(/\D/g, "")
-                                .slice(0, 6)
-                              updateField("pincode", val)
-                              if (val.length < 6) {
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  pincodeStatus: "idle",
-                                }))
-                              }
-                            }}
-                            onBlur={() => {
-                              if (/^\d{6}$/.test(formData.pincode)) {
-                                checkPincode(formData.pincode)
-                              }
-                            }}
-                            placeholder="6-digit pincode"
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                          />
-                          {formData.pincodeStatus === "checking" && (
-                            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
+                      {!pincodeEditMode && contextPincode ? (
+                        /* Locked confirmed state — pre-filled from city context */
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-gray-700">
+                            Pincode <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex items-center justify-between px-3 py-2.5 border border-green-300 bg-green-50 rounded-lg">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">
+                                {contextPincode}
+                              </p>
+                              <p className="text-xs text-green-600 mt-0.5">
+                                {areaName ?? cityName}
+                                {formData.pincodeStatus === 'valid' ? ' \u00B7 Delivery available' : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleEditPincode}
+                              className="p-1.5 hover:bg-green-100 rounded-md transition-colors"
+                              aria-label="Edit pincode"
+                            >
+                              <Pencil className="h-3.5 w-3.5 text-green-600" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Editable input — normal pincode field */
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Pincode <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              maxLength={6}
+                              value={formData.pincode}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                  .replace(/\D/g, "")
+                                  .slice(0, 6)
+                                updateField("pincode", val)
+                                if (val.length < 6) {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    pincodeStatus: "idle",
+                                  }))
+                                }
+                              }}
+                              onBlur={() => {
+                                if (/^\d{6}$/.test(formData.pincode)) {
+                                  checkPincode(formData.pincode)
+                                }
+                              }}
+                              placeholder="6-digit pincode"
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                            />
+                            {formData.pincodeStatus === "checking" && (
+                              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
+                            )}
+                          </div>
+                          {formErrors.pincode && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {formErrors.pincode}
+                            </p>
+                          )}
+                          {formData.pincodeStatus === "valid" && (
+                            <p className="text-green-600 text-xs mt-1">
+                              Delivery available
+                            </p>
+                          )}
+                          {formData.pincodeStatus === "invalid" && (
+                            <p className="text-red-500 text-xs mt-1">
+                              Sorry, we don&apos;t deliver here yet
+                            </p>
                           )}
                         </div>
-                        {formErrors.pincode && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {formErrors.pincode}
-                          </p>
-                        )}
-                        {formData.pincodeStatus === "valid" && (
-                          <p className="text-green-600 text-xs mt-1">
-                            Delivery available
-                          </p>
-                        )}
-                        {formData.pincodeStatus === "invalid" && (
-                          <p className="text-red-500 text-xs mt-1">
-                            Sorry, we don&apos;t deliver here yet
-                          </p>
-                        )}
-                      </div>
+                      )}
                     </div>
 
                     {/* Save address checkbox */}
