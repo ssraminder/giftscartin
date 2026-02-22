@@ -1,20 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-
-export interface LocationResult {
-  type: 'area' | 'city' | 'google_place'
-  label: string
-  cityId: string | null
-  cityName: string | null
-  citySlug: string | null
-  pincode: string | null
-  areaName: string | null
-  lat: number | null
-  lng: number | null
-  placeId: string | null
-  isActive: boolean
-  isComingSoon: boolean
-}
+import type { LocationResult } from '@/types'
 
 const CACHE_HEADERS = {
   'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
