@@ -65,6 +65,7 @@ export async function POST(
     const vendorId = id
 
     let assigned = 0
+    let updated = 0
     let skipped = 0
 
     // Use Promise.all instead of interactive transaction (P2028 with pgBouncer)
@@ -85,7 +86,17 @@ export async function POST(
         })
 
         if (existing) {
-          return { status: 'skipped' as const }
+          // Update existing assignment
+          await prisma.vendorProduct.update({
+            where: { vendorId_productId: { vendorId, productId: item.productId } },
+            data: {
+              costPrice,
+              preparationTime,
+              dailyLimit: item.dailyLimit ?? null,
+              isSameDayEligible: item.isSameDayEligible,
+            },
+          })
+          return { status: 'updated' as const }
         }
 
         await prisma.vendorProduct.create({
@@ -95,20 +106,21 @@ export async function POST(
             costPrice,
             preparationTime,
             dailyLimit: item.dailyLimit ?? null,
+            isSameDayEligible: item.isSameDayEligible,
             isAvailable: true,
           },
         })
-
         return { status: 'assigned' as const }
       })
     )
 
     assigned = results.filter((r) => r.status === 'assigned').length
+    updated = results.filter((r) => r.status === 'updated').length
     skipped = results.filter((r) => r.status === 'skipped').length
 
     return NextResponse.json({
       success: true,
-      data: { assigned, skipped },
+      data: { assigned, updated, skipped },
     })
   } catch (error) {
     console.error('Admin vendor bulk-assign error:', error)
