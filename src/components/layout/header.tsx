@@ -271,7 +271,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
                           setHeaderPincode("")
                         }}
                         autoFocus
-                        placeholder="Search city or pincode..."
+                        placeholder="Enter city, area or pincode"
                       />
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <p className="text-xs text-gray-400 mb-2">Popular Cities</p>
