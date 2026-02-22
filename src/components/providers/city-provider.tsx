@@ -22,10 +22,12 @@ export interface CityContextValue {
   areaName: string | null
   zoneId: string | null
   zoneName: string | null
+  isServiceable: boolean | null  // null = not checked yet
   isSelected: boolean
   isHydrating: boolean  // true until localStorage has been read
   shouldShowCityModal: boolean
   setCity: (city: CitySelection) => void
+  setArea: (area: { name: string; pincode: string; isServiceable: boolean }) => void
   clearCity: () => void
 }
 
@@ -48,10 +50,12 @@ export const CityContext = createContext<CityContextValue>({
   areaName: null,
   zoneId: null,
   zoneName: null,
+  isServiceable: null,
   isSelected: false,
   isHydrating: true,
   shouldShowCityModal: false,
   setCity: () => {},
+  setArea: () => {},
   clearCity: () => {},
 })
 
@@ -117,6 +121,23 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const setArea = useCallback((area: { name: string; pincode: string; isServiceable: boolean }) => {
+    setSelection((prev) => {
+      if (!prev) return prev
+      const updated = {
+        ...prev,
+        areaName: area.name,
+        pincode: area.pincode,
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      } catch {
+        // localStorage may be unavailable
+      }
+      return updated
+    })
+  }, [])
+
   const clearCity = useCallback(() => {
     setSelection(null)
     try {
@@ -142,10 +163,12 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     areaName: selection?.areaName ?? null,
     zoneId: selection?.zoneId ?? null,
     zoneName: selection?.zoneName ?? null,
+    isServiceable: null, // checked inline by city modal / area search
     isSelected,
     isHydrating: !loaded,
     shouldShowCityModal,
     setCity,
+    setArea,
     clearCity,
   }
 

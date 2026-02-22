@@ -5,6 +5,7 @@ import { PartnerProvider } from "@/components/providers/partner-provider"
 import { CityProvider } from "@/components/providers/city-provider"
 import { CurrencyProvider } from "@/components/providers/currency-provider"
 import { CartHydration } from "@/components/providers/cart-provider"
+import { GooglePlacesProvider } from "@/components/providers/google-places-provider"
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -43,6 +44,7 @@ export default function RootLayout({
           <CurrencyProvider>
             <PartnerProvider>
               <CityProvider>
+                <GooglePlacesProvider />
                 <CartHydration />
                 {children}
               </CityProvider>
