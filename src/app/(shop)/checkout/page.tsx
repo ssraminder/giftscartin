@@ -571,6 +571,8 @@ export default function CheckoutPage() {
       // Determine if using a saved address or creating a new one
       const isNewAddress = !formData.selectedAddressId
 
+      const isGuestCheckout = !session?.user
+
       const body: Record<string, unknown> = {
         items: items.map((item) => ({
           productId: item.productId,
@@ -601,6 +603,9 @@ export default function CheckoutPage() {
         giftMessage: formData.giftMessage || undefined,
         specialInstructions: formData.specialInstructions || undefined,
         couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
+        // Guest checkout: pass email + phone for the API guest check
+        guestEmail: isGuestCheckout ? formData.senderEmail : undefined,
+        guestPhone: isGuestCheckout ? formData.senderPhone : undefined,
       }
 
       const res = await fetch("/api/orders", {
@@ -613,6 +618,7 @@ export default function CheckoutPage() {
 
       if (data.success && data.data?.id) {
         clearReferral()
+        // Always clear Zustand cart (handles both guest and logged-in users)
         clearCart()
         router.push(`/orders/${data.data.id}/confirmation`)
       } else {
@@ -623,7 +629,7 @@ export default function CheckoutPage() {
     } finally {
       setPlacingOrder(false)
     }
-  }, [formData, items, clearReferral, clearCart, router])
+  }, [formData, items, clearReferral, clearCart, router, session?.user])
 
   // ─── Derived Values ───
 

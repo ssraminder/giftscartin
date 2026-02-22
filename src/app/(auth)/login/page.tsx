@@ -33,6 +33,7 @@ function LoginForm() {
 
   // Redirect if already logged in
   const callbackUrl = searchParams.get('callbackUrl') || '/'
+  const isCheckoutFlow = callbackUrl.includes('/checkout')
   useEffect(() => {
     if (status === 'authenticated') {
       router.replace(callbackUrl)
@@ -501,6 +502,29 @@ function LoginForm() {
               Create an account
             </Link>
           </p>
+
+          {/* Guest checkout option */}
+          {isCheckoutFlow && (
+            <div className="mt-4 text-center">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-400">or</span>
+                </div>
+              </div>
+              <button
+                onClick={() => router.push('/checkout')}
+                className="mt-4 w-full py-2.5 px-4 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium"
+              >
+                Continue as Guest
+              </button>
+              <p className="mt-2 text-xs text-gray-400">
+                No account needed — just enter your details at checkout
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
