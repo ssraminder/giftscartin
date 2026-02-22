@@ -203,7 +203,7 @@ export default function ProductDetailClient({
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
   const { partner } = usePartner()
-  const { pincode: cityPincode, cityId, cityName, areaName: cityAreaName, setArea } = useCity()
+  const { pincode: cityPincode, cityId, cityName, areaName: cityAreaName, isSelected, setCity, setArea } = useCity()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // Product data — initialized from server (no client-side fetch needed)
@@ -479,13 +479,26 @@ export default function ProductDetailClient({
   }
 
   const handleLocationSelect = useCallback((location: ResolvedLocation) => {
-    // Update city context
+    // Update city context — set full city if not yet selected, otherwise refine area
     if (location.cityId) {
-      setArea({
-        name: location.areaName || '',
-        pincode: location.pincode || '',
-        isServiceable: location.isServiceable || false,
-      })
+      if (!isSelected) {
+        setCity({
+          cityId: location.cityId,
+          cityName: location.cityName || '',
+          citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
+          pincode: location.pincode || undefined,
+          areaName: location.areaName || undefined,
+          lat: location.lat || undefined,
+          lng: location.lng || undefined,
+          source: location.type,
+        })
+      } else {
+        setArea({
+          name: location.areaName || '',
+          pincode: location.pincode || '',
+          isServiceable: location.isServiceable || false,
+        })
+      }
     }
 
     // Update local delivery state
@@ -493,14 +506,12 @@ export default function ProductDetailClient({
       setComingSoon(true)
       setComingSoonMessage("We're coming to your area soon! Place your order and our team will confirm delivery.")
     } else if (location.pincode) {
-      // Area/pincode selected — run serviceability check for comingSoon status
       handleServiceabilityCheck(location.pincode)
     } else {
-      // City-only selection — no serviceability check needed
       setComingSoon(false)
       setComingSoonMessage("")
     }
-  }, [setArea]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isSelected, setCity, setArea]) // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const categorySlug = product.category?.slug || ""
@@ -624,7 +635,14 @@ export default function ProductDetailClient({
         <Calendar className="h-4 w-4" />
         Select Delivery Date
       </p>
-      {comingSoon ? (
+      {locationNotSelected ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+          <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-sm text-amber-700">
+            Please select a delivery location above to see available dates
+          </p>
+        </div>
+      ) : comingSoon ? (
         <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3">
           <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
           <p className="text-sm text-blue-700">
@@ -656,18 +674,26 @@ export default function ProductDetailClient({
     ? (cityAreaName ? `${cityAreaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
     : ''
 
-  const pincodeBlock = (
-    <div className="mb-3">
-      <div className="space-y-1.5">
-        <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
-          <MapPin className="h-3.5 w-3.5 text-gray-400" />
-          Deliver to:
-        </label>
+  const locationNotSelected = !isSelected
+
+  // "Gift Receiver's Location" — prominent section (FNP style)
+  const receiverLocationBlock = (
+    <div className="mb-4">
+      <div className="rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-4">
+        <p className="font-semibold text-sm text-gray-800 mb-2 flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-[#E91E63]" />
+          Gift Receiver&apos;s Location
+        </p>
+        {locationNotSelected && (
+          <p className="text-xs text-gray-500 mb-2">
+            Enter receiver&apos;s location to check delivery availability
+          </p>
+        )}
         <LocationSearch
           onSelect={handleLocationSelect}
           productId={product.id}
           defaultValue={deliverToDefaultValue}
-          placeholder={`Enter area or pincode in ${cityName || 'your city'}`}
+          placeholder="Enter receiver's pincode, location, area"
         />
       </div>
     </div>
@@ -928,8 +954,8 @@ export default function ProductDetailClient({
               {weightSelectorBlock}
               {singleWeightDisplay}
               {variationBlock}
+              {receiverLocationBlock}
               {deliveryBlock}
-              {pincodeBlock}
               {addonBlock}
               {giftMessageBlock}
               {quantityBlock}
@@ -956,8 +982,8 @@ export default function ProductDetailClient({
 
               <Separator className="my-4" />
 
+              {receiverLocationBlock}
               {deliveryBlock}
-              {pincodeBlock}
 
               <Separator className="my-4" />
 

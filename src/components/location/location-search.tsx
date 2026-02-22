@@ -8,13 +8,11 @@ import {
   Clock,
   Bell,
   Loader2,
-  Truck,
   XCircle,
-  AlertTriangle,
+  Navigation,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useLocationSearch } from '@/hooks/use-location-search'
 import type { LocationResult } from '@/hooks/use-location-search'
 
@@ -39,142 +37,38 @@ interface LocationSearchProps {
   defaultValue?: string
   autoFocus?: boolean
   placeholder?: string
+  /** Compact mode for header dropdown */
+  compact?: boolean
 }
 
-type ServiceabilityStatus =
-  | 'loading'
-  | 'available'
-  | 'coming_soon'
-  | 'unavailable'
+type SelectionStatus =
+  | { type: 'checking'; message: string }
+  | { type: 'success'; message: string }
+  | { type: 'coming_soon'; message: string }
+  | { type: 'unavailable'; message: string }
   | null
-
-interface ServiceabilityData {
-  status: ServiceabilityStatus
-  vendorCount?: number
-  nearestCity?: string
-}
 
 export function LocationSearch({
   onSelect,
   productId,
   defaultValue = '',
   autoFocus = false,
-  placeholder = 'Enter city, area or pincode',
+  placeholder = 'Enter receiver\u2019s pincode, location, area',
+  compact = false,
 }: LocationSearchProps) {
   const [query, setQuery] = useState(defaultValue)
   const { results, loading } = useLocationSearch(query)
   const [showDropdown, setShowDropdown] = useState(false)
-  const [serviceability, setServiceability] = useState<
-    Record<string, ServiceabilityData>
-  >({})
   const [showNotify, setShowNotify] = useState(false)
   const [notifyEmail, setNotifyEmail] = useState('')
   const [notifyCity, setNotifyCity] = useState('')
   const [notifySending, setNotifySending] = useState(false)
   const [notifySent, setNotifySent] = useState(false)
-  // Inline status bar after selection
-  const [selectionStatus, setSelectionStatus] = useState<{
-    type: 'success' | 'coming_soon' | 'unavailable' | 'checking'
-    message: string
-  } | null>(null)
+  const [selectionStatus, setSelectionStatus] = useState<SelectionStatus>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const selectTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const hasResults = results.length > 0
-
-  // Group results
-  const areaResults = results.filter((r) => r.type === 'area')
-  const cityResults = results.filter((r) => r.type === 'city')
-  const googleResults = results.filter((r) => r.type === 'google_place')
-
-  // Check serviceability for a result
-  const checkServiceability = useCallback(
-    async (
-      key: string,
-      pincode: string | null,
-      lat: number | null,
-      lng: number | null
-    ) => {
-      setServiceability((prev) => {
-        if (prev[key]?.status && prev[key].status !== 'loading') return prev
-        return { ...prev, [key]: { status: 'loading' } }
-      })
-
-      try {
-        const body: Record<string, unknown> = {}
-        if (pincode) {
-          body.pincode = pincode
-        } else if (lat != null && lng != null) {
-          body.lat = lat
-          body.lng = lng
-        } else {
-          setServiceability((prev) => ({
-            ...prev,
-            [key]: { status: null },
-          }))
-          return
-        }
-        if (productId) body.productId = productId
-
-        const res = await fetch('/api/serviceability', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-        const json = await res.json()
-
-        if (json.success && json.data) {
-          const d = json.data
-          if (d.comingSoon) {
-            setServiceability((prev) => ({
-              ...prev,
-              [key]: { status: 'coming_soon', vendorCount: 0 },
-            }))
-          } else if (d.isServiceable && d.vendorCount > 0) {
-            setServiceability((prev) => ({
-              ...prev,
-              [key]: { status: 'available', vendorCount: d.vendorCount },
-            }))
-          } else {
-            setServiceability((prev) => ({
-              ...prev,
-              [key]: {
-                status: 'unavailable',
-                nearestCity: d.city?.name || undefined,
-              },
-            }))
-          }
-        } else {
-          setServiceability((prev) => ({
-            ...prev,
-            [key]: { status: 'unavailable' },
-          }))
-        }
-      } catch {
-        setServiceability((prev) => ({
-          ...prev,
-          [key]: { status: null },
-        }))
-      }
-    },
-    [productId]
-  )
-
-  // Trigger serviceability checks for results in background
-  useEffect(() => {
-    for (const r of results) {
-      const key = getResultKey(r)
-      if (key && !serviceability[key]?.status) {
-        if (r.type === 'area' || r.pincode) {
-          checkServiceability(key, r.pincode, r.lat, r.lng)
-        } else if (r.type === 'city' && r.lat && r.lng) {
-          checkServiceability(key, null, r.lat, r.lng)
-        }
-        // google_place results don't get pre-checked (no coords yet)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results])
 
   // Show/hide dropdown based on results
   useEffect(() => {
@@ -223,14 +117,9 @@ export function LocationSearch({
       if (json.success && json.data) {
         const { lat, lng, pincode, city, formattedAddress } = json.data
 
-        // Now check serviceability with the resolved coordinates
         const svcBody: Record<string, unknown> = {}
-        if (pincode) {
-          svcBody.pincode = pincode
-        } else if (lat && lng) {
-          svcBody.lat = lat
-          svcBody.lng = lng
-        }
+        if (pincode) svcBody.pincode = pincode
+        else if (lat && lng) { svcBody.lat = lat; svcBody.lng = lng }
         if (productId) svcBody.productId = productId
 
         const svcRes = await fetch('/api/serviceability', {
@@ -239,7 +128,6 @@ export function LocationSearch({
           body: JSON.stringify(svcBody),
         })
         const svcJson = await svcRes.json()
-
         const svcData = svcJson.success ? svcJson.data : null
 
         return {
@@ -263,15 +151,30 @@ export function LocationSearch({
     return null
   }
 
+  const finishSelection = useCallback(
+    (resolved: ResolvedLocation, statusType: 'success' | 'coming_soon') => {
+      const message =
+        statusType === 'success'
+          ? `Delivery available${resolved.vendorCount ? ` \u2014 ${resolved.vendorCount} vendor${resolved.vendorCount !== 1 ? 's' : ''}` : ''}`
+          : "We're coming to your area soon"
+
+      setSelectionStatus({ type: statusType, message })
+      selectTimerRef.current = setTimeout(() => {
+        onSelect(resolved)
+        setSelectionStatus(null)
+      }, 1200)
+    },
+    [onSelect]
+  )
+
   async function handleSelectResult(result: LocationResult) {
     setShowDropdown(false)
     setQuery(result.label)
 
     if (result.type === 'google_place') {
-      // Resolve the place first
       setSelectionStatus({ type: 'checking', message: 'Checking coverage...' })
-
       const resolved = await resolveGooglePlace(result)
+
       if (!resolved) {
         setSelectionStatus({
           type: 'unavailable',
@@ -281,23 +184,9 @@ export function LocationSearch({
       }
 
       if (resolved.isServiceable && (resolved.vendorCount || 0) > 0) {
-        setSelectionStatus({
-          type: 'success',
-          message: `Delivery available \u2014 ${resolved.vendorCount} vendor${(resolved.vendorCount || 0) !== 1 ? 's' : ''}`,
-        })
-        selectTimerRef.current = setTimeout(() => {
-          onSelect(resolved)
-          setSelectionStatus(null)
-        }, 1500)
+        finishSelection(resolved, 'success')
       } else if (resolved.comingSoon) {
-        setSelectionStatus({
-          type: 'coming_soon',
-          message: "We're coming to your area soon",
-        })
-        selectTimerRef.current = setTimeout(() => {
-          onSelect(resolved)
-          setSelectionStatus(null)
-        }, 1500)
+        finishSelection(resolved, 'coming_soon')
       } else {
         setSelectionStatus({
           type: 'unavailable',
@@ -310,70 +199,8 @@ export function LocationSearch({
     }
 
     if (result.type === 'area' || result.pincode) {
-      // Check serviceability
       setSelectionStatus({ type: 'checking', message: 'Checking delivery...' })
 
-      const key = getResultKey(result)
-      const cached = key ? serviceability[key] : null
-
-      if (cached?.status === 'available') {
-        setSelectionStatus({
-          type: 'success',
-          message: `Delivery available \u2014 ${cached.vendorCount || 0} vendor${(cached.vendorCount || 0) !== 1 ? 's' : ''}`,
-        })
-        selectTimerRef.current = setTimeout(() => {
-          onSelect({
-            type: result.type,
-            cityId: result.cityId,
-            cityName: result.cityName,
-            citySlug: result.citySlug,
-            pincode: result.pincode,
-            areaName: result.areaName,
-            lat: result.lat,
-            lng: result.lng,
-            placeId: null,
-            vendorCount: cached.vendorCount,
-            isServiceable: true,
-          })
-          setSelectionStatus(null)
-        }, 1500)
-        return
-      }
-
-      if (cached?.status === 'coming_soon') {
-        setSelectionStatus({
-          type: 'coming_soon',
-          message: "We're coming to your area soon",
-        })
-        selectTimerRef.current = setTimeout(() => {
-          onSelect({
-            type: result.type,
-            cityId: result.cityId,
-            cityName: result.cityName,
-            citySlug: result.citySlug,
-            pincode: result.pincode,
-            areaName: result.areaName,
-            lat: result.lat,
-            lng: result.lng,
-            placeId: null,
-            comingSoon: true,
-          })
-          setSelectionStatus(null)
-        }, 1500)
-        return
-      }
-
-      if (cached?.status === 'unavailable') {
-        setSelectionStatus({
-          type: 'unavailable',
-          message: cached.nearestCity
-            ? `We don't deliver here yet. Nearest city: ${cached.nearestCity}`
-            : "We don't deliver here yet.",
-        })
-        return
-      }
-
-      // Not cached yet: run the check
       try {
         const body: Record<string, unknown> = {}
         if (result.pincode) body.pincode = result.pincode
@@ -391,47 +218,25 @@ export function LocationSearch({
         const json = await res.json()
         const d = json.success ? json.data : null
 
+        const resolved: ResolvedLocation = {
+          type: result.type,
+          cityId: result.cityId || d?.city?.id || null,
+          cityName: result.cityName || d?.city?.name || null,
+          citySlug: result.citySlug || d?.city?.slug || null,
+          pincode: result.pincode,
+          areaName: result.areaName,
+          lat: result.lat,
+          lng: result.lng,
+          placeId: null,
+          vendorCount: d?.vendorCount || 0,
+          isServiceable: d?.isServiceable || false,
+          comingSoon: d?.comingSoon || false,
+        }
+
         if (d?.comingSoon) {
-          setSelectionStatus({
-            type: 'coming_soon',
-            message: "We're coming to your area soon",
-          })
-          selectTimerRef.current = setTimeout(() => {
-            onSelect({
-              type: result.type,
-              cityId: result.cityId,
-              cityName: result.cityName,
-              citySlug: result.citySlug,
-              pincode: result.pincode,
-              areaName: result.areaName,
-              lat: result.lat,
-              lng: result.lng,
-              placeId: null,
-              comingSoon: true,
-            })
-            setSelectionStatus(null)
-          }, 1500)
+          finishSelection(resolved, 'coming_soon')
         } else if (d?.isServiceable && d.vendorCount > 0) {
-          setSelectionStatus({
-            type: 'success',
-            message: `Delivery available \u2014 ${d.vendorCount} vendor${d.vendorCount !== 1 ? 's' : ''}`,
-          })
-          selectTimerRef.current = setTimeout(() => {
-            onSelect({
-              type: result.type,
-              cityId: result.cityId || d.city?.id || null,
-              cityName: result.cityName || d.city?.name || null,
-              citySlug: result.citySlug || d.city?.slug || null,
-              pincode: result.pincode,
-              areaName: result.areaName,
-              lat: result.lat,
-              lng: result.lng,
-              placeId: null,
-              vendorCount: d.vendorCount,
-              isServiceable: true,
-            })
-            setSelectionStatus(null)
-          }, 1500)
+          finishSelection(resolved, 'success')
         } else {
           setSelectionStatus({
             type: 'unavailable',
@@ -449,7 +254,7 @@ export function LocationSearch({
       return
     }
 
-    // type === 'city' — just set city context, no serviceability check
+    // type === 'city' — just set city context
     onSelect({
       type: 'city',
       cityId: result.cityId,
@@ -481,71 +286,12 @@ export function LocationSearch({
     }
   }
 
-  function renderBadge(result: LocationResult) {
-    const key = getResultKey(result)
-    const data = key ? serviceability[key] : null
-    const status = data?.status
-
-    if (result.type === 'google_place') {
-      return (
-        <span className="flex items-center gap-1 text-xs text-blue-500 shrink-0">
-          <AlertTriangle className="h-3 w-3" />
-          Google
-        </span>
-      )
-    }
-
-    if (status === 'loading') {
-      return (
-        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
-          <Loader2 className="h-3 w-3 animate-spin" />
-        </span>
-      )
-    }
-
-    if (status === 'available') {
-      return (
-        <span className="flex items-center gap-1 text-xs text-green-600 shrink-0">
-          <Truck className="h-3.5 w-3.5" />
-          Delivery available
-        </span>
-      )
-    }
-
-    if (status === 'coming_soon' || result.isComingSoon) {
-      return (
-        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
-          <Clock className="h-3.5 w-3.5" />
-          Coming soon
-        </span>
-      )
-    }
-
-    if (status === 'unavailable') {
-      return (
-        <span className="flex items-center gap-1 text-xs text-orange-500 shrink-0">
-          <Clock className="h-3.5 w-3.5" />
-          Expanding soon
-        </span>
-      )
-    }
-
-    if (result.isActive) {
-      return (
-        <span className="flex items-center gap-1 text-xs text-green-600 shrink-0">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          We deliver here
-        </span>
-      )
-    }
-
-    return null
-  }
+  const inputHeight = compact ? 'h-9' : 'h-11'
 
   return (
     <div ref={containerRef} className="relative w-full">
       <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         <Input
           type="text"
           placeholder={placeholder}
@@ -561,18 +307,18 @@ export function LocationSearch({
           onFocus={() => {
             if (hasResults || showNotify) setShowDropdown(true)
           }}
-          className="pl-10 h-11 rounded-xl border-2 border-pink-200 bg-white focus:border-pink-400 placeholder:text-gray-400"
+          className={`pl-10 ${inputHeight} rounded-xl border border-gray-200 bg-white focus:border-pink-400 placeholder:text-gray-400 text-sm`}
           autoFocus={autoFocus}
         />
         {loading && (
-          <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 animate-spin" />
         )}
       </div>
 
       {/* Inline status after selection */}
       {selectionStatus && (
         <div
-          className={`mt-2 flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm ${
+          className={`mt-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
             selectionStatus.type === 'success'
               ? 'bg-green-50 text-green-700 border border-green-200'
               : selectionStatus.type === 'coming_soon'
@@ -602,92 +348,32 @@ export function LocationSearch({
       {showDropdown && !selectionStatus && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg z-50 max-h-80 overflow-y-auto">
           {loading && !hasResults && (
-            <div className="p-3 space-y-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="h-5 w-5 rounded-full" />
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-32 mb-1" />
-                    <Skeleton className="h-3 w-20" />
-                  </div>
-                </div>
-              ))}
+            <div className="p-4 flex items-center gap-3 text-sm text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Searching locations...
             </div>
           )}
 
           {!loading && hasResults && (
             <div className="py-1">
-              {/* Areas */}
-              {areaResults.length > 0 && (
-                <>
-                  <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Areas
-                  </p>
-                  {areaResults.map((result, idx) => (
-                    <button
-                      key={`area-${idx}-${result.pincode || result.label}`}
-                      onClick={() => handleSelectResult(result)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
-                    >
-                      <MapPin className="h-5 w-5 shrink-0 text-[#E91E63]" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 truncate">
-                          {result.label}
-                        </p>
-                      </div>
-                      {renderBadge(result)}
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {/* Cities */}
-              {cityResults.length > 0 && (
-                <>
-                  <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Cities
-                  </p>
-                  {cityResults.map((result, idx) => (
-                    <button
-                      key={`city-${idx}-${result.cityId || result.label}`}
-                      onClick={() => handleSelectResult(result)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
-                    >
-                      <MapPin className="h-5 w-5 shrink-0 text-[#E91E63]" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 truncate">
-                          {result.label}
-                        </p>
-                      </div>
-                      {renderBadge(result)}
-                    </button>
-                  ))}
-                </>
-              )}
-
-              {/* Google Places */}
-              {googleResults.length > 0 && (
-                <>
-                  <p className="px-4 pt-2 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    Other locations
-                  </p>
-                  {googleResults.map((result, idx) => (
-                    <button
-                      key={`google-${idx}-${result.placeId || result.label}`}
-                      onClick={() => handleSelectResult(result)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-pink-50 transition-colors"
-                    >
-                      <MapPin className="h-5 w-5 shrink-0 text-blue-500" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 truncate">
-                          {result.label}
-                        </p>
-                      </div>
-                      {renderBadge(result)}
-                    </button>
-                  ))}
-                </>
-              )}
+              {results.map((result, idx) => (
+                <button
+                  key={`${result.type}-${idx}-${result.placeId || result.pincode || result.label}`}
+                  onClick={() => handleSelectResult(result)}
+                  className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                >
+                  {result.type === 'google_place' ? (
+                    <Navigation className="h-4 w-4 shrink-0 text-gray-400 mt-0.5" />
+                  ) : (
+                    <MapPin className="h-4 w-4 shrink-0 text-[#E91E63] mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 leading-snug">
+                      {result.label}
+                    </p>
+                  </div>
+                </button>
+              ))}
             </div>
           )}
 
@@ -742,11 +428,4 @@ export function LocationSearch({
       )}
     </div>
   )
-}
-
-function getResultKey(result: LocationResult): string | null {
-  if (result.pincode) return result.pincode
-  if (result.lat && result.lng) return `${result.lat},${result.lng}`
-  if (result.citySlug) return `city-${result.citySlug}`
-  return null
 }
