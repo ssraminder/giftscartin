@@ -61,62 +61,49 @@ export async function POST(
     }
 
     const { items } = parsed.data
-
-    // Fetch all referenced products to get basePrices for default costPrice
-    const productIds = items.map((i) => i.productId)
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, basePrice: true },
-    })
-
-    const productMap = new Map(products.map((p) => [p.id, Number(p.basePrice)]))
-
-    // Check which are already assigned
-    const existingAssignments = await prisma.vendorProduct.findMany({
-      where: { vendorId: id, productId: { in: productIds } },
-      select: { productId: true },
-    })
-    const existingSet = new Set(existingAssignments.map((e) => e.productId))
+    const vendorId = id
 
     let assigned = 0
     let skipped = 0
 
-    // Run all upserts in a single transaction
-    await prisma.$transaction(async (tx) => {
-      for (const item of items) {
-        const basePrice = productMap.get(item.productId)
-        if (basePrice === undefined) {
-          skipped++
-          continue
+    // Use Promise.all instead of interactive transaction (P2028 with pgBouncer)
+    const results = await Promise.all(
+      items.map(async (item) => {
+        const product = await prisma.product.findUnique({
+          where: { id: item.productId },
+          select: { basePrice: true },
+        })
+
+        if (!product) return { status: 'skipped' as const }
+
+        const costPrice = item.costPrice ?? Math.round(Number(product.basePrice) * 0.68)
+        const preparationTime = item.preparationTime ?? 240
+
+        const existing = await prisma.vendorProduct.findUnique({
+          where: { vendorId_productId: { vendorId, productId: item.productId } },
+        })
+
+        if (existing) {
+          return { status: 'skipped' as const }
         }
 
-        if (existingSet.has(item.productId)) {
-          // Update existing assignment
-          await tx.vendorProduct.updateMany({
-            where: { vendorId: id, productId: item.productId },
-            data: {
-              costPrice: item.costPrice ?? Math.round(basePrice * 0.68),
-              preparationTime: item.preparationTime ?? 240,
-              dailyLimit: item.dailyLimit ?? null,
-            },
-          })
-          skipped++
-        } else {
-          // Create new assignment
-          await tx.vendorProduct.create({
-            data: {
-              vendorId: id,
-              productId: item.productId,
-              costPrice: item.costPrice ?? Math.round(basePrice * 0.68),
-              preparationTime: item.preparationTime ?? 240,
-              dailyLimit: item.dailyLimit ?? null,
-              isAvailable: true,
-            },
-          })
-          assigned++
-        }
-      }
-    })
+        await prisma.vendorProduct.create({
+          data: {
+            vendorId,
+            productId: item.productId,
+            costPrice,
+            preparationTime,
+            dailyLimit: item.dailyLimit ?? null,
+            isAvailable: true,
+          },
+        })
+
+        return { status: 'assigned' as const }
+      })
+    )
+
+    assigned = results.filter((r) => r.status === 'assigned').length
+    skipped = results.filter((r) => r.status === 'skipped').length
 
     return NextResponse.json({
       success: true,
