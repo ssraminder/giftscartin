@@ -92,27 +92,15 @@ function AdminAreasContent() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  // Fetch cities list
+  // Fetch cities list for dropdown
   useEffect(() => {
-    fetch('/api/admin/vendors?pageSize=0')
+    fetch('/api/cities')
       .then(r => r.json())
       .then(d => {
-        // Try to get cities from the response; fallback to fetching separately
-        if (d.data?.cities) setCities(d.data.cities)
+        if (d.success && Array.isArray(d.data)) {
+          setCities(d.data.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))
+        }
       })
-      .catch(() => {})
-
-    // Also try dedicated cities API
-    fetch('/api/admin/areas?pageSize=1')
-      .then(r => r.json())
-      .then(d => {
-        if (d.data?.stats) setStats(d.data.stats)
-      })
-      .catch(() => {})
-
-    // Fetch cities for dropdown
-    fetch('/api/categories')
-      .then(() => {})
       .catch(() => {})
   }, [])
 
@@ -145,15 +133,6 @@ function AdminAreasContent() {
     fetchAreas()
   }, [fetchAreas])
 
-  // Fetch cities for dropdown
-  useEffect(() => {
-    fetch('/api/admin/vendors')
-      .then(r => r.json())
-      .then(d => {
-        if (d.data?.cities) setCities(d.data.cities)
-      })
-      .catch(() => {})
-  }, [])
 
   // Pincode lookup
   const handleLookup = async () => {
