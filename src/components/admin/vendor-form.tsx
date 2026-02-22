@@ -42,6 +42,7 @@ interface VendorData {
   autoAccept: boolean
   status: string
   isOnline: boolean
+  deliveryRadiusKm?: number
   workingHours: WorkingHoursData[]
   pincodes: PincodeData[]
 }
@@ -116,6 +117,9 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
   )
   const [autoAccept, setAutoAccept] = useState(vendor?.autoAccept ?? false)
   const [status, setStatus] = useState(vendor?.status ?? "APPROVED")
+  const [deliveryRadiusKm, setDeliveryRadiusKm] = useState(
+    vendor?.deliveryRadiusKm?.toString() ?? "10"
+  )
 
   // Working Hours
   const [workingHours, setWorkingHours] = useState<WorkingHoursData[]>(
@@ -216,6 +220,7 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       categories,
       commissionRate: parseFloat(commissionRate) || 12,
       autoAccept,
+      deliveryRadiusKm: parseFloat(deliveryRadiusKm) || 10,
       workingHours,
     }
 
@@ -412,6 +417,24 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
                 setCommissionRate(e.target.value)
               }
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="deliveryRadiusKm">Delivery Radius (km)</Label>
+            <Input
+              id="deliveryRadiusKm"
+              type="number"
+              min="1"
+              max="100"
+              step="1"
+              value={deliveryRadiusKm}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setDeliveryRadiusKm(e.target.value)
+              }
+            />
+            <p className="text-xs text-slate-500">
+              Maximum delivery distance from shop (1-100 km)
+            </p>
           </div>
 
           {isEdit && (

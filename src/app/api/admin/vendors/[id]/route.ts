@@ -26,6 +26,7 @@ const fullUpdateVendorSchema = z.object({
   isOnline: z.boolean().optional(),
   lat: z.number().optional().nullable(),
   lng: z.number().optional().nullable(),
+  deliveryRadiusKm: z.number().min(1).max(100).optional(),
   workingHours: z.array(z.object({
     dayOfWeek: z.number().int().min(0).max(6),
     openTime: z.string(),
@@ -88,6 +89,7 @@ export async function GET(
         ...vendor,
         commissionRate: Number(vendor.commissionRate),
         rating: Number(vendor.rating),
+        deliveryRadiusKm: Number(vendor.deliveryRadiusKm),
         pincodes: vendor.pincodes.map((p) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),
@@ -246,6 +248,7 @@ export async function PUT(
     if (data.isOnline !== undefined) vendorUpdate.isOnline = data.isOnline
     if (data.lat !== undefined) vendorUpdate.lat = data.lat
     if (data.lng !== undefined) vendorUpdate.lng = data.lng
+    if (data.deliveryRadiusKm !== undefined) vendorUpdate.deliveryRadiusKm = data.deliveryRadiusKm
 
     // Update vendor
     await prisma.vendor.update({
@@ -317,6 +320,7 @@ export async function PUT(
         ...updated,
         commissionRate: Number(updated.commissionRate),
         rating: Number(updated.rating),
+        deliveryRadiusKm: Number(updated.deliveryRadiusKm),
         pincodes: updated.pincodes.map((p) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),

@@ -38,6 +38,7 @@ interface VendorData {
   autoAccept: boolean
   status: string
   isOnline: boolean
+  deliveryRadiusKm: number
   rating: number
   totalOrders: number
   createdAt: string
