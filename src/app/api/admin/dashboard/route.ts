@@ -57,6 +57,11 @@ export async function GET() {
     // Today's quotes — no quotes table yet, return 0
     const todayQuotes = 0
 
+    // Pending area review count (inactive service areas needing admin review)
+    const pendingAreaReviewCount = await prisma.serviceArea.count({
+      where: { isActive: false },
+    })
+
     return NextResponse.json({
       success: true,
       data: {
@@ -64,6 +69,7 @@ export async function GET() {
         todayOrders,
         todayRevenue,
         hitlPending,
+        pendingAreaReviewCount,
         recentActivity,
       },
     })

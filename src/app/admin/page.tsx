@@ -16,6 +16,7 @@ import {
   Clock,
   RefreshCw,
   MapPin,
+  Map,
   Settings,
   ClipboardList,
   Store,
@@ -29,6 +30,7 @@ interface DashboardData {
   todayOrders: number
   todayRevenue: number
   hitlPending: number
+  pendingAreaReviewCount: number
   recentActivity: {
     id: string
     type: string
@@ -192,6 +194,27 @@ export default function AdminDashboardPage() {
           bg="bg-amber-50"
         />
       </div>
+
+      {/* Pending area review alert */}
+      {!loading && data && data.pendingAreaReviewCount > 0 && (
+        <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+          <Map className="h-5 w-5 text-blue-600 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-800">
+              {data.pendingAreaReviewCount} new area{data.pendingAreaReviewCount > 1 ? 's' : ''} pending review
+            </p>
+            <p className="text-xs text-blue-600 mt-0.5">
+              Discovered from customer orders — verify and activate
+            </p>
+          </div>
+          <Link
+            href="/admin/areas?status=inactive"
+            className="text-xs font-medium text-blue-700 hover:text-blue-900 whitespace-nowrap"
+          >
+            Review &rarr;
+          </Link>
+        </div>
+      )}
 
       {/* Recent Activity + Quick Actions */}
       <div className="grid gap-6 lg:grid-cols-2">
