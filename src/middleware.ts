@@ -26,13 +26,18 @@ export default withAuth(
     callbacks: {
       authorized: ({ token, req }) => {
         const path = req.nextUrl.pathname
-        // Only these paths require authentication
-        const protectedPaths = ['/orders', '/vendor', '/admin']
-        const isProtected = protectedPaths.some(p => path.startsWith(p))
-        // If not a protected path, always allow
-        if (!isProtected) return true
-        // If protected path, require token
-        return !!token
+        // Vendor and admin panels always require auth
+        if (path.startsWith('/vendor') || path.startsWith('/admin')) {
+          return !!token
+        }
+        // Order history list requires auth, but individual order pages
+        // (/orders/[id] and /orders/[id]/confirmation) are accessible
+        // to guests — order IDs are UUIDs so they're unguessable
+        if (path === '/orders') {
+          return !!token
+        }
+        // All other paths are public
+        return true
       }
     },
     pages: {

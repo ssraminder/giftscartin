@@ -16,13 +16,6 @@ export async function GET(
 ) {
   try {
     const user = await getSessionUser()
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
-
     const { id } = await params
 
     const order = await prisma.order.findUnique({
@@ -63,14 +56,16 @@ export async function GET(
       )
     }
 
-    // Only allow the order owner or admin/vendor to view
-    if (order.userId !== user.id && user.role === 'CUSTOMER') {
+    // If user is logged in as a CUSTOMER, verify they own the order
+    if (user && order.userId && order.userId !== user.id && user.role === 'CUSTOMER') {
       return NextResponse.json(
         { success: false, error: 'Not authorized to view this order' },
         { status: 403 }
       )
     }
 
+    // Guest access: order IDs are UUIDs (unguessable), so allow
+    // unauthenticated access for guest checkout confirmation flow
     return NextResponse.json({ success: true, data: order })
   } catch (error) {
     console.error('GET /api/orders/[id] error:', error)

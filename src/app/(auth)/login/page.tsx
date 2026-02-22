@@ -33,7 +33,7 @@ function LoginForm() {
 
   // Redirect if already logged in
   const callbackUrl = searchParams.get('callbackUrl') || '/'
-  const isCheckoutFlow = callbackUrl.includes('/checkout')
+  const isCheckoutFlow = callbackUrl.includes('/checkout') && !callbackUrl.includes('/orders')
   useEffect(() => {
     if (status === 'authenticated') {
       router.replace(callbackUrl)

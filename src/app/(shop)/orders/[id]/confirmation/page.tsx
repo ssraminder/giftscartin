@@ -46,11 +46,11 @@ export default async function OrderConfirmationPage({
       },
     })
   } catch {
-    redirect("/orders")
+    redirect("/")
   }
 
   if (!order) {
-    redirect("/orders")
+    redirect("/")
   }
 
   const userName = order.senderName || order.user?.name || "friend"
