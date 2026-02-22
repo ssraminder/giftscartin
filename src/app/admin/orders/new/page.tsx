@@ -21,6 +21,8 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { PhoneInput } from "@/components/ui/phone-input"
+import { IndiaPhoneInput } from "@/components/ui/india-phone-input"
 import {
   Select,
   SelectContent,
@@ -112,19 +114,20 @@ function StepCustomer({
       <h2 className="text-lg font-semibold">Customer Details</h2>
       <div className="space-y-3">
         <div>
-          <Label htmlFor="phone">Phone Number</Label>
-          <div className="flex gap-2 mt-1">
-            <Input
-              id="phone"
-              placeholder="9876543210"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-              maxLength={10}
-            />
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <PhoneInput
+                label="Phone Number"
+                value={phone}
+                onChange={setPhone}
+                required
+              />
+            </div>
             <Button
               variant="outline"
               onClick={onLookup}
-              disabled={phone.length !== 10 || lookupLoading}
+              disabled={!/^\+[1-9]\d{6,14}$/.test(phone) || lookupLoading}
+              className="mb-px"
             >
               {lookupLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -142,7 +145,7 @@ function StepCustomer({
             <span>Existing customer: {existingCustomer.name || existingCustomer.email || phone}</span>
           </div>
         )}
-        {existingCustomer === null && phone.length === 10 && (
+        {existingCustomer === null && /^\+[1-9]\d{6,14}$/.test(phone) && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 text-blue-800 text-sm">
             <User className="h-4 w-4" />
             <span>New customer</span>
@@ -249,16 +252,11 @@ function StepDelivery({
           />
         </div>
         <div>
-          <Label htmlFor="recipientPhone">Recipient Phone</Label>
-          <Input
-            id="recipientPhone"
-            placeholder="9876543210"
+          <IndiaPhoneInput
+            label="Recipient Phone"
             value={addr.phone}
-            onChange={(e) =>
-              setAddr({ ...addr, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })
-            }
-            maxLength={10}
-            className="mt-1"
+            onChange={(v) => setAddr({ ...addr, phone: v })}
+            required
           />
         </div>
       </div>
@@ -917,7 +915,7 @@ export default function AdminNewOrderPage() {
   const [submitting, setSubmitting] = useState(false)
 
   // Step 1: Customer
-  const [phone, setPhone] = useState("")
+  const [phone, setPhone] = useState("+91")
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [existingCustomer, setExistingCustomer] = useState<{
@@ -978,10 +976,10 @@ export default function AdminNewOrderPage() {
   }, [])
 
   const handleLookup = useCallback(async () => {
-    if (phone.length !== 10) return
+    if (!/^\+[1-9]\d{6,14}$/.test(phone)) return
     setLookupLoading(true)
     try {
-      const res = await fetch(`/api/admin/customers/lookup?phone=${phone}`)
+      const res = await fetch(`/api/admin/customers/lookup?phone=${encodeURIComponent(phone)}`)
       const json = await res.json()
       if (json.success) {
         if (json.data) {
@@ -1005,13 +1003,13 @@ export default function AdminNewOrderPage() {
   const canProceed = (): boolean => {
     switch (step) {
       case 0:
-        return phone.length === 10 && name.length >= 2
+        return /^\+[1-9]\d{6,14}$/.test(phone) && name.length >= 2
       case 1:
         return (
           !!deliveryDate &&
           !!deliverySlot &&
           addr.name.length >= 2 &&
-          /^[6-9]\d{9}$/.test(addr.phone) &&
+          /^\+91[6-9]\d{9}$/.test(addr.phone) &&
           addr.address.length >= 5 &&
           addr.city.length >= 2 &&
           addr.state.length >= 2 &&

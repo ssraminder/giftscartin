@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PhoneInput } from '@/components/ui/phone-input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { UserPlus, Loader2 } from 'lucide-react'
 
@@ -17,7 +18,7 @@ function RegisterForm() {
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState(searchParams.get('email') || '')
-  const [phone, setPhone] = useState('')
+  const [phone, setPhone] = useState('+91')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -40,7 +41,7 @@ function RegisterForm() {
         body: JSON.stringify({
           name,
           email,
-          ...(phone ? { phone } : {}),
+          phone,
         }),
       })
 
@@ -126,17 +127,11 @@ function RegisterForm() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">
-                Phone number <span className="text-muted-foreground">(optional)</span>
-              </Label>
-              <Input
-                id="phone"
-                type="tel"
-                inputMode="numeric"
-                placeholder="9876543210"
-                maxLength={10}
+              <PhoneInput
+                label="Phone Number"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                onChange={setPhone}
+                required
                 disabled={loading}
               />
             </div>
@@ -148,7 +143,7 @@ function RegisterForm() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || !name || !email}
+              disabled={loading || !name || !email || !/^\+[1-9]\d{6,14}$/.test(phone)}
             >
               {loading ? (
                 <>

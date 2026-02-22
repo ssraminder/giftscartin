@@ -9,6 +9,7 @@ import { Check, ChevronDown, ChevronUp, Loader2, Plus, Calendar as CalendarIcon 
 
 import { SenderDetailsStep } from "@/components/checkout/sender-details-step"
 import type { SenderDetails } from "@/components/checkout/sender-details-step"
+import { IndiaPhoneInput } from "@/components/ui/india-phone-input"
 import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { useCurrency } from "@/hooks/use-currency"
@@ -376,8 +377,10 @@ export default function CheckoutPage() {
     if (!formData.senderName.trim()) {
       errors.senderName = "Please enter your name"
     }
-    if (!formData.senderPhone.match(/^\d{10}$/)) {
-      errors.senderPhone = "Please enter a valid 10-digit phone number"
+    if (!formData.senderPhone || formData.senderPhone === '+91') {
+      errors.senderPhone = "Please enter your phone number"
+    } else if (!/^\+[1-9]\d{6,14}$/.test(formData.senderPhone)) {
+      errors.senderPhone = "Enter a valid phone number with country code"
     }
 
     // If a saved address is selected, skip address field validation
@@ -389,10 +392,10 @@ export default function CheckoutPage() {
     if (!formData.recipientName.trim()) {
       errors.recipientName = "Recipient name is required"
     }
-    if (!formData.recipientPhone.trim()) {
+    if (!formData.recipientPhone.trim() || formData.recipientPhone === '+91') {
       errors.recipientPhone = "Mobile number is required"
-    } else if (!/^\d{10}$/.test(formData.recipientPhone.trim())) {
-      errors.recipientPhone = "Enter a valid 10-digit mobile number"
+    } else if (!/^\+91[6-9]\d{9}$/.test(formData.recipientPhone.trim())) {
+      errors.recipientPhone = "Enter a valid 10-digit Indian mobile number"
     }
     if (!formData.address.trim()) {
       errors.address = "Address is required"
@@ -636,6 +639,7 @@ export default function CheckoutPage() {
     !formData.selectedAddressId &&
     (!formData.recipientName.trim() ||
       !formData.recipientPhone.trim() ||
+      formData.recipientPhone === '+91' ||
       !formData.address.trim() ||
       !formData.city.trim() ||
       !formData.state.trim() ||
@@ -834,26 +838,13 @@ export default function CheckoutPage() {
                         )}
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Recipient&apos;s Mobile <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="tel"
+                        <IndiaPhoneInput
+                          label="Recipient's Mobile Number"
                           value={formData.recipientPhone}
-                          onChange={(e) =>
-                            updateField(
-                              "recipientPhone",
-                              e.target.value.replace(/\D/g, "").slice(0, 10)
-                            )
-                          }
-                          placeholder="10-digit mobile number"
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
+                          onChange={(v) => updateField("recipientPhone", v)}
+                          required
+                          error={formErrors.recipientPhone}
                         />
-                        {formErrors.recipientPhone && (
-                          <p className="text-red-500 text-xs mt-1">
-                            {formErrors.recipientPhone}
-                          </p>
-                        )}
                       </div>
                     </div>
 
