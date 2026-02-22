@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 export interface AreaResult {
   description: string      // "Sector 22, Chandigarh, Chandigarh, India"
@@ -10,39 +9,11 @@ export interface AreaResult {
   placeId: string
 }
 
-// Instance type returned by new google.maps.places.Autocomplete()
-interface AutocompleteInstance {
-  getPlace: () => {
-    place_id?: string
-    formatted_address?: string
-    name?: string
-    address_components?: Array<{
-      long_name: string
-      short_name: string
-      types: string[]
-    }>
-    geometry?: {
-      location: {
-        lat: () => number
-        lng: () => number
-      }
-    }
-  }
-  addListener: (event: string, handler: () => void) => void
-  setBounds: (bounds: object) => void
-}
-
 interface AreaSearchInputProps {
   cityName: string         // e.g. "Chandigarh" — used to bias results
   onAreaSelect: (area: AreaResult) => void
   placeholder?: string
   defaultValue?: string
-}
-
-// Extract pincode from Google address_components array
-function extractPincode(components: Array<{ long_name: string; short_name: string; types: string[] }>): string | null {
-  const postalCode = components.find(c => c.types.includes('postal_code'))
-  return postalCode?.long_name ?? null
 }
 
 // Fallback: reverse geocode lat/lng to get pincode
@@ -56,9 +27,9 @@ async function reverseGeocodeForPincode(lat: number, lng: number): Promise<strin
           return
         }
         for (const result of results) {
-          const pincode = extractPincode(result.address_components)
-          if (pincode) {
-            resolve(pincode)
+          const postalCode = result.address_components.find(c => c.types.includes('postal_code'))
+          if (postalCode) {
+            resolve(postalCode.long_name)
             return
           }
         }
@@ -71,128 +42,98 @@ async function reverseGeocodeForPincode(lat: number, lng: number): Promise<strin
 }
 
 export function AreaSearchInput({
-  cityName,
   onAreaSelect,
-  placeholder = "Enter area, street or landmark",
-  defaultValue = ""
+  // cityName, placeholder, defaultValue unused — PlaceAutocompleteElement renders its own input
 }: AreaSearchInputProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const autocompleteRef = useRef<AutocompleteInstance | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const placeElementRef = useRef<HTMLElement | null>(null)
   const initAttempted = useRef(false)
-  const [inputValue, setInputValue] = useState(defaultValue)
-  const [isLoading, setIsLoading] = useState(false)
-  const [fieldError, setFieldError] = useState<string | null>(null)
-  const [mapsError, setMapsError] = useState(false)
+  const [error, setError] = useState(false)
 
-  const handlePlaceChanged = useCallback(async () => {
-    if (!autocompleteRef.current) return
-
-    const place = autocompleteRef.current.getPlace()
-    if (!place.geometry) return
-
-    setIsLoading(true)
-    setFieldError(null)
-
-    try {
-      // Extract pincode from address_components
-      let finalPincode = extractPincode(place.address_components ?? [])
-
-      // If pincode not in address components, reverse geocode using coordinates
-      if (!finalPincode && place.geometry?.location) {
-        finalPincode = await reverseGeocodeForPincode(
-          place.geometry.location.lat(),
-          place.geometry.location.lng()
-        )
-      }
-
-      // Build display name — use place name or first part of formatted address
-      const displayName = place.name && place.name !== place.formatted_address
-        ? `${place.name}, ${cityName}`
-        : (place.formatted_address ?? '').split(',').slice(0, 2).join(',').trim()
-
-      setInputValue(displayName)
-
-      onAreaSelect({
-        description: place.formatted_address ?? '',
-        displayName,
-        pincode: finalPincode,
-        placeId: place.place_id ?? '',
-      })
-    } catch {
-      setFieldError('Could not get location details. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [cityName, onAreaSelect])
-
-  // Initialize Google Maps Autocomplete with error handling
   useEffect(() => {
     if (initAttempted.current) return
-    if (mapsError) return
 
-    const initAutocomplete = () => {
-      if (!inputRef.current) return false
-      if (autocompleteRef.current) return true // already initialized
+    const init = () => {
+      if (!window.google?.maps?.places?.PlaceAutocompleteElement) return
+      if (!containerRef.current) return
+      if (placeElementRef.current) return // already initialized
+
+      initAttempted.current = true
 
       try {
-        if (!window.google?.maps?.places) return false
+        const element = new window.google.maps.places.PlaceAutocompleteElement({
+          componentRestrictions: { country: 'IN' },
+          types: ['geocode', 'establishment'],
+        })
 
-        const ac = new window.google.maps.places.Autocomplete(
-          inputRef.current,
-          {
-            componentRestrictions: { country: 'IN' },
-            types: ['geocode', 'establishment'],
-            fields: ['place_id', 'formatted_address', 'address_components', 'name', 'geometry'],
+        containerRef.current.appendChild(element)
+        placeElementRef.current = element
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        element.addEventListener('gmp-placeselect', async (event: any) => {
+          const place = event.place
+
+          await place.fetchFields({
+            fields: ['displayName', 'formattedAddress', 'addressComponents', 'location']
+          })
+
+          const pincode = place.addressComponents?.find(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (c: any) => c.types.includes('postal_code')
+          )?.longText ?? null
+
+          let finalPincode = pincode
+          if (!finalPincode && place.location) {
+            finalPincode = await reverseGeocodeForPincode(
+              place.location.lat(),
+              place.location.lng()
+            )
           }
-        )
 
-        ac.addListener('place_changed', handlePlaceChanged)
-        autocompleteRef.current = ac
-        initAttempted.current = true
-        return true
+          const displayName = place.displayName ??
+            place.formattedAddress?.split(',').slice(0, 2).join(',').trim() ?? ''
+
+          onAreaSelect({
+            description: place.formattedAddress ?? '',
+            displayName,
+            pincode: finalPincode,
+            placeId: place.id ?? '',
+          })
+        })
       } catch (err) {
-        console.error('Google Maps init failed:', err)
-        initAttempted.current = true
-        setMapsError(true)
-        return false
+        console.error('PlaceAutocompleteElement init failed:', err)
+        setError(true)
       }
     }
 
-    // Google Maps may already be loaded
-    if (window.google?.maps?.places) {
-      initAutocomplete()
-      return
-    }
-
-    // Poll for Google Maps to load, with a hard limit
-    let elapsed = 0
-    const interval = setInterval(() => {
-      elapsed += 200
-      if (window.google?.maps?.places) {
-        clearInterval(interval)
-        initAutocomplete()
-      } else if (elapsed >= 5000) {
-        // 5 second timeout — fall back to pincode input
+    if (window.google?.maps?.places?.PlaceAutocompleteElement) {
+      init()
+    } else {
+      const interval = setInterval(() => {
+        if (window.google?.maps?.places?.PlaceAutocompleteElement) {
+          clearInterval(interval)
+          init()
+        }
+      }, 200)
+      const timeout = setTimeout(() => {
         clearInterval(interval)
         if (!initAttempted.current) {
           initAttempted.current = true
-          setMapsError(true)
+          setError(true)
         }
-      }
-    }, 200)
+      }, 5000)
+      return () => { clearInterval(interval); clearTimeout(timeout) }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    return () => clearInterval(interval)
-  }, [handlePlaceChanged, mapsError])
-
-  // Pincode fallback UI when Google Maps fails
-  if (mapsError) {
-    return (
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+  return (
+    <div className="relative">
+      <div ref={containerRef} className="w-full" />
+      {error && (
         <input
           type="text"
           placeholder="Enter 6-digit pincode"
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-pink-400 focus:ring-1 focus:ring-pink-400"
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-pink-400 focus:ring-1 focus:ring-pink-400 mt-1"
           maxLength={6}
           inputMode="numeric"
           pattern="[0-9]*"
@@ -211,29 +152,6 @@ export function AreaSearchInput({
             }
           }}
         />
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-        <input
-          ref={inputRef}
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder={placeholder}
-          className="w-full pl-9 pr-10 py-2.5 border border-gray-300 rounded-lg text-base focus:outline-none focus:border-pink-400 focus:ring-1 focus:ring-pink-400"
-          autoComplete="off"
-        />
-        {isLoading && (
-          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-pink-500 animate-spin" />
-        )}
-      </div>
-      {fieldError && (
-        <p className="mt-1 text-xs text-red-500">{fieldError}</p>
       )}
     </div>
   )

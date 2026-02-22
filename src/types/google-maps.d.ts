@@ -4,28 +4,15 @@ declare global {
     google: {
       maps: {
         places: {
-          Autocomplete: new (
-            input: HTMLInputElement,
-            options?: object
-          ) => {
-            getPlace: () => {
-              place_id?: string
-              formatted_address?: string
-              name?: string
-              address_components?: Array<{
-                long_name: string
-                short_name: string
-                types: string[]
-              }>
-              geometry?: {
-                location: {
-                  lat: () => number
-                  lng: () => number
-                }
-              }
-            }
-            addListener: (event: string, handler: () => void) => void
-            setBounds: (bounds: object) => void
+          PlaceAutocompleteElement: new (options?: {
+            componentRestrictions?: { country: string | string[] }
+            types?: string[]
+          }) => HTMLElement & {
+            addEventListener(
+              type: 'gmp-placeselect',
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              listener: (event: { place: any }) => void
+            ): void
           }
         }
         Geocoder: new () => {
