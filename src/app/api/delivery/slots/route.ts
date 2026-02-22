@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { nowIST, toISTDateString, parseLocalDate } from '@/lib/date-utils'
 
 // Shape of one slot override in delivery_holidays.slotOverrides JSONB
 interface SlotOverride {
@@ -22,8 +23,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const now  = new Date()
-    const isToday = new Date(dateStr).toDateString() === now.toDateString()
+    const now  = nowIST()
+    const isToday = dateStr === toISTDateString(new Date())
 
     // 1. Get city
     const city = await prisma.city.findUnique({
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. Check holiday for this date (city-specific takes priority over global)
-    const deliveryDate = new Date(dateStr)
+    const deliveryDate = parseLocalDate(dateStr)
     const holidays = await prisma.deliveryHoliday.findMany({
       where: {
         date: deliveryDate,
@@ -75,6 +76,23 @@ export async function GET(req: NextRequest) {
       include: { slot: true },
     })
 
+    // If no city configs exist, return empty (city has no delivery infrastructure)
+    if (cityConfigs.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          slots: [],
+          effectiveLeadTimeHours: 0,
+          leadTimeNote: null,
+          earliestDate: dateStr,
+          isFullyBlocked: false,
+          holidayReason: null,
+          totalSurcharge: 0,
+          surchargeNames: [],
+        },
+      })
+    }
+
     // 4. Build holiday override map (slug → {blocked, priceOverride})
     const holidayOverrides = new Map<string, SlotOverride>()
     if (holiday?.mode === 'CUSTOM' && holiday.slotOverrides) {
@@ -113,9 +131,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 7. Earliest deliverable datetime
+    // 7. Earliest deliverable datetime (IST-based)
     const earliestDelivery = new Date(now.getTime() + effectiveLeadTimeHours * 60 * 60 * 1000)
-    const requestedDayEnd  = new Date(dateStr + 'T23:59:59')
+    const requestedDayEnd  = new Date(deliveryDate)
+    requestedDayEnd.setHours(23, 59, 59, 999)
 
     if (earliestDelivery > requestedDayEnd) {
       return NextResponse.json({
@@ -155,11 +174,11 @@ export async function GET(req: NextRequest) {
       }
       const totalCharge = charge + surchargeApplied
 
-      // Parse slot start/end
+      // Parse slot start/end using local date
       const [startH, startM] = slot.startTime.split(':').map(Number)
       const [endH,   endM]   = slot.endTime.split(':').map(Number)
-      const slotStart = new Date(dateStr); slotStart.setHours(startH, startM, 0, 0)
-      const slotEnd   = new Date(dateStr); slotEnd.setHours(endH, endM, 59, 999)
+      const slotStart = new Date(deliveryDate); slotStart.setHours(startH, startM, 0, 0)
+      const slotEnd   = new Date(deliveryDate); slotEnd.setHours(endH, endM, 59, 999)
 
       // Lead time check: earliest delivery must land before slot closes
       const leadTimeSatisfied = earliestDelivery <= slotEnd
@@ -169,7 +188,7 @@ export async function GET(req: NextRequest) {
       if (isToday || slot.slotGroup === 'early-morning') {
         if (slot.cutoffTime) {
           const [cutH, cutM] = slot.cutoffTime.split(':').map(Number)
-          const cutoffDate = new Date(dateStr)
+          const cutoffDate = new Date(deliveryDate)
           if (slot.slotGroup === 'early-morning') {
             // Cutoff is 6pm the PREVIOUS day
             cutoffDate.setDate(cutoffDate.getDate() - 1)

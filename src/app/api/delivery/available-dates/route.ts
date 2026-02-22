@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { getTodayIST } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,7 +8,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const productId = searchParams.get('productId')
   const cityId = searchParams.get('cityId')
-  const months = parseInt(searchParams.get('months') || '2', 10)
+  const days = parseInt(searchParams.get('days') || '15', 10)
 
   if (!productId || !cityId) {
     return NextResponse.json(
@@ -17,7 +18,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Get approved vendors in this city that have this product
+    // 1. Get approved vendors in this city that have this product.
+    //    Don't require isOnline — that's for real-time order acceptance.
+    //    Filter out vendors currently on vacation.
     const vendorProducts = await prisma.vendorProduct.findMany({
       where: {
         productId,
@@ -25,6 +28,10 @@ export async function GET(req: NextRequest) {
         vendor: {
           cityId,
           status: 'APPROVED',
+          OR: [
+            { vacationEnd: null },
+            { vacationEnd: { lt: new Date() } },
+          ],
         },
       },
       include: {
@@ -57,10 +64,9 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Get delivery holidays for the date range
-    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-    const today = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate())
+    const today = getTodayIST()
     const endDate = new Date(today)
-    endDate.setDate(endDate.getDate() + months * 30)
+    endDate.setDate(endDate.getDate() + days)
 
     const holidays = await prisma.deliveryHoliday.findMany({
       where: {
@@ -74,20 +80,21 @@ export async function GET(req: NextRequest) {
     for (const h of holidays) {
       const dateKey = h.date.toISOString().split('T')[0]
       const existing = holidayMap.get(dateKey)
-      // City-specific takes priority over global
       if (!existing || (h.cityId && !existing.cityId)) {
         holidayMap.set(dateKey, { mode: h.mode as string, cityId: h.cityId })
       }
     }
 
-    // 4. For each date, check availability
+    // 4. For each date in the range, check availability
     const availableDates: string[] = []
-    const totalDays = months * 30
 
-    for (let i = 0; i <= totalDays; i++) {
+    for (let i = 0; i <= days; i++) {
       const date = new Date(today)
       date.setDate(today.getDate() + i)
-      const dateStr = date.toISOString().split('T')[0]
+      const y = date.getFullYear()
+      const m = String(date.getMonth() + 1).padStart(2, '0')
+      const d = String(date.getDate()).padStart(2, '0')
+      const dateStr = `${y}-${m}-${d}`
 
       // Check holiday: full day block
       const holiday = holidayMap.get(dateStr)
@@ -95,15 +102,17 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      // Check if any slot is enabled for this city (already checked above, but filter for STANDARD_ONLY)
+      // STANDARD_ONLY: only if city has standard slots
       if (holiday?.mode === 'STANDARD_ONLY') {
         const hasStandard = cityConfigs.some(c => c.slot.slotGroup === 'standard')
         if (!hasStandard) continue
       }
 
-      // Check vendor working hours for this day of week
+      // Check vendor working hours for this day of week.
+      // If vendor has no working hours records, assume they're open.
       const dayOfWeek = date.getDay() // 0=Sunday
       const anyVendorOpen = vendorProducts.some(vp => {
+        if (vp.vendor.workingHours.length === 0) return true // No schedule configured = open
         const hours = vp.vendor.workingHours.find(wh => wh.dayOfWeek === dayOfWeek)
         return hours && !hours.isClosed
       })
