@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PhoneInput } from '@/components/ui/phone-input'
 
 const OCCASIONS = [
   'Birthday',
@@ -49,10 +50,16 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack }: Sende
   // Auto-fill from session on first render
   useEffect(() => {
     if (session?.user && !value.senderName) {
+      const rawPhone = ((session.user as Record<string, unknown>).phone as string) || ''
+      // If stored as 10 digits without code, prepend +91; if already has +, use as-is
+      let senderPhone = rawPhone
+      if (rawPhone && !rawPhone.startsWith('+')) {
+        senderPhone = `+91${rawPhone.replace(/\D/g, '')}`
+      }
       onChange({
         ...value,
         senderName: session.user.name || '',
-        senderPhone: (session.user as Record<string, unknown>).phone as string || '',
+        senderPhone,
         senderEmail: session.user.email || '',
       })
     }
@@ -63,10 +70,10 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack }: Sende
     if (!value.senderName.trim()) {
       newErrors.senderName = 'Your name is required'
     }
-    if (!value.senderPhone.trim()) {
-      newErrors.senderPhone = 'Your mobile number is required'
-    } else if (!/^\d{10}$/.test(value.senderPhone)) {
-      newErrors.senderPhone = 'Enter a valid 10-digit mobile number'
+    if (!value.senderPhone.trim() || value.senderPhone === '+91') {
+      newErrors.senderPhone = 'Your phone number is required'
+    } else if (!/^\+[1-9]\d{6,14}$/.test(value.senderPhone)) {
+      newErrors.senderPhone = 'Enter a valid phone number with country code'
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -105,27 +112,16 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack }: Sende
         )}
       </div>
 
-      {/* Your Mobile */}
+      {/* Your Phone Number */}
       <div>
-        <Label htmlFor="senderPhone">
-          Your Mobile <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="senderPhone"
-          type="tel"
-          inputMode="numeric"
-          className="text-base mt-1"
-          placeholder="10-digit mobile number"
-          maxLength={10}
+        <PhoneInput
+          label="Your Phone Number"
           value={value.senderPhone}
-          onChange={e =>
-            onChange({ ...value, senderPhone: e.target.value.replace(/\D/g, '') })
-          }
+          onChange={(v) => onChange({ ...value, senderPhone: v })}
+          required
+          error={errors.senderPhone}
         />
         <p className="text-xs text-gray-400 mt-1">For delivery coordination if needed</p>
-        {errors.senderPhone && (
-          <p className="text-xs text-red-500 mt-1">{errors.senderPhone}</p>
-        )}
       </div>
 
       {/* Your Email (optional) */}
