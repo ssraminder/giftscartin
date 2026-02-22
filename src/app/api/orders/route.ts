@@ -59,6 +59,8 @@ const createOrderBodySchema = z.object({
   specialInstructions: z.string().max(500).optional(),
   couponCode: z.string().max(50).optional(),
   partnerId: z.string().optional(),
+  guestEmail: z.string().email().optional(),
+  guestPhone: z.string().regex(/^\+[1-9]\d{6,14}$/).optional(),
 })
 
 async function getSessionUser() {
@@ -223,12 +225,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getSessionUser()
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
+    const isGuest = !user
 
     const body = await request.json()
     const parsed = createOrderBodySchema.safeParse(body)
@@ -254,7 +251,19 @@ export async function POST(request: NextRequest) {
       specialInstructions,
       couponCode,
       partnerId: bodyPartnerId,
+      guestEmail,
+      guestPhone,
     } = parsed.data
+
+    // Guests must provide email + phone
+    if (isGuest) {
+      if (!guestEmail || !guestPhone) {
+        return NextResponse.json(
+          { success: false, error: 'Please provide your email and phone to place a guest order' },
+          { status: 400 }
+        )
+      }
+    }
 
     // Resolve partner: prefer body partnerId, fallback to gci_ref cookie
     let partnerId = bodyPartnerId || null
@@ -280,7 +289,7 @@ export async function POST(request: NextRequest) {
     if (inlineAddress && (addressId === 'inline' || addressId === '__CREATE__')) {
       address = await prisma.address.create({
         data: {
-          userId: user.id,
+          userId: isGuest ? null : user!.id,
           name: inlineAddress.name,
           phone: inlineAddress.phone,
           address: inlineAddress.address,
@@ -292,7 +301,9 @@ export async function POST(request: NextRequest) {
       })
     } else {
       address = await prisma.address.findFirst({
-        where: { id: addressId, userId: user.id },
+        where: isGuest
+          ? { id: addressId }
+          : { id: addressId, userId: user!.id },
       })
     }
 
@@ -443,15 +454,28 @@ export async function POST(request: NextRequest) {
         (coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit)
       ) {
         // Check per-user limit
-        const userUsage = await prisma.order.count({
-          where: {
-            userId: user.id,
-            couponCode: coupon.code,
-            status: { notIn: ['CANCELLED', 'REFUNDED'] },
-          },
-        })
+        let couponAllowed = true
+        if (!isGuest) {
+          const userUsage = await prisma.order.count({
+            where: {
+              userId: user!.id,
+              couponCode: coupon.code,
+              status: { notIn: ['CANCELLED', 'REFUNDED'] },
+            },
+          })
+          if (userUsage >= coupon.perUserLimit) couponAllowed = false
+        } else if (guestEmail) {
+          const guestUsage = await prisma.order.count({
+            where: {
+              guestEmail,
+              couponCode: coupon.code,
+              status: { notIn: ['CANCELLED', 'REFUNDED'] },
+            },
+          })
+          if (guestUsage >= coupon.perUserLimit) couponAllowed = false
+        }
 
-        if (userUsage < coupon.perUserLimit) {
+        if (couponAllowed) {
           if (coupon.discountType === 'percentage') {
             discount = (subtotal * Number(coupon.discountValue)) / 100
             if (coupon.maxDiscount) {
@@ -517,7 +541,9 @@ export async function POST(request: NextRequest) {
     const order = await prisma.order.create({
       data: {
         orderNumber: generateOrderNumber(cityCode),
-        userId: user.id,
+        userId: isGuest ? null : user!.id,
+        guestEmail: isGuest ? guestEmail : null,
+        guestPhone: isGuest ? guestPhone : null,
         vendorId: bestVendorId,
         partnerId: partnerId || null,
         addressId: address.id,
@@ -619,8 +645,10 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Clear the user's cart
-    await prisma.cartItem.deleteMany({ where: { userId: user.id } })
+    // Clear the user's cart (only for logged-in users; guest cart is Zustand client-side)
+    if (!isGuest) {
+      await prisma.cartItem.deleteMany({ where: { userId: user!.id } })
+    }
 
     return NextResponse.json({ success: true, data: order }, { status: 201 })
   } catch (error) {

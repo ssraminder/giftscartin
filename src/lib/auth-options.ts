@@ -1,4 +1,4 @@
-import { NextAuthOptions } from 'next-auth'
+import { NextAuthOptions, User } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from './prisma'
 
@@ -39,24 +39,35 @@ export const authOptions: NextAuthOptions = {
           })
         }
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role }
+        return {
+          id: user.id,
+          email: user.email ?? '',
+          name: user.name ?? '',
+          phone: user.phone ?? '',
+          role: user.role,
+        }
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id
-        token.role = user.role
-        token.email = user.email ?? ''
+        const u = user as User
+        token.id = u.id
+        token.role = u.role
+        token.email = u.email ?? ''
+        token.name = u.name ?? ''
+        token.phone = u.phone ?? ''
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
-        session.user.email = token.email as string
+        session.user.id = token.id
+        session.user.role = token.role
+        session.user.email = token.email ?? ''
+        session.user.name = token.name ?? ''
+        session.user.phone = token.phone ?? ''
       }
       return session
     },

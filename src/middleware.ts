@@ -27,7 +27,7 @@ export default withAuth(
       authorized: ({ token, req }) => {
         const path = req.nextUrl.pathname
         // Only these paths require authentication
-        const protectedPaths = ['/checkout', '/orders', '/vendor', '/admin']
+        const protectedPaths = ['/orders', '/vendor', '/admin']
         const isProtected = protectedPaths.some(p => path.startsWith(p))
         // If not a protected path, always allow
         if (!isProtected) return true
