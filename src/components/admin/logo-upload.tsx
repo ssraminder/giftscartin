@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import Image from "next/image"
 import { Upload, X, Link as LinkIcon, Check, Loader2 } from "lucide-react"
 
 interface LogoUploadProps {
@@ -100,13 +101,15 @@ export function LogoUpload({
       {/* Left - Current Preview */}
       <div className="flex flex-col items-center">
         <div
-          className={`${previewClass} rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center`}
+          className={`${previewClass} relative rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center`}
         >
           {displayUrl ? (
-            <img
+            <Image
               src={displayUrl}
               alt={label}
-              className="object-contain w-full h-full p-2"
+              fill
+              className="object-contain p-2"
+              unoptimized
             />
           ) : (
             <span className="text-sm text-gray-400">No {label.toLowerCase()} uploaded</span>

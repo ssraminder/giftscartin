@@ -170,10 +170,13 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
           <Link href={withRef("/")} className="flex items-center shrink-0 gap-1 md:w-1/4">
             {partner?.logoUrl ? (
               <div className="flex flex-col items-start">
-                <img
+                <Image
                   src={partner.logoUrl}
                   alt={partner.name}
+                  width={160}
+                  height={32}
                   className="h-8 max-w-[160px] object-contain"
+                  unoptimized
                 />
                 {partner.showPoweredBy && (
                   <span className="text-[10px] text-gray-400 leading-none mt-0.5">
