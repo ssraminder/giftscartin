@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { LocationResult } from '@/app/api/location/search/route'
+import type { LocationResult } from '@/types'
 
 export type { LocationResult }
 

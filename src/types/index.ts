@@ -404,6 +404,23 @@ export interface Review {
   user?: Pick<User, "id" | "name">
 }
 
+// ==================== LOCATION SEARCH ====================
+
+export interface LocationResult {
+  type: 'area' | 'city' | 'google_place'
+  label: string
+  cityId: string | null
+  cityName: string | null
+  citySlug: string | null
+  pincode: string | null
+  areaName: string | null
+  lat: number | null
+  lng: number | null
+  placeId: string | null
+  isActive: boolean
+  isComingSoon: boolean
+}
+
 // ==================== API RESPONSE ====================
 
 export interface ApiResponse<T = unknown> {
