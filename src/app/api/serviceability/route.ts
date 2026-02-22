@@ -5,7 +5,6 @@ import { z } from 'zod/v4'
 const serviceabilitySchema = z.object({
   pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode (6 digits)'),
   productId: z.string().optional(),
-  citySlug: z.string().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -20,14 +19,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { pincode, productId, citySlug } = parsed.data
+    const { pincode, productId } = parsed.data
 
-    // Find zones that service this pincode
-    const zones = await prisma.cityZone.findMany({
+    // Step 1: Resolve city from pincode via service_areas
+    const serviceArea = await prisma.serviceArea.findFirst({
       where: {
-        pincodes: { has: pincode },
+        pincode,
         isActive: true,
-        ...(citySlug ? { city: { slug: citySlug } } : {}),
       },
       include: {
         city: {
@@ -43,32 +41,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    if (zones.length === 0) {
-      // Fallback: check service_areas table for "coming soon" coverage
-      const serviceArea = await prisma.serviceArea.findFirst({
-        where: {
-          pincode,
-          isActive: true,
-        },
-      })
-
-      if (serviceArea) {
-        return NextResponse.json({
-          success: true,
-          data: {
-            isServiceable: true,
-            serviceable: true,
-            comingSoon: true,
-            message: "We're coming to your area soon! Place your order and our team will confirm delivery.",
-            vendorCount: 0,
-            deliveryCharge: 0,
-            availableSlots: [],
-            cityName: serviceArea.cityName,
-            freeDeliveryAbove: 0,
-          },
-        })
-      }
-
+    // Step 3a: No service_areas row → not serviceable
+    if (!serviceArea) {
       return NextResponse.json({
         success: true,
         data: {
@@ -83,53 +57,52 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const activeZones = zones.filter((z) => z.city.isActive)
-    if (activeZones.length === 0) {
+    const cityId = serviceArea.cityId
+
+    // Step 2: Find capable vendors in this city serving this pincode
+    const vendorWhere = {
+      cityId,
+      status: 'APPROVED' as const,
+      isOnline: true,
+      pincodes: { some: { pincode, isActive: true } },
+      ...(productId
+        ? { products: { some: { productId, isAvailable: true } } }
+        : {}),
+    }
+
+    const vendors = await prisma.vendor.findMany({
+      where: vendorWhere,
+      select: { id: true },
+    })
+
+    const vendorCount = vendors.length
+
+    // Step 3b: No vendors but service_areas row exists → coming soon
+    if (vendorCount === 0) {
       return NextResponse.json({
         success: true,
         data: {
-          isServiceable: false,
-          serviceable: false,
-          message: 'Delivery to this area is temporarily unavailable.',
+          isServiceable: true,
+          serviceable: true,
+          comingSoon: true,
+          message:
+            "We're coming to your area soon! Place your order and our team will confirm delivery.",
           vendorCount: 0,
           deliveryCharge: 0,
           availableSlots: [],
+          cityName: serviceArea.city.name,
+          areaName: serviceArea.name,
           freeDeliveryAbove: 0,
         },
       })
     }
 
-    const zone = activeZones[0]
-
-    // Find vendors serving this pincode
-    const vendorCount = await prisma.vendorPincode.count({
-      where: {
-        pincode,
-        isActive: true,
-        vendor: { status: 'APPROVED' },
-      },
-    })
-
-    // If a specific product is requested, check vendor availability
-    let productAvailable = true
-    if (productId) {
-      const vendorProduct = await prisma.vendorProduct.findFirst({
-        where: {
-          productId,
-          isAvailable: true,
-          vendor: {
-            status: 'APPROVED',
-            pincodes: { some: { pincode, isActive: true } },
-          },
-        },
-      })
-      productAvailable = !!vendorProduct
-    }
+    // Step 3c: Vendors found → full serviceable response
 
     // Get available delivery slots for this city
     const deliveryConfigs = await prisma.cityDeliveryConfig.findMany({
       where: {
-        cityId: zone.city.id,
+        cityId,
         isAvailable: true,
       },
       include: {
@@ -137,7 +110,6 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // If no city delivery configs, fall back to all active delivery slots
     let availableSlots
     if (deliveryConfigs.length > 0) {
       availableSlots = deliveryConfigs
@@ -164,24 +136,18 @@ export async function POST(request: NextRequest) {
       }))
     }
 
-    const baseCharge = Number(zone.city.baseDeliveryCharge)
-    const zoneExtra = Number(zone.extraCharge)
-    const deliveryCharge = baseCharge + zoneExtra
-    const freeDeliveryAbove = Number(zone.city.freeDeliveryAbove)
+    const deliveryCharge = Number(serviceArea.city.baseDeliveryCharge)
+    const freeDeliveryAbove = Number(serviceArea.city.freeDeliveryAbove)
 
     return NextResponse.json({
       success: true,
       data: {
         isServiceable: true,
         serviceable: true,
-        city: zone.city,
-        zone: {
-          id: zone.id,
-          name: zone.name,
-          extraCharge: Number(zone.extraCharge),
-        },
+        city: serviceArea.city,
+        areaName: serviceArea.name,
         vendorCount,
-        productAvailable,
+        productAvailable: true,
         deliveryCharge,
         freeDeliveryAbove,
         availableSlots,
