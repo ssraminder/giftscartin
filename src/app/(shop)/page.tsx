@@ -11,6 +11,8 @@ import { Testimonials } from "@/components/home/testimonials"
 import { CityBanner } from "@/components/home/city-banner"
 import { SeoTextBlock } from "@/components/home/seo-text-block"
 
+export const revalidate = 1800 // 30 minutes
+
 export const metadata: Metadata = {
   title: 'Gifts Cart India — Same Day Cake, Flower & Gift Delivery',
   description:

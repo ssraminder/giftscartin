@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Plus } from "lucide-react"
 import { useCurrency } from "@/hooks/use-currency"
 import { useCart } from "@/hooks/use-cart"
+import { processImageUrl } from "@/lib/utils"
 import type { UpsellProduct } from "@/types"
 
 interface UpsellProductsProps {
@@ -29,11 +30,12 @@ export function UpsellProducts({ upsells }: UpsellProductsProps) {
             <Link href={`/product/${product.slug}`}>
               <div className="relative aspect-square bg-gray-50">
                 <Image
-                  src={product.images[0] || "/placeholder-product.svg"}
+                  src={processImageUrl(product.images[0], 200, 75)}
                   alt={product.name}
                   fill
                   className="object-cover"
                   sizes="(max-width: 640px) 160px, 200px"
+                  loading="lazy"
                 />
               </div>
             </Link>

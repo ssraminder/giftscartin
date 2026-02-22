@@ -7,6 +7,7 @@ import { Heart, Star } from "lucide-react"
 
 import { useCart } from "@/hooks/use-cart"
 import { useCurrency } from "@/hooks/use-currency"
+import { processImageUrl } from "@/lib/utils"
 import type { Product } from "@/types"
 
 export interface ProductCardProps {
@@ -119,16 +120,19 @@ export function ProductCard({
   return (
     <Link
       href={`/product/${slug}`}
+      prefetch={true}
       className="group block rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden"
     >
       {/* IMAGE SECTION */}
-      <div className="relative aspect-square overflow-hidden rounded-t-xl">
+      <div className="relative aspect-square overflow-hidden rounded-t-xl bg-gray-100">
         <Image
-          src={images[0] || "/placeholder-product.svg"}
+          src={processImageUrl(images[0], 400, 75)}
           alt={name}
           fill
-          className="object-cover transition-transform duration-500 group-hover:scale-105"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
+          quality={75}
+          loading="lazy"
+          className="object-cover hover:scale-105 transition-transform duration-300"
         />
 
         {/* Top-left: Discount badge */}
