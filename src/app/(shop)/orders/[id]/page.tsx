@@ -85,17 +85,13 @@ export default function OrderDetailPage() {
   const { formatPrice } = useCurrency()
   const isNewOrder = searchParams.get("new") === "true"
   const orderId = params.id as string
-  const { data: session, status: authStatus } = useSession()
+  const { status: authStatus } = useSession()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (authStatus === "loading") return
-    if (!session) {
-      setLoading(false)
-      return
-    }
 
     async function fetchOrder() {
       try {
@@ -114,25 +110,10 @@ export default function OrderDetailPage() {
     }
 
     fetchOrder()
-  }, [session, authStatus, orderId])
+  }, [authStatus, orderId])
 
   if (authStatus === "loading" || loading) {
     return <OrderDetailSkeleton />
-  }
-
-  if (!session) {
-    return (
-      <div className="container mx-auto max-w-md px-4 py-16 text-center">
-        <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-        <h1 className="text-xl font-bold mb-2">Sign in to view order</h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          Log in to see your order details.
-        </p>
-        <Button asChild>
-          <Link href="/login">Login</Link>
-        </Button>
-      </div>
-    )
   }
 
   if (error || !order) {
