@@ -176,7 +176,7 @@ export default function CheckoutPage() {
   const [changeDateOpen, setChangeDateOpen] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
     const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-    return new Date(nowIST.getFullYear(), nowIST.getMonth(), 1)
+    return new Date(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1)
   })
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set())
   const [loadingDates, setLoadingDates] = useState(false)

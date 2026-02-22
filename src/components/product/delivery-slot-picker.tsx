@@ -130,7 +130,7 @@ export function CalendarSection({
   const firstDay = getFirstDayOfMonth(year, month)
 
   const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-  const todayDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate())
+  const todayDate = new Date(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate())
   const todayStr = toDateString(todayDate)
 
   const tomorrowDate = new Date(todayDate)
@@ -272,7 +272,7 @@ export function DeliveryDatePicker({
     const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
     return initialDate
       ? new Date(initialDate.getFullYear(), initialDate.getMonth(), 1)
-      : new Date(nowIST.getFullYear(), nowIST.getMonth(), 1)
+      : new Date(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1)
   })
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set())
   const [loadingDates, setLoadingDates] = useState(false)

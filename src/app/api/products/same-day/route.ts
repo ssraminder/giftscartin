@@ -18,11 +18,11 @@ export async function GET(req: NextRequest) {
   try {
     // Current IST time
     const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
-    const currentHourIST = nowIST.getHours()
-    const currentMinuteIST = nowIST.getMinutes()
+    const currentHourIST = nowIST.getUTCHours()
+    const currentMinuteIST = nowIST.getUTCMinutes()
     const currentMinutesIST = currentHourIST * 60 + currentMinuteIST
-    const todayDayOfWeek = nowIST.getDay()
-    const todayDate = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate())
+    const todayDayOfWeek = nowIST.getUTCDay()
+    const todayDate = new Date(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate())
 
     // Check for full-day delivery holiday today
     const holidays = await prisma.deliveryHoliday.findMany({
