@@ -11,6 +11,7 @@ import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { useCurrency } from "@/hooks/use-currency"
 import { useReferral } from "@/components/providers/referral-provider"
+import { AreaSearchInput } from "@/components/layout/area-search-input"
 import {
   Sheet,
   SheetContent,
@@ -950,6 +951,29 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
+                    {/* Area / Landmark — Google Places autocomplete */}
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Area / Landmark
+                      </label>
+                      <AreaSearchInput
+                        cityName={cityName || 'India'}
+                        onAreaSelect={(area) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            pincode: area.pincode ?? prev.pincode,
+                            landmark: area.displayName,
+                          }))
+                          // Auto-check serviceability when pincode is filled
+                          if (area.pincode && /^\d{6}$/.test(area.pincode)) {
+                            checkPincode(area.pincode)
+                          }
+                        }}
+                        placeholder="Search area or landmark"
+                        defaultValue={formData.landmark}
+                      />
+                    </div>
+
                     {/* Row 3: Pincode */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                       <div>
@@ -1001,22 +1025,6 @@ export default function CheckoutPage() {
                           </p>
                         )}
                       </div>
-                    </div>
-
-                    {/* Landmark */}
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Landmark
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.landmark}
-                        onChange={(e) =>
-                          updateField("landmark", e.target.value)
-                        }
-                        placeholder="Nearby landmark (optional)"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                      />
                     </div>
 
                     {/* Save address checkbox */}

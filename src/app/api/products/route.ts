@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       categorySlug,
       city,
       citySlug,
+      pincode,
       vendorId,
       minPrice,
       maxPrice,
@@ -84,6 +85,19 @@ export async function GET(request: NextRequest) {
           vendor: {
             city: { slug: effectiveCitySlug },
             status: 'APPROVED',
+            // If pincode is also provided, filter to vendors serving that pincode
+            ...(pincode ? { pincodes: { some: { pincode, isActive: true } } } : {}),
+          },
+        },
+      }
+    } else if (pincode) {
+      // Pincode-only filter (no city slug): find vendors serving this pincode
+      where.vendorProducts = {
+        some: {
+          isAvailable: true,
+          vendor: {
+            status: 'APPROVED',
+            pincodes: { some: { pincode, isActive: true } },
           },
         },
       }

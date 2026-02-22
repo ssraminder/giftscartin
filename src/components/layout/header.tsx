@@ -30,6 +30,7 @@ import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
 import { CitySearch } from "@/components/location/city-search"
+import { AreaSearchInput, type AreaResult } from "@/components/layout/area-search-input"
 import { POPULAR_CITIES } from "@/lib/cities-data"
 import { MegaMenu, MobileMegaMenu, type MenuNode } from "@/components/layout/mega-menu"
 
@@ -64,7 +65,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const cityDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
-  const { cityName, isSelected, setCity } = useCity()
+  const { cityId, cityName, citySlug, areaName, isSelected, setCity } = useCity()
   const { partner } = usePartner()
   const router = useRouter()
 
@@ -244,7 +245,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
               >
                 <MapPin className={`h-3.5 w-3.5 shrink-0 ${isSelected ? 'text-[#E91E63]' : 'text-[#E91E63] animate-pulse'}`} />
                 <span className="truncate max-w-[80px] sm:max-w-[120px] font-medium text-xs sm:text-sm">
-                  {isSelected ? cityName : "Select City"}
+                  {isSelected ? (areaName || cityName) : "Select City"}
                 </span>
                 <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
               </button>
@@ -261,6 +262,28 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
                     autoFocus
                     placeholder="Search city or pincode..."
                   />
+                  {/* Area search — show when city is already selected */}
+                  {isSelected && cityName && (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <p className="text-xs text-gray-400 mb-2">Search area in {cityName}</p>
+                      <AreaSearchInput
+                        cityName={cityName}
+                        onAreaSelect={(area: AreaResult) => {
+                          if (area.pincode && cityId && citySlug) {
+                            setCity({
+                              cityId,
+                              cityName: cityName!,
+                              citySlug,
+                              pincode: area.pincode,
+                              areaName: area.displayName,
+                            })
+                          }
+                          setCityDropdownOpen(false)
+                        }}
+                        placeholder="Enter area, street or landmark"
+                      />
+                    </div>
+                  )}
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <p className="text-xs text-gray-400 mb-2">Popular Cities</p>
                     <div className="flex flex-wrap gap-1.5">

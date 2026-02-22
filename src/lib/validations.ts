@@ -53,6 +53,7 @@ export const productListSchema = paginationSchema.extend({
   categorySlug: z.string().optional(),
   city: z.string().optional(),
   citySlug: z.string().optional(),
+  pincode: z.string().regex(/^\d{6}$/).optional(),
   vendorId: z.string().optional(),
   minPrice: z.coerce.number().min(0).optional(),
   maxPrice: z.coerce.number().min(0).optional(),
