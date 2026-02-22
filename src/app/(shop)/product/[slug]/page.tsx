@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { getProductMeta, buildProductJsonLd } from '@/lib/seo'
 import { JsonLd } from '@/components/seo/json-ld'
 import { prisma } from '@/lib/prisma'
-import ProductDetailClient from './product-detail-client'
+import ProductDetailClient from '@/components/product/product-detail-client'
 import ProductNotFound from './product-not-found'
 
 // Cache product data for 5 minutes — avoids hitting DB on every request
@@ -38,76 +38,30 @@ export default async function ProductPage({
 }: {
   params: { slug: string }
 }) {
-  // Full product query — replaces client-side fetch to /api/products/[slug]
+  // Step 1: Fetch product with basic fields (needed for ID to fan out parallel queries)
   const product = await prisma.product.findFirst({
     where: {
       slug: params.slug,
       isActive: true,
     },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      shortDesc: true,
+      basePrice: true,
+      images: true,
+      tags: true,
+      occasion: true,
+      weight: true,
+      isVeg: true,
+      isSameDayEligible: true,
+      productType: true,
+      avgRating: true,
+      totalReviews: true,
+      categoryId: true,
       category: { select: { id: true, name: true, slug: true } },
-      attributes: {
-        orderBy: { sortOrder: 'asc' },
-        include: {
-          options: { orderBy: { sortOrder: 'asc' } },
-        },
-      },
-      variations: {
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-      },
-      addonGroups: {
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-        include: {
-          options: {
-            where: { isActive: true },
-            orderBy: { sortOrder: 'asc' },
-          },
-        },
-      },
-      upsells: {
-        orderBy: { sortOrder: 'asc' },
-        include: {
-          upsellProduct: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              images: true,
-              basePrice: true,
-              isActive: true,
-              category: { select: { name: true } },
-            },
-          },
-        },
-      },
-      reviews: {
-        where: { isVerified: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        include: {
-          user: { select: { name: true } },
-        },
-      },
-      vendorProducts: {
-        where: {
-          isAvailable: true,
-          vendor: { status: 'APPROVED' },
-        },
-        select: {
-          sellingPrice: true,
-          preparationTime: true,
-          vendor: {
-            select: {
-              id: true,
-              businessName: true,
-              rating: true,
-              city: { select: { name: true, slug: true } },
-            },
-          },
-        },
-      },
     },
   })
 
@@ -115,8 +69,100 @@ export default async function ProductPage({
     return <ProductNotFound />
   }
 
+  // Step 2: Fetch ALL related data IN PARALLEL — single round of concurrent queries
+  const [attributes, variations, addonGroups, upsellRows, reviews, vendorProducts, relatedProducts] = await Promise.all([
+    prisma.productAttribute.findMany({
+      where: { productId: product.id },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        options: { orderBy: { sortOrder: 'asc' } },
+      },
+    }),
+    prisma.productVariation.findMany({
+      where: { productId: product.id, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    }),
+    prisma.productAddonGroup.findMany({
+      where: { productId: product.id, isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        options: {
+          where: { isActive: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    }),
+    prisma.productUpsell.findMany({
+      where: { productId: product.id },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        upsellProduct: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            images: true,
+            basePrice: true,
+            isActive: true,
+            category: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.review.findMany({
+      where: { productId: product.id, isVerified: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: {
+        user: { select: { name: true } },
+      },
+    }),
+    prisma.vendorProduct.findMany({
+      where: {
+        productId: product.id,
+        isAvailable: true,
+        vendor: { status: 'APPROVED' },
+      },
+      select: {
+        sellingPrice: true,
+        preparationTime: true,
+        vendor: {
+          select: {
+            id: true,
+            businessName: true,
+            rating: true,
+            city: { select: { name: true, slug: true } },
+          },
+        },
+      },
+    }),
+    // Related products from same category
+    product.category
+      ? prisma.product.findMany({
+          where: {
+            categoryId: product.category.id,
+            isActive: true,
+            id: { not: product.id },
+          },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            basePrice: true,
+            images: true,
+            avgRating: true,
+            totalReviews: true,
+            weight: true,
+            tags: true,
+          },
+          orderBy: { avgRating: 'desc' },
+          take: 4,
+        })
+      : Promise.resolve([]),
+  ])
+
   // Flatten upsells to only active products
-  const upsells = product.upsells
+  const upsells = upsellRows
     .filter((u) => u.upsellProduct.isActive)
     .map((u) => ({
       id: u.upsellProduct.id,
@@ -127,33 +173,16 @@ export default async function ProductPage({
       category: u.upsellProduct.category,
     }))
 
-  // Fetch related products from same category (in parallel with nothing — ready for future parallel queries)
-  const relatedProducts = product.category
-    ? await prisma.product.findMany({
-        where: {
-          categoryId: product.category.id,
-          isActive: true,
-          id: { not: product.id },
-        },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          basePrice: true,
-          images: true,
-          avgRating: true,
-          totalReviews: true,
-          weight: true,
-          tags: true,
-        },
-        orderBy: { avgRating: 'desc' },
-        take: 4,
-      })
-    : []
-
   // Serialize Prisma output for client component (Decimal → string, Date → ISO string)
-  // The client already handles Number() conversion for display
-  const productData = JSON.parse(JSON.stringify({ ...product, upsells }))
+  const productData = JSON.parse(JSON.stringify({
+    ...product,
+    attributes,
+    variations,
+    addonGroups,
+    upsells,
+    reviews,
+    vendorProducts,
+  }))
   const relatedData = JSON.parse(JSON.stringify(relatedProducts))
 
   return (
