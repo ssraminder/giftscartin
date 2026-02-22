@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 const updateVendorSettingsSchema = z.object({
   businessName: z.string().min(2).max(200).optional(),
   ownerName: z.string().min(2).max(100).optional(),
-  phone: z.string().regex(/^[6-9]\d{9}$/).optional(),
+  phone: z.string().regex(/^\+91[6-9]\d{9}$/).optional(),
   email: z.string().email().optional(),
   address: z.string().min(5).max(500).optional(),
   isOnline: z.boolean().optional(),

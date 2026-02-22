@@ -15,7 +15,7 @@ const updateVendorSchema = z.object({
 const fullUpdateVendorSchema = z.object({
   businessName: z.string().min(2).max(200).optional(),
   ownerName: z.string().min(2).max(200).optional(),
-  phone: z.string().regex(/^[6-9]\d{9}$/, 'Invalid Indian phone number').optional(),
+  phone: z.string().regex(/^\+91[6-9]\d{9}$/, 'Invalid Indian phone number').optional(),
   email: z.string().email('Invalid email address').optional(),
   cityId: z.string().optional(),
   address: z.string().min(5).max(500).optional(),
