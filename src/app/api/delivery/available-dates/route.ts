@@ -18,9 +18,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 1. Get approved vendors in this city that have this product.
-    //    Don't require isOnline — that's for real-time order acceptance.
-    //    Filter out vendors currently on vacation.
+    // Compute date range up front (pure JS, needed by Q3)
+    const today = getTodayIST()
+    const endDate = new Date(today)
+    endDate.setDate(endDate.getDate() + days)
+
+    // Q1: Vendors that carry this product in the city.
+    //     select instead of include → Prisma fetches only the columns we read.
     const vendorProducts = await prisma.vendorProduct.findMany({
       where: {
         productId,
@@ -34,10 +38,15 @@ export async function GET(req: NextRequest) {
           ],
         },
       },
-      include: {
+      select: {
         vendor: {
-          include: {
-            workingHours: true,
+          select: {
+            workingHours: {
+              select: {
+                dayOfWeek: true,
+                isClosed: true,
+              },
+            },
           },
         },
       },
@@ -50,11 +59,28 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // 2. Get city delivery configs (which slots are enabled)
-    const cityConfigs = await prisma.cityDeliveryConfig.findMany({
-      where: { cityId, isAvailable: true },
-      include: { slot: true },
-    })
+    // Q2 + Q3: City slot configs and delivery holidays — independent, run in parallel.
+    const [cityConfigs, holidays] = await Promise.all([
+      prisma.cityDeliveryConfig.findMany({
+        where: { cityId, isAvailable: true },
+        select: {
+          slot: {
+            select: { slotGroup: true },
+          },
+        },
+      }),
+      prisma.deliveryHoliday.findMany({
+        where: {
+          date: { gte: today, lte: endDate },
+          OR: [{ cityId }, { cityId: null }],
+        },
+        select: {
+          date: true,
+          mode: true,
+          cityId: true,
+        },
+      }),
+    ])
 
     if (cityConfigs.length === 0) {
       return NextResponse.json({
@@ -62,18 +88,6 @@ export async function GET(req: NextRequest) {
         data: { availableDates: [] },
       })
     }
-
-    // 3. Get delivery holidays for the date range
-    const today = getTodayIST()
-    const endDate = new Date(today)
-    endDate.setDate(endDate.getDate() + days)
-
-    const holidays = await prisma.deliveryHoliday.findMany({
-      where: {
-        date: { gte: today, lte: endDate },
-        OR: [{ cityId }, { cityId: null }],
-      },
-    })
 
     // Build a map of date -> holiday (city-specific takes priority)
     const holidayMap = new Map<string, { mode: string; cityId: string | null }>()
@@ -85,7 +99,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 4. For each date in the range, check availability
+    // For each date in the range, check availability
     const availableDates: string[] = []
 
     for (let i = 0; i <= days; i++) {
