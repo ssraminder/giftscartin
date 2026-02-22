@@ -278,25 +278,31 @@ export function DeliveryDatePicker({
   const [loadingDates, setLoadingDates] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
 
-  // Fetch available dates in background, non-blocking
+  // Fetch available dates only when calendar is opened
   useEffect(() => {
+    if (!calendarOpen) return
     if (!productId || !cityId) return
-    const timer = setTimeout(() => {
-      setLoadingDates(true)
-      const params = new URLSearchParams({ productId, cityId, months: '2' })
-      fetch(`/api/delivery/available-dates?${params}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.data?.availableDates) {
-            setAvailableDatesSet(new Set(data.data.availableDates as string[]))
-          }
-        })
-        .catch(() => setAvailableDatesSet(new Set()))
-        .finally(() => setLoadingDates(false))
-    }, 500) // 500ms delay so page renders first
+    // Skip if we already have dates loaded for this product/city
+    if (availableDatesSet.size > 0) return
 
-    return () => clearTimeout(timer)
-  }, [productId, cityId])
+    setLoadingDates(true)
+    const params = new URLSearchParams({ productId, cityId, months: '2' })
+    const controller = new AbortController()
+
+    fetch(`/api/delivery/available-dates?${params}`, { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data?.availableDates) {
+          setAvailableDatesSet(new Set(data.data.availableDates as string[]))
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') setAvailableDatesSet(new Set())
+      })
+      .finally(() => setLoadingDates(false))
+
+    return () => controller.abort()
+  }, [calendarOpen, productId, cityId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDateSelect = useCallback((date: Date) => {
     setSelectedDate(date)
