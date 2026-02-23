@@ -42,9 +42,11 @@ export async function POST(request: NextRequest) {
     if (pincode) {
       const supabase = getSupabaseAdmin()
 
+      // service_areas uses @map: city_id, is_active, created_at
+      // cities: isActive, baseDeliveryCharge, freeDeliveryAbove are camelCase (no @map)
       const { data: serviceArea } = await supabase
         .from('service_areas')
-        .select('*, cities(id, name, slug, is_active, base_delivery_charge, free_delivery_above)')
+        .select('*, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
         .eq('pincode', pincode)
         .eq('is_active', true)
         .limit(1)
@@ -76,7 +78,7 @@ export async function POST(request: NextRequest) {
       return handleFullServiceability(
         pincode,
         serviceArea.city_id,
-        serviceArea.cities as { id: string; name: string; slug: string; is_active: boolean; base_delivery_charge: unknown; free_delivery_above: unknown },
+        serviceArea.cities as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown },
         serviceArea.name,
         areaLat,
         areaLng,
@@ -111,9 +113,10 @@ async function handleCoordinateSearch(
   const supabase = getSupabaseAdmin()
 
   // Try to find the nearest service area by coordinates
+  // service_areas: is_active has @map; cities columns are camelCase (no @map)
   const { data: serviceAreas } = await supabase
     .from('service_areas')
-    .select('*, cities(id, name, slug, is_active, base_delivery_charge, free_delivery_above)')
+    .select('*, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
     .eq('is_active', true)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
@@ -134,10 +137,11 @@ async function handleCoordinateSearch(
 
   if (closestArea) {
     // Found a nearby service area -- use its pincode & city for full check
+    // service_areas.city_id has @map → snake_case is correct
     return handleFullServiceability(
       closestArea.pincode as string,
       closestArea.city_id as string,
-      closestArea.cities as { id: string; name: string; slug: string; is_active: boolean; base_delivery_charge: unknown; free_delivery_above: unknown },
+      closestArea.cities as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown },
       closestArea.name as string,
       lat, // use the provided coords for radius matching
       lng,
@@ -150,34 +154,37 @@ async function handleCoordinateSearch(
 
   if (radiusVendorIds.length > 0) {
     // Vendors found by radius -- get the first vendor's city for delivery config
+    // vendors: cityId is camelCase (no @map); cities columns are camelCase
     const { data: vendorWithCity } = await supabase
       .from('vendors')
-      .select('id, city_id, cities(id, name, slug, is_active, base_delivery_charge, free_delivery_above)')
+      .select('id, cityId, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
       .in('id', radiusVendorIds)
       .limit(1)
       .single()
 
     if (vendorWithCity) {
-      const city = vendorWithCity.cities as unknown as { id: string; name: string; slug: string; is_active: boolean; base_delivery_charge: unknown; free_delivery_above: unknown }
+      const city = vendorWithCity.cities as unknown as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown }
 
+      // city_slot_cutoff: city_id and is_available have @map → snake_case correct
       const { data: slotCutoffs } = await supabase
         .from('city_slot_cutoff')
         .select('*')
-        .eq('city_id', vendorWithCity.city_id)
+        .eq('city_id', vendorWithCity.cityId)
         .eq('is_available', true)
 
       const availableSlots = buildSlotsList(slotCutoffs || [])
-      const deliveryCharge = Number(city.base_delivery_charge)
-      const freeDeliveryAbove = Number(city.free_delivery_above)
+      const deliveryCharge = Number(city.baseDeliveryCharge)
+      const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
       let productAvailable = true
       if (productId) {
+        // vendor_products: productId, isAvailable, vendorId are camelCase (no @map)
         const { data: vendorProduct } = await supabase
           .from('vendor_products')
           .select('id')
-          .eq('product_id', productId)
-          .eq('is_available', true)
-          .in('vendor_id', radiusVendorIds)
+          .eq('productId', productId)
+          .eq('isAvailable', true)
+          .in('vendorId', radiusVendorIds)
           .limit(1)
           .maybeSingle()
 
@@ -225,9 +232,9 @@ async function handleFullServiceability(
     id: string
     name: string
     slug: string
-    is_active: boolean
-    base_delivery_charge: unknown
-    free_delivery_above: unknown
+    isActive: boolean
+    baseDeliveryCharge: unknown
+    freeDeliveryAbove: unknown
   },
   areaName: string,
   lat: number | null,
@@ -237,41 +244,45 @@ async function handleFullServiceability(
   const supabase = getSupabaseAdmin()
 
   // Method 1: Pincode match
+  // vendor_pincodes: vendorId, isActive are camelCase (no @map)
+  // vendors: isOnline is camelCase (no @map)
   const { data: pincodeVendors } = await supabase
     .from('vendor_pincodes')
-    .select('vendor_id, vendors(status, is_online)')
+    .select('vendorId, vendors(status, isOnline)')
     .eq('pincode', pincode)
-    .eq('is_active', true)
+    .eq('isActive', true)
 
   const pincodeVendorIds = (pincodeVendors || [])
     .filter((vp: Record<string, unknown>) => {
-      const vendor = vp.vendors as { status: string; is_online: boolean } | null
-      return vendor?.status === 'APPROVED' && vendor?.is_online === true
+      const vendor = vp.vendors as { status: string; isOnline: boolean } | null
+      return vendor?.status === 'APPROVED' && vendor?.isOnline === true
     })
-    .map((vp: { vendor_id: string }) => vp.vendor_id)
+    .map((vp: { vendorId: string }) => vp.vendorId)
 
   // Method 2: Zone match
+  // city_zones: isActive, cityId are camelCase (no @map)
   const { data: zones } = await supabase
     .from('city_zones')
     .select('id')
     .contains('pincodes', [pincode])
-    .eq('is_active', true)
-    .eq('city_id', cityId)
+    .eq('isActive', true)
+    .eq('cityId', cityId)
 
   const zoneIds = (zones || []).map((z: { id: string }) => z.id)
   let zoneVendorIds: string[] = []
   if (zoneIds.length > 0) {
+    // vendor_zones: vendorId, zoneId are camelCase (no @map)
     const { data: vendorZones } = await supabase
       .from('vendor_zones')
-      .select('vendor_id, vendors(status, is_online)')
-      .in('zone_id', zoneIds)
+      .select('vendorId, vendors(status, isOnline)')
+      .in('zoneId', zoneIds)
 
     zoneVendorIds = (vendorZones || [])
       .filter((vz: Record<string, unknown>) => {
-        const vendor = vz.vendors as { status: string; is_online: boolean } | null
-        return vendor?.status === 'APPROVED' && vendor?.is_online === true
+        const vendor = vz.vendors as { status: string; isOnline: boolean } | null
+        return vendor?.status === 'APPROVED' && vendor?.isOnline === true
       })
-      .map((vz: { vendor_id: string }) => vz.vendor_id)
+      .map((vz: { vendorId: string }) => vz.vendorId)
   }
 
   // Method 3: Radius match
@@ -311,18 +322,20 @@ async function handleFullServiceability(
   let productAvailable = true
   if (productId) {
     const allVendorIds = Array.from(allVendorIdSet)
+    // vendor_products: productId, isAvailable, vendorId are camelCase (no @map)
     const { data: vendorProduct } = await supabase
       .from('vendor_products')
       .select('id')
-      .eq('product_id', productId)
-      .eq('is_available', true)
-      .in('vendor_id', allVendorIds)
+      .eq('productId', productId)
+      .eq('isAvailable', true)
+      .in('vendorId', allVendorIds)
       .limit(1)
       .maybeSingle()
 
     productAvailable = !!vendorProduct
   }
 
+  // city_slot_cutoff: city_id, is_available have @map → snake_case correct
   const { data: slotCutoffs } = await supabase
     .from('city_slot_cutoff')
     .select('*')
@@ -330,8 +343,8 @@ async function handleFullServiceability(
     .eq('is_available', true)
 
   const availableSlots = await buildSlotsListWithFallback(slotCutoffs || [])
-  const deliveryCharge = Number(city.base_delivery_charge)
-  const freeDeliveryAbove = Number(city.free_delivery_above)
+  const deliveryCharge = Number(city.baseDeliveryCharge)
+  const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
   return NextResponse.json({
     success: true,
@@ -354,6 +367,7 @@ async function handleFullServiceability(
 function buildSlotsList(
   slotCutoffs: Array<Record<string, unknown>>
 ) {
+  // city_slot_cutoff columns all have @map → snake_case correct
   return slotCutoffs.map((sc) => ({
     id: sc.slot_id as string,
     name: sc.slot_name as string,
@@ -373,25 +387,26 @@ async function buildSlotsListWithFallback(
   }
 
   const supabase = getSupabaseAdmin()
+  // delivery_slots: isActive, startTime, endTime, baseCharge are camelCase (no @map)
   const { data: allSlots } = await supabase
     .from('delivery_slots')
     .select('*')
-    .eq('is_active', true)
+    .eq('isActive', true)
 
   return (allSlots || []).map((slot: {
     id: string
     name: string
     slug: string
-    start_time: string
-    end_time: string
-    base_charge: unknown
+    startTime: string
+    endTime: string
+    baseCharge: unknown
   }) => ({
     id: slot.id,
     name: slot.name,
     slug: slot.slug,
-    startTime: slot.start_time,
-    endTime: slot.end_time,
-    charge: Number(slot.base_charge),
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    charge: Number(slot.baseCharge),
   }))
 }
 
@@ -404,11 +419,12 @@ async function getRadiusVendorIds(
   const { lat, lng } = coords
   const supabase = getSupabaseAdmin()
 
+  // vendors: isOnline is camelCase (no @map), delivery_radius_km has @map
   const { data: vendors } = await supabase
     .from('vendors')
     .select('id, lat, lng, delivery_radius_km')
     .eq('status', 'APPROVED')
-    .eq('is_online', true)
+    .eq('isOnline', true)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
 
