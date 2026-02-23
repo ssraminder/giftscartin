@@ -65,9 +65,7 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
         })
       } else if (d?.isServiceable && d.vendorCount > 0) {
         const area = d.areaName || contextAreaName || ''
-        const msg = area
-          ? `Delivery available in ${area}`
-          : 'Delivery available'
+        const msg = 'Delivery available'
         setStatus({ type: 'success', message: msg, areaName: area })
 
         // Update city context with full result
