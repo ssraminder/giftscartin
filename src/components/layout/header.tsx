@@ -1,7 +1,6 @@
-// Header — updated city display with inline location dropdown
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -27,10 +26,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useCart } from "@/hooks/use-cart"
-import { useCity } from "@/hooks/use-city"
 import { usePartner } from "@/hooks/use-partner"
-import { LocationSearch } from "@/components/location/location-search"
-import type { ResolvedLocation } from "@/components/location/location-search"
+import { HeaderLocationPicker } from "@/components/location/header-location-picker"
 import { MegaMenu, MobileMegaMenu, type MenuNode } from "@/components/layout/mega-menu"
 
 const INTERNAL_HOSTS_HEADER = [
@@ -60,11 +57,8 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false)
-  const locationDropdownRef = useRef<HTMLDivElement>(null)
   const { data: session } = useSession()
   const cartCount = useCart((s) => s.getItemCount())
-  const { cityName, areaName, isSelected, setCity, clearCity } = useCity()
   const { partner } = usePartner()
   const router = useRouter()
 
@@ -83,17 +77,6 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
     setMounted(true)
   }, [])
 
-  // Close location dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (locationDropdownRef.current && !locationDropdownRef.current.contains(e.target as Node)) {
-        setLocationDropdownOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
-
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     if (searchQuery.trim()) {
@@ -101,25 +84,6 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
       setMobileSearchOpen(false)
     }
   }
-
-  function handleLocationSelect(location: ResolvedLocation) {
-    setCity({
-      cityId: location.cityId || '',
-      cityName: location.cityName || location.areaName || '',
-      citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-      pincode: location.pincode || undefined,
-      areaName: location.areaName || undefined,
-      lat: location.lat || undefined,
-      lng: location.lng || undefined,
-      source: location.type,
-    })
-    setLocationDropdownOpen(false)
-  }
-
-  // Display text for location
-  const locationDisplayText = isSelected
-    ? (areaName || cityName || 'Location set')
-    : null
 
   return (
     <header className="w-full">
@@ -224,54 +188,9 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
             )}
           </Link>
 
-          {/* Location selector — FNP style */}
-          <div ref={locationDropdownRef} className="relative hidden sm:block">
-            <button
-              onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
-              className="flex items-center gap-1.5 text-sm hover:text-[#E91E63] transition-colors"
-            >
-              {/* India flag */}
-              <span className="text-base leading-none">{"\u{1F1EE}\u{1F1F3}"}</span>
-              <div className="flex flex-col items-start">
-                <span className="text-[10px] text-gray-400 leading-none">Where to deliver?</span>
-                {locationDisplayText ? (
-                  <span className="text-xs font-semibold text-gray-800 max-w-[140px] truncate leading-tight">
-                    {locationDisplayText}
-                  </span>
-                ) : (
-                  <span className="text-xs font-semibold text-red-500 leading-tight">
-                    Location missing
-                  </span>
-                )}
-              </div>
-              <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
-            </button>
-
-            {/* Location dropdown */}
-            {locationDropdownOpen && (
-              <div className="absolute left-0 top-full mt-2 w-96 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-gray-800">
-                    {isSelected ? `Delivering to ${cityName || 'your area'}` : 'Where should we deliver?'}
-                  </p>
-                  {isSelected && (
-                    <button
-                      onClick={() => {
-                        clearCity()
-                      }}
-                      className="text-xs text-pink-600 hover:underline"
-                    >
-                      Change
-                    </button>
-                  )}
-                </div>
-                <LocationSearch
-                  onSelect={handleLocationSelect}
-                  autoFocus
-                  compact
-                />
-              </div>
-            )}
+          {/* Location selector */}
+          <div className="hidden sm:block">
+            <HeaderLocationPicker />
           </div>
 
           {/* Search bar — center on desktop */}
@@ -304,46 +223,10 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
               {mobileSearchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
             </button>
 
-            {/* Mobile location button — FNP style */}
-            <button
-              onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
-              className="sm:hidden flex items-center gap-1 text-sm"
-            >
-              <span className="text-base leading-none">{"\u{1F1EE}\u{1F1F3}"}</span>
-              {locationDisplayText ? (
-                <span className="text-xs font-semibold text-gray-800 max-w-[70px] truncate">
-                  {locationDisplayText}
-                </span>
-              ) : (
-                <span className="text-xs font-semibold text-red-500">
-                  Location missing
-                </span>
-              )}
-              <ChevronDown className="h-3 w-3 text-gray-400" />
-            </button>
-
-            {/* Mobile location dropdown (below header) */}
-            {locationDropdownOpen && (
-              <div className="sm:hidden fixed inset-x-0 top-[56px] bg-white border-b border-gray-200 shadow-lg z-50 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-gray-800">
-                    {isSelected ? `Delivering to ${cityName || 'your area'}` : 'Where should we deliver?'}
-                  </p>
-                  {isSelected && (
-                    <button
-                      onClick={() => clearCity()}
-                      className="text-xs text-pink-600 hover:underline"
-                    >
-                      Change
-                    </button>
-                  )}
-                </div>
-                <LocationSearch
-                  onSelect={handleLocationSelect}
-                  autoFocus
-                />
-              </div>
-            )}
+            {/* Mobile location button */}
+            <div className="sm:hidden">
+              <HeaderLocationPicker />
+            </div>
 
             {/* Cart icon */}
             <Link

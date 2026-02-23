@@ -315,16 +315,12 @@ async function searchByText(q: string): Promise<LocationResult[]> {
       include: { city: true },
       take: 3,
     }),
-    // City name + aliases
+    // City name + aliases — only match if full query or word matches city name closely
     prisma.city.findMany({
       where: {
         OR: [
           { name: { contains: q, mode: 'insensitive' } },
           { aliases: { has: qLower } },
-          // Also match per-word for multi-word queries (e.g. "Khalsa Mohalla Patiala")
-          ...(hasMultipleWords
-            ? words.map(w => ({ name: { contains: w, mode: 'insensitive' as const } }))
-            : []),
         ],
       },
       take: 3,
@@ -421,7 +417,10 @@ async function searchByText(q: string): Promise<LocationResult[]> {
 }
 
 /**
- * Google Places Autocomplete API (New) — primary search for text queries.
+ * Google Places Autocomplete API (New) — locality-level search for text queries.
+ *
+ * Uses includedPrimaryTypes to restrict results to localities/sublocalities/neighborhoods,
+ * filtering out irrelevant results like airports, countries, states.
  */
 async function fetchGooglePlaces(query: string): Promise<LocationResult[]> {
   const apiKey =
@@ -445,6 +444,13 @@ async function fetchGooglePlaces(query: string): Promise<LocationResult[]> {
           input: query,
           includedRegionCodes: ['in'],
           languageCode: 'en',
+          includedPrimaryTypes: [
+            'locality',
+            'sublocality',
+            'sublocality_level_1',
+            'neighborhood',
+            'postal_code',
+          ],
         }),
         signal: AbortSignal.timeout(3000),
       }
@@ -460,6 +466,7 @@ async function fetchGooglePlaces(query: string): Promise<LocationResult[]> {
       placePrediction?: {
         placeId: string
         text?: { text: string }
+        types?: string[]
         structuredFormat?: {
           mainText?: { text: string }
           secondaryText?: { text: string }
