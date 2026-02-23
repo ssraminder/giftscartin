@@ -238,14 +238,14 @@ async function handleFullServiceability(
   // Method 1: Pincode match
   const { data: pincodeVendors } = await supabase
     .from('vendor_pincodes')
-    .select('vendorId, vendors(status)')
+    .select('vendorId, vendors(status, isOnline)')
     .eq('pincode', pincode)
     .eq('isActive', true)
 
   const pincodeVendorIds = (pincodeVendors || [])
     .filter((vp: Record<string, unknown>) => {
-      const vendor = vp.vendors as { status: string } | null
-      return vendor?.status === 'APPROVED'
+      const vendor = vp.vendors as { status: string; isOnline: boolean } | null
+      return vendor?.status === 'APPROVED' && vendor?.isOnline === true
     })
     .map((vp: { vendorId: string }) => vp.vendorId)
 
@@ -262,13 +262,13 @@ async function handleFullServiceability(
   if (zoneIds.length > 0) {
     const { data: vendorZones } = await supabase
       .from('vendor_zones')
-      .select('vendorId, vendors(status)')
+      .select('vendorId, vendors(status, isOnline)')
       .in('zoneId', zoneIds)
 
     zoneVendorIds = (vendorZones || [])
       .filter((vz: Record<string, unknown>) => {
-        const vendor = vz.vendors as { status: string } | null
-        return vendor?.status === 'APPROVED'
+        const vendor = vz.vendors as { status: string; isOnline: boolean } | null
+        return vendor?.status === 'APPROVED' && vendor?.isOnline === true
       })
       .map((vz: { vendorId: string }) => vz.vendorId)
   }
@@ -291,15 +291,15 @@ async function handleFullServiceability(
     return NextResponse.json({
       success: true,
       data: {
-        isServiceable: true,
-        serviceable: true,
+        isServiceable: false,
+        serviceable: false,
         comingSoon: true,
-        message:
-          "We're coming to your area soon! Place your order and our team will confirm delivery.",
+        message: "We're coming to your area soon!",
         vendorCount: 0,
         deliveryCharge: 0,
         availableSlots: [],
         cityName: city.name,
+        cityId: city.id,
         areaName,
         freeDeliveryAbove: 0,
       },
@@ -423,6 +423,7 @@ async function getRadiusVendorIds(
     .from('vendors')
     .select('id, lat, lng, delivery_radius_km')
     .eq('status', 'APPROVED')
+    .eq('isOnline', true)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
 
