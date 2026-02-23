@@ -279,15 +279,20 @@ export default function CheckoutPage() {
       .finally(() => setAddressesLoading(false))
   }, [session?.user?.id])
 
-  // ─── Pre-fill city + pincode from context ───
+  // ─── Pre-fill city + pincode + area from context ───
 
   useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
-      city: cityName ?? prev.city,
-      pincode: contextPincode ?? prev.pincode,
-    }))
-  }, [cityName, contextPincode])
+    setFormData((prev) => {
+      // Don't overwrite if user already has a saved address selected
+      if (prev.selectedAddressId) return prev
+      return {
+        ...prev,
+        city: cityName ?? prev.city,
+        pincode: contextPincode ?? prev.pincode,
+        landmark: (areaName && !prev.landmark) ? areaName : prev.landmark,
+      }
+    })
+  }, [cityName, contextPincode, areaName])
 
   // ─── Run serviceability check on mount if pincode available ───
 
@@ -741,6 +746,7 @@ export default function CheckoutPage() {
     setOrderError("")
 
     try {
+      const t0 = Date.now()
       // ─── Step 1: Create the order ───
       const isNewAddress = !formData.selectedAddressId
       const isGuestCheckout = !session?.user
@@ -785,6 +791,7 @@ export default function CheckoutPage() {
       })
 
       const orderData = await orderRes.json()
+      console.log(`[checkout] order_create: ${Date.now() - t0}ms`)
 
       if (!orderData.success || !orderData.data?.id) {
         setOrderError(orderData.error || "Failed to place order. Please try again.")
@@ -795,6 +802,7 @@ export default function CheckoutPage() {
       const orderId = orderData.data.id
 
       // ─── Step 2: Initiate payment ───
+      const t1 = Date.now()
       const gateway = formData.paymentMethod === "cod" ? "cod" : "razorpay"
 
       const paymentRes = await fetch("/api/payments/create-order", {
@@ -804,6 +812,8 @@ export default function CheckoutPage() {
       })
 
       const paymentData = await paymentRes.json()
+      console.log(`[checkout] payment_create: ${Date.now() - t1}ms`)
+      console.log(`[checkout] total_before_popup: ${Date.now() - t0}ms`)
 
       if (!paymentData.success) {
         setOrderError(paymentData.error || "Failed to initiate payment. Please try again.")
