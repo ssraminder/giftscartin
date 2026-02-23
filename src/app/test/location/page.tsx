@@ -6,6 +6,7 @@ import { MapplsAreaSearch, type MapplsResult } from '@/components/location/mappl
 export default function LocationTestPage() {
   const [selectedResult, setSelectedResult] = useState<MapplsResult | null>(null)
   const [biasedResult, setBiasedResult] = useState<MapplsResult | null>(null)
+  const [patialaResult, setPatialaResult] = useState<MapplsResult | null>(null)
 
   // Raw API test state
   const [tokenResult, setTokenResult] = useState<string>('')
@@ -87,6 +88,9 @@ export default function LocationTestPage() {
             Biased to Chandigarh (30.7333, 76.7794). Results should prioritize
             Chandigarh-area locations.
           </p>
+          <p className="text-xs text-blue-600 font-mono">
+            Bounded to &plusmn;40km around Chandigarh: SW (76.36, 30.37) &rarr; NE (77.20, 31.09)
+          </p>
           <MapplsAreaSearch
             placeholder="Search in Chandigarh..."
             onSelect={setBiasedResult}
@@ -102,10 +106,37 @@ export default function LocationTestPage() {
           )}
         </div>
 
+        {/* Component Test 3: Patiala bias */}
+        <div className="bg-white rounded-lg shadow-sm border p-8 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            3. Area Search (Patiala bias)
+          </h2>
+          <p className="text-sm text-gray-500">
+            Biased to Patiala (30.3398, 76.3869). Verifies bounds filtering
+            works for non-Chandigarh cities.
+          </p>
+          <p className="text-xs text-blue-600 font-mono">
+            Bounded to &plusmn;40km around Patiala: SW (75.97, 29.98) &rarr; NE (76.80, 30.70)
+          </p>
+          <MapplsAreaSearch
+            placeholder="Search in Patiala..."
+            onSelect={setPatialaResult}
+            cityBias={{ lat: 30.3398, lng: 76.3869 }}
+          />
+          {patialaResult && (
+            <div className="mt-3">
+              <p className="text-xs font-medium text-gray-500 mb-1">Selected result:</p>
+              <pre className="bg-gray-50 border rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap">
+                {JSON.stringify(patialaResult, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+
         {/* Raw API: Token */}
         <div className="bg-white rounded-lg shadow-sm border p-8 space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            3. Raw API &mdash; Token Test
+            4. Raw API &mdash; Token Test
           </h2>
           <p className="text-sm text-gray-500">
             Fetch an OAuth token from Mappls via the server-side proxy.
@@ -127,7 +158,7 @@ export default function LocationTestPage() {
         {/* Raw API: Search */}
         <div className="bg-white rounded-lg shadow-sm border p-8 space-y-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            4. Raw API &mdash; Search Test
+            5. Raw API &mdash; Search Test
           </h2>
           <p className="text-sm text-gray-500">
             Call the search proxy directly and view raw JSON response.
