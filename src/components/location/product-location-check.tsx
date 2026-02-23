@@ -25,6 +25,7 @@ type Status =
 
 /**
  * Product page location block — "Gift Receiver's Location" with serviceability check.
+ * All results are DB-only (areas + cities), no Google Places resolve needed.
  */
 export function ProductLocationCheck({ productId, onServiceabilityChange }: ProductLocationCheckProps) {
   const { isSelected, cityName, areaName, pincode: cityPincode, setCity, setArea } = useCity()
@@ -34,10 +35,9 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
     ? (areaName ? `${areaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
     : ''
 
-  async function checkServiceability(pincode: string, resultProductId?: string) {
+  async function checkServiceability(pincode: string) {
     try {
-      const body: Record<string, unknown> = { pincode }
-      if (resultProductId) body.productId = resultProductId
+      const body: Record<string, unknown> = { pincode, productId }
 
       const res = await fetch('/api/serviceability', {
         method: 'POST',
@@ -66,87 +66,38 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
   const handleSelect = useCallback(async (result: LocationResult) => {
     setStatus({ type: 'checking', message: 'Checking delivery...' })
 
-    // DB result with pincode — check serviceability directly
-    if ((result.type === 'area' || result.type === 'city') && result.pincode) {
-      // Update city context
-      if (result.cityId) {
-        if (!isSelected) {
-          setCity({
-            cityId: result.cityId,
-            cityName: result.cityName || '',
-            citySlug: result.citySlug || (result.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-            pincode: result.pincode || undefined,
-            areaName: result.areaName || undefined,
-            lat: result.lat || undefined,
-            lng: result.lng || undefined,
-            source: result.type,
-          })
-        } else {
-          setArea({
-            name: result.areaName || '',
-            pincode: result.pincode,
-            isServiceable: false,
-          })
-        }
+    // Update city context
+    if (result.cityId) {
+      if (!isSelected) {
+        setCity({
+          cityId: result.cityId,
+          cityName: result.cityName || '',
+          citySlug: result.citySlug || (result.cityName || '').toLowerCase().replace(/\s+/g, '-'),
+          pincode: result.pincode || undefined,
+          areaName: result.areaName || undefined,
+          lat: result.lat || undefined,
+          lng: result.lng || undefined,
+          source: result.type,
+        })
+      } else if (result.pincode) {
+        setArea({
+          name: result.areaName || '',
+          pincode: result.pincode,
+          isServiceable: false,
+        })
       }
-      await checkServiceability(result.pincode, productId)
+    }
+
+    // Check serviceability if we have a pincode
+    if (result.pincode) {
+      await checkServiceability(result.pincode)
       return
     }
 
-    // DB result without pincode (city-level) — set city, no serviceability check
+    // City-level result without pincode — just confirm
     if (result.type === 'city') {
-      setCity({
-        cityId: result.cityId || '',
-        cityName: result.cityName || '',
-        citySlug: result.citySlug || (result.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-        lat: result.lat || undefined,
-        lng: result.lng || undefined,
-        source: 'city',
-      })
       setStatus({ type: 'success', message: `Delivering to ${result.cityName}` })
       onServiceabilityChange?.({ isServiceable: true, comingSoon: false, vendorCount: 0, message: `Delivering to ${result.cityName}` })
-      return
-    }
-
-    // Google Place — resolve to get pincode, then check serviceability
-    if (result.type === 'google_place' && result.placeId) {
-      try {
-        const res = await fetch(`/api/location/resolve-place?placeId=${encodeURIComponent(result.placeId)}`)
-        const json = await res.json()
-        if (json.success && json.data) {
-          const { lat, lng, pincode, city } = json.data
-
-          // Update city context
-          if (!isSelected) {
-            setCity({
-              cityId: '',
-              cityName: city || result.areaName || '',
-              citySlug: (city || result.areaName || '').toLowerCase().replace(/\s+/g, '-'),
-              pincode: pincode || undefined,
-              areaName: result.areaName || undefined,
-              lat: lat || undefined,
-              lng: lng || undefined,
-              source: 'google_place',
-            })
-          } else if (pincode) {
-            setArea({
-              name: result.areaName || '',
-              pincode,
-              isServiceable: false,
-            })
-          }
-
-          if (pincode) {
-            await checkServiceability(pincode, productId)
-          } else {
-            setStatus({ type: 'unavailable', message: "Couldn't determine delivery area. Try entering a pincode." })
-          }
-          return
-        }
-      } catch {
-        // fall through
-      }
-      setStatus({ type: 'unavailable', message: 'Failed to check delivery. Try entering a pincode.' })
     }
   }, [isSelected, setCity, setArea, productId, onServiceabilityChange]) // eslint-disable-line react-hooks/exhaustive-deps
 

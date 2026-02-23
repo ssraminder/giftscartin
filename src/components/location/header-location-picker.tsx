@@ -8,6 +8,7 @@ import type { LocationResult } from '@/types'
 
 /**
  * Compact location picker for the header — dropdown with search.
+ * All results are DB-only (areas + cities), no Google Places resolve needed.
  */
 export function HeaderLocationPicker() {
   const { cityName, areaName, isSelected, setCity, clearCity } = useCity()
@@ -24,53 +25,18 @@ export function HeaderLocationPicker() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleSelect = useCallback(async (result: LocationResult) => {
-    if (result.type === 'area' || result.type === 'city') {
-      setCity({
-        cityId: result.cityId || '',
-        cityName: result.cityName || '',
-        citySlug: result.citySlug || (result.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-        pincode: result.pincode || undefined,
-        areaName: result.areaName || undefined,
-        lat: result.lat || undefined,
-        lng: result.lng || undefined,
-        source: result.type,
-      })
-      setOpen(false)
-      return
-    }
-
-    // Google Place — resolve
-    if (result.type === 'google_place' && result.placeId) {
-      try {
-        const res = await fetch(`/api/location/resolve-place?placeId=${encodeURIComponent(result.placeId)}`)
-        const json = await res.json()
-        if (json.success && json.data) {
-          const { lat, lng, pincode, city } = json.data
-          setCity({
-            cityId: '',
-            cityName: city || result.areaName || '',
-            citySlug: (city || result.areaName || '').toLowerCase().replace(/\s+/g, '-'),
-            pincode: pincode || undefined,
-            areaName: result.areaName || undefined,
-            lat: lat || undefined,
-            lng: lng || undefined,
-            source: 'google_place',
-          })
-          setOpen(false)
-          return
-        }
-      } catch {
-        // fall through
-      }
-      setCity({
-        cityId: '',
-        cityName: result.areaName || result.label,
-        citySlug: (result.areaName || result.label).toLowerCase().replace(/\s+/g, '-'),
-        source: 'google_place',
-      })
-      setOpen(false)
-    }
+  const handleSelect = useCallback((result: LocationResult) => {
+    setCity({
+      cityId: result.cityId || '',
+      cityName: result.cityName || '',
+      citySlug: result.citySlug || (result.cityName || '').toLowerCase().replace(/\s+/g, '-'),
+      pincode: result.pincode || undefined,
+      areaName: result.areaName || undefined,
+      lat: result.lat || undefined,
+      lng: result.lng || undefined,
+      source: result.type,
+    })
+    setOpen(false)
   }, [setCity])
 
   const displayText = isSelected
