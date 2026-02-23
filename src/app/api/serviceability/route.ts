@@ -1,3 +1,5 @@
+export const runtime = 'edge'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod/v4'
@@ -40,10 +42,9 @@ export async function POST(request: NextRequest) {
     if (pincode) {
       const supabase = getSupabaseAdmin()
 
-      // Note: service_areas uses @map columns: city_id, city_name, is_active, created_at, updated_at
       const { data: serviceArea } = await supabase
         .from('service_areas')
-        .select('*, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
+        .select('*, cities(id, name, slug, is_active, base_delivery_charge, free_delivery_above)')
         .eq('pincode', pincode)
         .eq('is_active', true)
         .limit(1)
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
       return handleFullServiceability(
         pincode,
         serviceArea.city_id,
-        serviceArea.cities as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown },
+        serviceArea.cities as { id: string; name: string; slug: string; is_active: boolean; base_delivery_charge: unknown; free_delivery_above: unknown },
         serviceArea.name,
         areaLat,
         areaLng,
@@ -112,7 +113,7 @@ async function handleCoordinateSearch(
   // Try to find the nearest service area by coordinates
   const { data: serviceAreas } = await supabase
     .from('service_areas')
-    .select('*, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
+    .select('*, cities(id, name, slug, is_active, base_delivery_charge, free_delivery_above)')
     .eq('is_active', true)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
@@ -136,7 +137,7 @@ async function handleCoordinateSearch(
     return handleFullServiceability(
       closestArea.pincode as string,
       closestArea.city_id as string,
-      closestArea.cities as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown },
+      closestArea.cities as { id: string; name: string; slug: string; is_active: boolean; base_delivery_charge: unknown; free_delivery_above: unknown },
       closestArea.name as string,
       lat, // use the provided coords for radius matching
       lng,
@@ -151,32 +152,32 @@ async function handleCoordinateSearch(
     // Vendors found by radius -- get the first vendor's city for delivery config
     const { data: vendorWithCity } = await supabase
       .from('vendors')
-      .select('id, cityId, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
+      .select('id, city_id, cities(id, name, slug, is_active, base_delivery_charge, free_delivery_above)')
       .in('id', radiusVendorIds)
       .limit(1)
       .single()
 
     if (vendorWithCity) {
-      const city = vendorWithCity.cities as unknown as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown }
+      const city = vendorWithCity.cities as unknown as { id: string; name: string; slug: string; is_active: boolean; base_delivery_charge: unknown; free_delivery_above: unknown }
 
-      const { data: deliveryConfigs } = await supabase
-        .from('city_delivery_configs')
-        .select('chargeOverride, delivery_slots(id, name, slug, startTime, endTime, isActive, baseCharge)')
-        .eq('cityId', vendorWithCity.cityId)
-        .eq('isAvailable', true)
+      const { data: slotCutoffs } = await supabase
+        .from('city_slot_cutoff')
+        .select('*')
+        .eq('city_id', vendorWithCity.city_id)
+        .eq('is_available', true)
 
-      const availableSlots = buildSlotsList(deliveryConfigs || [])
-      const deliveryCharge = Number(city.baseDeliveryCharge)
-      const freeDeliveryAbove = Number(city.freeDeliveryAbove)
+      const availableSlots = buildSlotsList(slotCutoffs || [])
+      const deliveryCharge = Number(city.base_delivery_charge)
+      const freeDeliveryAbove = Number(city.free_delivery_above)
 
       let productAvailable = true
       if (productId) {
         const { data: vendorProduct } = await supabase
           .from('vendor_products')
           .select('id')
-          .eq('productId', productId)
-          .eq('isAvailable', true)
-          .in('vendorId', radiusVendorIds)
+          .eq('product_id', productId)
+          .eq('is_available', true)
+          .in('vendor_id', radiusVendorIds)
           .limit(1)
           .maybeSingle()
 
@@ -224,9 +225,9 @@ async function handleFullServiceability(
     id: string
     name: string
     slug: string
-    isActive: boolean
-    baseDeliveryCharge: unknown
-    freeDeliveryAbove: unknown
+    is_active: boolean
+    base_delivery_charge: unknown
+    free_delivery_above: unknown
   },
   areaName: string,
   lat: number | null,
@@ -238,39 +239,39 @@ async function handleFullServiceability(
   // Method 1: Pincode match
   const { data: pincodeVendors } = await supabase
     .from('vendor_pincodes')
-    .select('vendorId, vendors(status, isOnline)')
+    .select('vendor_id, vendors(status, is_online)')
     .eq('pincode', pincode)
-    .eq('isActive', true)
+    .eq('is_active', true)
 
   const pincodeVendorIds = (pincodeVendors || [])
     .filter((vp: Record<string, unknown>) => {
-      const vendor = vp.vendors as { status: string; isOnline: boolean } | null
-      return vendor?.status === 'APPROVED' && vendor?.isOnline === true
+      const vendor = vp.vendors as { status: string; is_online: boolean } | null
+      return vendor?.status === 'APPROVED' && vendor?.is_online === true
     })
-    .map((vp: { vendorId: string }) => vp.vendorId)
+    .map((vp: { vendor_id: string }) => vp.vendor_id)
 
   // Method 2: Zone match
   const { data: zones } = await supabase
     .from('city_zones')
     .select('id')
     .contains('pincodes', [pincode])
-    .eq('isActive', true)
-    .eq('cityId', cityId)
+    .eq('is_active', true)
+    .eq('city_id', cityId)
 
   const zoneIds = (zones || []).map((z: { id: string }) => z.id)
   let zoneVendorIds: string[] = []
   if (zoneIds.length > 0) {
     const { data: vendorZones } = await supabase
       .from('vendor_zones')
-      .select('vendorId, vendors(status, isOnline)')
-      .in('zoneId', zoneIds)
+      .select('vendor_id, vendors(status, is_online)')
+      .in('zone_id', zoneIds)
 
     zoneVendorIds = (vendorZones || [])
       .filter((vz: Record<string, unknown>) => {
-        const vendor = vz.vendors as { status: string; isOnline: boolean } | null
-        return vendor?.status === 'APPROVED' && vendor?.isOnline === true
+        const vendor = vz.vendors as { status: string; is_online: boolean } | null
+        return vendor?.status === 'APPROVED' && vendor?.is_online === true
       })
-      .map((vz: { vendorId: string }) => vz.vendorId)
+      .map((vz: { vendor_id: string }) => vz.vendor_id)
   }
 
   // Method 3: Radius match
@@ -313,24 +314,24 @@ async function handleFullServiceability(
     const { data: vendorProduct } = await supabase
       .from('vendor_products')
       .select('id')
-      .eq('productId', productId)
-      .eq('isAvailable', true)
-      .in('vendorId', allVendorIds)
+      .eq('product_id', productId)
+      .eq('is_available', true)
+      .in('vendor_id', allVendorIds)
       .limit(1)
       .maybeSingle()
 
     productAvailable = !!vendorProduct
   }
 
-  const { data: deliveryConfigs } = await supabase
-    .from('city_delivery_configs')
-    .select('chargeOverride, delivery_slots(id, name, slug, startTime, endTime, isActive, baseCharge)')
-    .eq('cityId', cityId)
-    .eq('isAvailable', true)
+  const { data: slotCutoffs } = await supabase
+    .from('city_slot_cutoff')
+    .select('*')
+    .eq('city_id', cityId)
+    .eq('is_available', true)
 
-  const availableSlots = await buildSlotsListWithFallback(deliveryConfigs || [])
-  const deliveryCharge = Number(city.baseDeliveryCharge)
-  const freeDeliveryAbove = Number(city.freeDeliveryAbove)
+  const availableSlots = await buildSlotsListWithFallback(slotCutoffs || [])
+  const deliveryCharge = Number(city.base_delivery_charge)
+  const freeDeliveryAbove = Number(city.free_delivery_above)
 
   return NextResponse.json({
     success: true,
@@ -349,63 +350,48 @@ async function handleFullServiceability(
   })
 }
 
-/** Build delivery slots list from city configs */
+/** Build delivery slots list from city_slot_cutoff rows */
 function buildSlotsList(
-  deliveryConfigs: Array<Record<string, unknown>>
+  slotCutoffs: Array<Record<string, unknown>>
 ) {
-  return deliveryConfigs
-    .filter((dc) => {
-      const slot = dc.delivery_slots as { isActive: boolean } | null
-      return slot?.isActive
-    })
-    .map((dc) => {
-      const slot = dc.delivery_slots as {
-        id: string
-        name: string
-        slug: string
-        startTime: string
-        endTime: string
-        baseCharge: unknown
-      }
-      return {
-        id: slot.id,
-        name: slot.name,
-        slug: slot.slug,
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        charge: Number(dc.chargeOverride ?? slot.baseCharge),
-      }
-    })
+  return slotCutoffs.map((sc) => ({
+    id: sc.slot_id as string,
+    name: sc.slot_name as string,
+    slug: sc.slot_slug as string,
+    startTime: sc.slot_start as string,
+    endTime: sc.slot_end as string,
+    charge: Number(sc.base_charge),
+  }))
 }
 
 /** Build delivery slots list with fallback to all active slots */
 async function buildSlotsListWithFallback(
-  deliveryConfigs: Array<Record<string, unknown>>
+  slotCutoffs: Array<Record<string, unknown>>
 ) {
-  if (deliveryConfigs.length > 0) {
-    return buildSlotsList(deliveryConfigs)
+  if (slotCutoffs.length > 0) {
+    return buildSlotsList(slotCutoffs)
   }
 
   const supabase = getSupabaseAdmin()
   const { data: allSlots } = await supabase
     .from('delivery_slots')
     .select('*')
-    .eq('isActive', true)
+    .eq('is_active', true)
 
   return (allSlots || []).map((slot: {
     id: string
     name: string
     slug: string
-    startTime: string
-    endTime: string
-    baseCharge: unknown
+    start_time: string
+    end_time: string
+    base_charge: unknown
   }) => ({
     id: slot.id,
     name: slot.name,
     slug: slot.slug,
-    startTime: slot.startTime,
-    endTime: slot.endTime,
-    charge: Number(slot.baseCharge),
+    startTime: slot.start_time,
+    endTime: slot.end_time,
+    charge: Number(slot.base_charge),
   }))
 }
 
@@ -418,12 +404,11 @@ async function getRadiusVendorIds(
   const { lat, lng } = coords
   const supabase = getSupabaseAdmin()
 
-  // Note: vendors table uses @map columns: delivery_radius_km
   const { data: vendors } = await supabase
     .from('vendors')
     .select('id, lat, lng, delivery_radius_km')
     .eq('status', 'APPROVED')
-    .eq('isOnline', true)
+    .eq('is_online', true)
     .not('lat', 'is', null)
     .not('lng', 'is', null)
 
