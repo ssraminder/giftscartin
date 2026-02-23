@@ -259,7 +259,7 @@ export function MegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) 
 
   return (
     <>
-      <nav className="hidden md:block bg-white border-b border-gray-200" onMouseLeave={scheduleClose}>
+      <nav className="hidden md:block bg-[#E91E63]" onMouseLeave={scheduleClose}>
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-center">
             {menuItems.map((item) => {
@@ -273,7 +273,7 @@ export function MegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) 
                     key={item.id}
                     href={buildHref(item.slug || item.href || "", refCode)}
                     onMouseEnter={() => setActiveMenu(null)}
-                    className="px-4 py-3 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-pink-600 hover:border-pink-300 transition-colors whitespace-nowrap"
+                    className="px-4 py-2.5 text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 transition-colors whitespace-nowrap"
                   >
                     {item.label}
                   </Link>
@@ -289,7 +289,7 @@ export function MegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) 
                     onMouseEnter={() => setActiveMenu(null)}
                   >
                     <button
-                      className="px-4 py-3 text-sm font-medium cursor-pointer transition-colors border-b-2 border-transparent text-gray-600 hover:text-pink-600 hover:border-pink-300 whitespace-nowrap inline-flex items-center gap-1"
+                      className="px-4 py-2.5 text-sm font-medium cursor-pointer transition-colors text-white/90 hover:text-white hover:bg-white/10 whitespace-nowrap inline-flex items-center gap-1"
                     >
                       {item.label}
                       <ChevronDown className="h-3 w-3 transition-transform group-hover:rotate-180" />
@@ -315,10 +315,10 @@ export function MegaMenu({ serverMenuItems }: { serverMenuItems?: MenuNode[] }) 
                   key={item.id}
                   onMouseEnter={() => handleNavEnter(item.id)}
                   onClick={() => setActiveMenu(activeMenu === item.id ? null : item.id)}
-                  className={`px-4 py-3 text-sm font-medium cursor-pointer transition-colors border-b-2 whitespace-nowrap ${
+                  className={`px-4 py-2.5 text-sm font-medium cursor-pointer transition-colors whitespace-nowrap ${
                     activeMenu === item.id
-                      ? "text-pink-600 border-pink-500"
-                      : "text-gray-600 border-transparent hover:text-pink-600 hover:border-pink-300"
+                      ? "text-white bg-white/15"
+                      : "text-white/90 hover:text-white hover:bg-white/10"
                   }`}
                 >
                   {item.label}
