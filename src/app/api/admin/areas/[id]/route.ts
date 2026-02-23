@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,20 +10,25 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !['ADMIN', 'SUPER_ADMIN'].includes(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user?.role || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
-    const data: Record<string, unknown> = {}
-    if (body.isActive !== undefined) data.isActive = body.isActive
+    const data: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (body.isActive !== undefined) data.is_active = body.isActive
     if (body.name) data.name = body.name
 
-    const area = await prisma.serviceArea.update({
-      where: { id: params.id },
-      data,
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: area, error } = await supabase
+      .from('service_areas')
+      .update(data)
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: area })
   } catch (error) {
@@ -38,16 +42,23 @@ export async function PATCH(
 
 // DELETE
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !['SUPER_ADMIN'].includes(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user?.role || !['SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    await prisma.serviceArea.delete({ where: { id: params.id } })
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('service_areas')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) throw error
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Delete area error:', error)

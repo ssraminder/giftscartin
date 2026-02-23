@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
-
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
 
 // POST: Record manual payment for an order
 export async function POST(
@@ -18,8 +9,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -52,8 +43,10 @@ export async function POST(
       )
     }
 
+    const supabase = getSupabaseAdmin()
+
     // Verify order exists and payment is not already recorded
-    const order = await prisma.order.findUnique({ where: { id } })
+    const { data: order } = await supabase.from('orders').select('*').eq('id', id).maybeSingle()
     if (!order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
@@ -69,9 +62,12 @@ export async function POST(
     }
 
     // Verify payment method exists
-    const paymentMethod = await prisma.paymentMethod.findUnique({
-      where: { id: paymentMethodId },
-    })
+    const { data: paymentMethod } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .eq('id', paymentMethodId)
+      .maybeSingle()
+
     if (!paymentMethod) {
       return NextResponse.json(
         { success: false, error: 'Invalid payment method' },
@@ -80,33 +76,45 @@ export async function POST(
     }
 
     // Update order payment status and method
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
+    const { data: updatedOrder, error: updateError } = await supabase
+      .from('orders')
+      .update({
         paymentStatus: 'PAID',
         paymentMethod: paymentMethod.name,
-      },
-    })
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single()
 
-    // Upsert payment record
-    await prisma.payment.upsert({
-      where: { orderId: id },
-      update: {
+    if (updateError) throw updateError
+
+    // Upsert payment record — check if exists first
+    const { data: existingPayment } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('orderId', id)
+      .maybeSingle()
+
+    if (existingPayment) {
+      await supabase.from('payments').update({
         amount,
         method: paymentMethod.slug,
         status: 'PAID',
-        paidAt: parsedPaidAt,
-      },
-      create: {
+        paidAt: parsedPaidAt.toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).eq('id', existingPayment.id)
+    } else {
+      await supabase.from('payments').insert({
         orderId: id,
         amount,
         currency: 'INR',
         gateway: 'COD',
         method: paymentMethod.slug,
         status: 'PAID',
-        paidAt: parsedPaidAt,
-      },
-    })
+        paidAt: parsedPaidAt.toISOString(),
+      })
+    }
 
     // Add status history entry
     const historyNote = [
@@ -116,13 +124,11 @@ export async function POST(
       notes ? ` — ${notes}` : '',
     ].join('')
 
-    await prisma.orderStatusHistory.create({
-      data: {
-        orderId: id,
-        status: order.status,
-        note: historyNote,
-        changedBy: admin.id,
-      },
+    await supabase.from('order_status_history').insert({
+      orderId: id,
+      status: order.status,
+      note: historyNote,
+      changedBy: user.id,
     })
 
     return NextResponse.json({ success: true, data: updatedOrder })

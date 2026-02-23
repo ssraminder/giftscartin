@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
 import { paginationSchema } from '@/lib/validations'
 import { z } from 'zod/v4'
-import { Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,18 +11,23 @@ const vendorOrdersQuerySchema = paginationSchema.extend({
   status: z.enum(['PENDING', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED']).optional(),
 })
 
-async function getVendor() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
-  return prisma.vendor.findUnique({ where: { userId: user.id } })
+async function getVendor(request: NextRequest) {
+  const session = await getSessionFromRequest(request)
+  if (!session?.id) return null
+  if (!isVendorRole(session.role) && !isAdminRole(session.role)) return null
+  const supabase = getSupabaseAdmin()
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('*')
+    .eq('userId', session.id)
+    .single()
+  return vendor
 }
 
 // GET: List vendor's orders
 export async function GET(request: NextRequest) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
@@ -43,51 +46,45 @@ export async function GET(request: NextRequest) {
     }
 
     const { page, pageSize, status } = parsed.data
-    const skip = (page - 1) * pageSize
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
 
-    const where: Prisma.OrderWhereInput = {
-      vendorId: vendor.id,
-    }
+    const supabase = getSupabaseAdmin()
+
+    // Build query for items
+    let itemsQuery = supabase
+      .from('orders')
+      .select('*, order_items(*, products(id, name, slug, images)), addresses(*), users(id, name, phone)', { count: 'exact' })
+      .eq('vendorId', vendor.id)
+      .order('createdAt', { ascending: false })
+      .range(from, to)
 
     if (status) {
-      where.status = status
+      itemsQuery = itemsQuery.eq('status', status)
     }
 
-    const [items, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: pageSize,
-        include: {
-          items: {
-            include: {
-              product: {
-                select: { id: true, name: true, slug: true, images: true },
-              },
-            },
-          },
-          address: true,
-          user: {
-            select: { id: true, name: true, phone: true },
-          },
-        },
-      }),
-      prisma.order.count({ where }),
-    ])
+    const { data: items, count: total, error } = await itemsQuery
+
+    if (error) {
+      console.error('Vendor orders query error:', error)
+      throw error
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        items: items.map((o) => ({
+        items: (items || []).map((o: Record<string, unknown>) => ({
           ...o,
           subtotal: Number(o.subtotal),
           deliveryCharge: Number(o.deliveryCharge),
           discount: Number(o.discount),
           surcharge: Number(o.surcharge),
           total: Number(o.total),
+          items: o.order_items,
+          address: o.addresses,
+          user: o.users,
         })),
-        total,
+        total: total ?? 0,
         page,
         pageSize,
       },

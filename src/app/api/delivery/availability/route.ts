@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { nowIST, toISTDateString, parseLocalDate } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const supabase = getSupabaseAdmin()
     const istNow = nowIST()
     const currentHourIST = istNow.getUTCHours()
     const currentMinuteIST = istNow.getUTCMinutes()
@@ -43,20 +44,21 @@ export async function GET(req: NextRequest) {
     const dayOfWeek = deliveryDate.getDay()
 
     // 1. Get city delivery configs (which slots are enabled)
-    const cityConfigs = await prisma.cityDeliveryConfig.findMany({
-      where: { cityId, isAvailable: true },
-      include: { slot: true },
-    })
+    const { data: cityConfigs } = await supabase
+      .from('city_delivery_configs')
+      .select('*, delivery_slots(*)')
+      .eq('cityId', cityId)
+      .eq('isAvailable', true)
 
     // 2. Get delivery holidays for this date
-    const holidays = await prisma.deliveryHoliday.findMany({
-      where: {
-        date: deliveryDate,
-        OR: [{ cityId }, { cityId: null }],
-      },
-      orderBy: { cityId: 'desc' }, // city-specific first
-    })
-    const holiday = holidays[0] ?? null
+    const { data: holidays } = await supabase
+      .from('delivery_holidays')
+      .select('*')
+      .eq('date', deliveryDate.toISOString())
+      .or(`cityId.eq.${cityId},cityId.is.null`)
+      .order('cityId', { ascending: false }) // city-specific first
+
+    const holiday = (holidays && holidays.length > 0) ? holidays[0] : null
 
     // FULL_BLOCK
     if (holiday?.mode === 'FULL_BLOCK') {
@@ -72,50 +74,57 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Get active surcharges for this date
-    const surcharges = await prisma.deliverySurcharge.findMany({
-      where: {
-        isActive: true,
-        startDate: { lte: deliveryDate },
-        endDate: { gte: deliveryDate },
-      },
-    })
+    const { data: surcharges } = await supabase
+      .from('delivery_surcharges')
+      .select('*')
+      .eq('isActive', true)
+      .lte('startDate', deliveryDate.toISOString())
+      .gte('endDate', deliveryDate.toISOString())
 
-    const surchargeInfo = surcharges.length > 0
+    const surchargeInfo = (surcharges && surcharges.length > 0)
       ? {
           surchargeActive: true,
-          surchargeAmount: surcharges.reduce((sum, s) => sum + Number(s.amount), 0),
-          surchargeAppliesTo: surcharges.map(s => s.appliesTo).join(', '),
-          surchargeName: surcharges.map(s => s.name).join(', '),
+          surchargeAmount: surcharges.reduce((sum: number, s: Record<string, unknown>) => sum + Number(s.amount), 0),
+          surchargeAppliesTo: surcharges.map((s: Record<string, unknown>) => s.appliesTo).join(', '),
+          surchargeName: surcharges.map((s: Record<string, unknown>) => s.name).join(', '),
         }
       : undefined
 
     // 4. Get vendors in cityId with this product
-    //    Don't require isOnline (that's for real-time order acceptance, not slot visibility).
-    //    Instead filter out vendors currently on vacation.
-    const vendorProducts = await prisma.vendorProduct.findMany({
-      where: {
-        productId,
-        isAvailable: true,
+    //    Fetch vendor_products with vendor details, working hours, slots, and capacity
+    const { data: vendorProducts } = await supabase
+      .from('vendor_products')
+      .select('*, vendors(*, vendor_working_hours(*), vendor_slots(*), vendor_capacity(*))')
+      .eq('productId', productId)
+      .eq('isAvailable', true)
+
+    // Filter vendor products: vendor must be in the city, approved, and not on vacation
+    const filteredVendorProducts = (vendorProducts || []).filter((vp: Record<string, unknown>) => {
+      const vendor = vp.vendors as Record<string, unknown>
+      if (!vendor) return false
+      if (vendor.cityId !== cityId) return false
+      if (vendor.status !== 'APPROVED') return false
+      // Not on vacation
+      if (vendor.vacationEnd && new Date(vendor.vacationEnd as string) >= new Date()) return false
+      return true
+    }).map((vp: Record<string, unknown>) => {
+      const vendor = vp.vendors as Record<string, unknown>
+      // Filter capacity for this delivery date
+      const allCapacity = (vendor.vendor_capacity as Record<string, unknown>[]) || []
+      const dateCapacity = allCapacity.filter((c: Record<string, unknown>) => {
+        const capDate = new Date(c.date as string).toISOString().split('T')[0]
+        return capDate === dateStr
+      })
+      return {
+        ...vp,
+        preparationTime: vp.preparationTime as number,
         vendor: {
-          cityId,
-          status: 'APPROVED',
-          OR: [
-            { vacationEnd: null },
-            { vacationEnd: { lt: new Date() } },
-          ],
+          ...vendor,
+          workingHours: (vendor.vendor_working_hours as Record<string, unknown>[]) || [],
+          slots: (vendor.vendor_slots as Record<string, unknown>[]) || [],
+          capacity: dateCapacity,
         },
-      },
-      include: {
-        vendor: {
-          include: {
-            workingHours: true,
-            slots: true,
-            capacity: {
-              where: { date: deliveryDate },
-            },
-          },
-        },
-      },
+      }
     })
 
     // Build holiday override map
@@ -128,45 +137,41 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. Build slots
+    const configsList = (cityConfigs || [])
     const filteredConfigs = holiday?.mode === 'STANDARD_ONLY'
-      ? cityConfigs.filter(c => c.slot.slotGroup === 'standard')
-      : cityConfigs
+      ? configsList.filter((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>)?.slotGroup === 'standard')
+      : configsList
 
-    const slots = filteredConfigs.map(config => {
-      const slot = config.slot
-      if (!slot.isActive) return null
+    const slots = filteredConfigs.map((config: Record<string, unknown>) => {
+      const slot = config.delivery_slots as Record<string, unknown>
+      if (!slot?.isActive) return null
 
       // Holiday CUSTOM: slot explicitly blocked
-      const holidayOverride = holidayOverrides.get(slot.slug)
+      const holidayOverride = holidayOverrides.get(slot.slug as string)
       if (holidayOverride?.blocked) return null
 
       // Check if at least one vendor supports this slot and is open today.
-      // If vendor has no VendorSlot records at all, treat all slots as enabled
-      // (vendor hasn't customized slot preferences — default is all enabled).
-      const qualifyingVendors = vendorProducts.filter(vp => {
+      const qualifyingVendors = filteredVendorProducts.filter((vp) => {
         const vendor = vp.vendor
-        // Check vendor slot: if vendor has slot records, the specific slot must be enabled.
-        // If vendor has NO slot records at all, assume all slots enabled.
+        // Check vendor slot
         if (vendor.slots.length > 0) {
-          const vendorSlot = vendor.slots.find(vs => vs.slotId === slot.id)
-          if (vendorSlot && !vendorSlot.isEnabled) return false
-          // If vendor has some slot records but not this one, treat as enabled (not explicitly disabled)
+          const vendorSlot = vendor.slots.find((vs: Record<string, unknown>) => vs.slotId === slot.id)
+          if (vendorSlot && !(vendorSlot as Record<string, unknown>).isEnabled) return false
         }
         // Vendor is open on this day
-        const wh = vendor.workingHours.find(w => w.dayOfWeek === dayOfWeek)
-        // If no working hours defined, assume vendor is open (hasn't configured schedule)
-        if (wh && wh.isClosed) return false
+        const wh = vendor.workingHours.find((w: Record<string, unknown>) => w.dayOfWeek === dayOfWeek)
+        if (wh && (wh as Record<string, unknown>).isClosed) return false
         return true
       })
 
-      // Check capacity — no capacity record means default capacity (not full)
+      // Check capacity
       let isFull = false
       if (qualifyingVendors.length > 0) {
-        const allFull = qualifyingVendors.every(vp => {
-          const cap = vp.vendor.capacity.find(c => c.slotId === slot.id)
-          if (!cap) return false // No capacity record = default available (not full)
-          const maxOrders = cap.maxOrders ?? 10
-          return cap.bookedOrders >= maxOrders
+        const allFull = qualifyingVendors.every((vp) => {
+          const cap = vp.vendor.capacity.find((c: Record<string, unknown>) => c.slotId === slot.id)
+          if (!cap) return false
+          const maxOrders = (cap as Record<string, unknown>).maxOrders ?? 10
+          return ((cap as Record<string, unknown>).bookedOrders as number) >= (maxOrders as number)
         })
         if (allFull) isFull = true
       }
@@ -176,14 +181,14 @@ export async function GET(req: NextRequest) {
       let reason: string | undefined
 
       if (isToday && isAvailable) {
-        // Check if currentTimeIST + preparationTime < vendorCloseTime
-        const anyVendorCanDeliver = qualifyingVendors.some(vp => {
-          const wh = vp.vendor.workingHours.find(w => w.dayOfWeek === dayOfWeek)
+        const anyVendorCanDeliver = qualifyingVendors.some((vp) => {
+          const wh = vp.vendor.workingHours.find((w: Record<string, unknown>) => w.dayOfWeek === dayOfWeek)
           if (!wh) return false
-          const [closeH, closeM] = wh.closeTime.split(':').map(Number)
+          const whObj = wh as Record<string, unknown>
+          const [closeH, closeM] = (whObj.closeTime as string).split(':').map(Number)
           const closeMinutes = closeH * 60 + closeM
           const currentMinutes = currentHourIST * 60 + currentMinuteIST
-          const prepMinutes = vp.preparationTime // in minutes
+          const prepMinutes = vp.preparationTime
           return (currentMinutes + prepMinutes) < closeMinutes
         })
 
@@ -229,12 +234,12 @@ export async function GET(req: NextRequest) {
 
       if (slot.slotGroup === 'fixed') {
         windows = FIXED_WINDOWS.map(fw => {
-          // Filter windows within vendor working hours
-          const anyVendorCovers = qualifyingVendors.some(vp => {
-            const wh = vp.vendor.workingHours.find(w => w.dayOfWeek === dayOfWeek)
+          const anyVendorCovers = qualifyingVendors.some((vp) => {
+            const wh = vp.vendor.workingHours.find((w: Record<string, unknown>) => w.dayOfWeek === dayOfWeek)
             if (!wh) return false
-            const [openH] = wh.openTime.split(':').map(Number)
-            const [closeH] = wh.closeTime.split(':').map(Number)
+            const whObj = wh as Record<string, unknown>
+            const [openH] = (whObj.openTime as string).split(':').map(Number)
+            const [closeH] = (whObj.closeTime as string).split(':').map(Number)
             return fw.startHour >= openH && fw.endHour <= closeH
           })
 
@@ -242,20 +247,18 @@ export async function GET(req: NextRequest) {
             return null
           }
 
-          // For today: only show windows where current IST time < window start
           let windowAvailable = true
           if (isToday && currentHourIST >= fw.startHour) {
             windowAvailable = false
           }
 
-          // Check capacity per window — no record = default available
           let windowFull = false
           if (qualifyingVendors.length > 0) {
-            const allFullForWindow = qualifyingVendors.every(vp => {
-              const cap = vp.vendor.capacity.find(c => c.slotId === slot.id)
-              if (!cap) return false // No capacity record = available
-              const maxOrders = cap.maxOrders ?? 10
-              return cap.bookedOrders >= maxOrders
+            const allFullForWindow = qualifyingVendors.every((vp) => {
+              const cap = vp.vendor.capacity.find((c: Record<string, unknown>) => c.slotId === slot.id)
+              if (!cap) return false
+              const maxOrders = (cap as Record<string, unknown>).maxOrders ?? 10
+              return ((cap as Record<string, unknown>).bookedOrders as number) >= (maxOrders as number)
             })
             if (allFullForWindow) windowFull = true
           }
@@ -283,16 +286,19 @@ export async function GET(req: NextRequest) {
         reason: isFull ? 'All slots are fully booked' : (!isAvailable ? reason : undefined),
         windows,
       }
-    }).filter((s): s is NonNullable<typeof s> => s !== null)
+    }).filter((s: unknown): s is NonNullable<typeof s> => s !== null)
 
     // Sort: standard first, then other groups
     const groupOrder = ['standard', 'fixed', 'midnight', 'early-morning', 'express']
-    slots.sort((a, b) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    slots.sort((a: any, b: any) => {
+      const aSlot = filteredConfigs.find((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>).id === a.id)
+      const bSlot = filteredConfigs.find((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>).id === b.id)
       const aIdx = groupOrder.indexOf(
-        filteredConfigs.find(c => c.slot.id === a.id)?.slot.slotGroup ?? ''
+        (aSlot?.delivery_slots as Record<string, unknown>)?.slotGroup as string ?? ''
       )
       const bIdx = groupOrder.indexOf(
-        filteredConfigs.find(c => c.slot.id === b.id)?.slot.slotGroup ?? ''
+        (bSlot?.delivery_slots as Record<string, unknown>)?.slotGroup as string ?? ''
       )
       return aIdx - bIdx
     })

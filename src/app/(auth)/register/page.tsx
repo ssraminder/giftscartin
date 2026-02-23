@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/use-auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import { UserPlus, Loader2 } from 'lucide-react'
 function RegisterForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { status } = useSession()
+  const { status, refreshUser } = useAuth()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState(searchParams.get('email') || '')
@@ -52,22 +52,10 @@ function RegisterForm() {
         return
       }
 
-      // Auto-login: send OTP to the registered email, then redirect to login
-      const otpRes = await fetch('/api/auth/otp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      })
-
-      const otpData = await otpRes.json()
-
-      if (otpData.success) {
-        // Redirect to login page with email pre-filled
-        router.push(`/login?email=${encodeURIComponent(email)}`)
-      } else {
-        // Registration succeeded but OTP send failed — still redirect to login
-        router.push('/login')
-      }
+      // Registration API sets JWT cookie — refresh user state and redirect
+      await refreshUser()
+      router.push('/')
+      router.refresh()
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {

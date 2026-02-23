@@ -1,40 +1,34 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
-import { prisma } from "@/lib/prisma"
+import { NextRequest, NextResponse } from 'next/server'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getSessionFromRequest(request)
 
-    if (!session?.user?.id) {
+    if (!session?.id) {
       return NextResponse.json(
-        { success: false, error: "Not authenticated" },
+        { success: false, error: 'Not authenticated' },
         { status: 401 }
       )
     }
 
-    const addresses = await prisma.address.findMany({
-      where: { userId: session.user.id },
-      orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        address: true,
-        landmark: true,
-        city: true,
-        state: true,
-        pincode: true,
-        isDefault: true,
-      },
-    })
+    const supabase = getSupabaseAdmin()
 
-    return NextResponse.json({ success: true, data: addresses })
+    const { data: addresses, error } = await supabase
+      .from('addresses')
+      .select('id, name, phone, address, landmark, city, state, pincode, isDefault')
+      .eq('userId', session.id)
+      .order('isDefault', { ascending: false })
+      .order('createdAt', { ascending: false })
+
+    if (error) throw error
+
+    return NextResponse.json({ success: true, data: addresses || [] })
   } catch (error) {
-    console.error("GET /api/addresses error:", error)
+    console.error('GET /api/addresses error:', error)
     return NextResponse.json(
-      { success: false, error: "Failed to fetch addresses" },
+      { success: false, error: 'Failed to fetch addresses' },
       { status: 500 }
     )
   }

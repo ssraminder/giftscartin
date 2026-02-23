@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as { id?: string; role?: string } | undefined
-  if (!user?.id || !user?.role || !isAdminRole(user.role)) return null
+async function requireAdmin(request: NextRequest) {
+  const user = await getSessionFromRequest(request)
+  if (!user || !isAdminRole(user.role)) return null
   return user
 }
 
@@ -16,7 +14,7 @@ export async function PATCH(
   { params }: { params: Promise<{ cityId: string }> }
 ) {
   try {
-    const admin = await requireAdmin()
+    const admin = await requireAdmin(request)
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
@@ -25,37 +23,58 @@ export async function PATCH(
     const body = await request.json()
     const { baseDeliveryCharge, freeDeliveryAbove, slots } = body
 
+    const supabase = getSupabaseAdmin()
+
     // Update city-level delivery settings if provided
     const cityData: Record<string, unknown> = {}
     if (baseDeliveryCharge !== undefined) cityData.baseDeliveryCharge = baseDeliveryCharge
     if (freeDeliveryAbove !== undefined) cityData.freeDeliveryAbove = freeDeliveryAbove
 
     if (Object.keys(cityData).length > 0) {
-      await prisma.city.update({
-        where: { id: cityId },
-        data: cityData,
-      })
+      cityData.updatedAt = new Date().toISOString()
+      const { error } = await supabase
+        .from('cities')
+        .update(cityData)
+        .eq('id', cityId)
+      if (error) throw error
     }
 
     // Upsert city_delivery_configs for each slot
     if (slots && Array.isArray(slots)) {
       for (const slot of slots) {
         const { slotId, isAvailable, chargeOverride } = slot
-        await prisma.cityDeliveryConfig.upsert({
-          where: {
-            cityId_slotId: { cityId, slotId },
-          },
-          update: {
-            isAvailable,
-            chargeOverride: chargeOverride !== undefined && chargeOverride !== null && chargeOverride !== '' ? chargeOverride : null,
-          },
-          create: {
-            cityId,
-            slotId,
-            isAvailable,
-            chargeOverride: chargeOverride !== undefined && chargeOverride !== null && chargeOverride !== '' ? chargeOverride : null,
-          },
-        })
+        const resolvedCharge = chargeOverride !== undefined && chargeOverride !== null && chargeOverride !== '' ? chargeOverride : null
+
+        // Check if config exists
+        const { data: existing } = await supabase
+          .from('city_delivery_configs')
+          .select('id')
+          .eq('cityId', cityId)
+          .eq('slotId', slotId)
+          .single()
+
+        if (existing) {
+          const { error } = await supabase
+            .from('city_delivery_configs')
+            .update({
+              isAvailable,
+              chargeOverride: resolvedCharge,
+              updatedAt: new Date().toISOString(),
+            })
+            .eq('cityId', cityId)
+            .eq('slotId', slotId)
+          if (error) throw error
+        } else {
+          const { error } = await supabase
+            .from('city_delivery_configs')
+            .insert({
+              cityId,
+              slotId,
+              isAvailable,
+              chargeOverride: resolvedCharge,
+            })
+          if (error) throw error
+        }
       }
     }
 

@@ -1,45 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
 // ==================== GET — Single city with zones and delivery config ====================
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (
-      !session?.user ||
-      !isAdminRole(
-        (session.user as { role?: string }).role || ''
-      )
-    ) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const city = await prisma.city.findUnique({
-      where: { id: params.id },
-      include: {
-        zones: { orderBy: { name: 'asc' } },
-        deliveryConfig: { include: { slot: true } },
-        _count: { select: { vendors: true } },
-      },
-    })
+    const supabase = getSupabaseAdmin()
 
-    if (!city) {
+    const { data: city, error } = await supabase
+      .from('cities')
+      .select('*, city_zones(*), city_delivery_configs(*, delivery_slots(*))')
+      .eq('id', params.id)
+      .single()
+
+    if (error || !city) {
       return NextResponse.json(
         { success: false, error: 'City not found' },
         { status: 404 }
       )
     }
+
+    // Get vendor count
+    const { count: vendorCount } = await supabase
+      .from('vendors')
+      .select('*', { count: 'exact', head: true })
+      .eq('cityId', params.id)
+
+    // Sort zones by name
+    const zones = (city.city_zones || []).sort((a: { name: string }, b: { name: string }) =>
+      a.name.localeCompare(b.name)
+    )
 
     return NextResponse.json({
       success: true,
@@ -49,10 +53,15 @@ export async function GET(
         freeDeliveryAbove: Number(city.freeDeliveryAbove),
         lat: Number(city.lat),
         lng: Number(city.lng),
-        zones: city.zones.map((z) => ({
+        zones: zones.map((z: { extraCharge: number | string; [key: string]: unknown }) => ({
           ...z,
           extraCharge: Number(z.extraCharge),
         })),
+        deliveryConfig: city.city_delivery_configs?.map((dc: { delivery_slots: unknown; [key: string]: unknown }) => ({
+          ...dc,
+          slot: dc.delivery_slots,
+        })),
+        _count: { vendors: vendorCount || 0 },
       },
     })
   } catch (error) {
@@ -90,21 +99,23 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (
-      !session?.user ||
-      !isAdminRole(
-        (session.user as { role?: string }).role || ''
-      )
-    ) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const existing = await prisma.city.findUnique({ where: { id: params.id } })
-    if (!existing) {
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing, error: findError } = await supabase
+      .from('cities')
+      .select('*')
+      .eq('id', params.id)
+      .single()
+
+    if (findError || !existing) {
       return NextResponse.json(
         { success: false, error: 'City not found' },
         { status: 404 }
@@ -124,7 +135,12 @@ export async function PUT(
 
     // Check slug uniqueness if changing slug
     if (data.slug && data.slug !== existing.slug) {
-      const slugExists = await prisma.city.findUnique({ where: { slug: data.slug } })
+      const { data: slugExists } = await supabase
+        .from('cities')
+        .select('id')
+        .eq('slug', data.slug)
+        .single()
+
       if (slugExists) {
         return NextResponse.json(
           { success: false, error: `Slug "${data.slug}" is already in use` },
@@ -133,10 +149,10 @@ export async function PUT(
       }
     }
 
-    // Sequential queries (no $transaction — pgbouncer incompatible)
+    // Sequential queries (no transaction — pgbouncer incompatible)
 
     // Update city fields
-    const cityUpdate: Record<string, unknown> = {}
+    const cityUpdate: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (data.name !== undefined) cityUpdate.name = data.name
     if (data.slug !== undefined) cityUpdate.slug = data.slug
     if (data.state !== undefined) cityUpdate.state = data.state
@@ -146,11 +162,13 @@ export async function PUT(
     if (data.freeDeliveryAbove !== undefined) cityUpdate.freeDeliveryAbove = data.freeDeliveryAbove
     if (data.isActive !== undefined) cityUpdate.isActive = data.isActive
 
-    if (Object.keys(cityUpdate).length > 0) {
-      await prisma.city.update({
-        where: { id: params.id },
-        data: cityUpdate,
-      })
+    if (Object.keys(cityUpdate).length > 1) { // > 1 because updatedAt is always present
+      const { error: updateError } = await supabase
+        .from('cities')
+        .update(cityUpdate)
+        .eq('id', params.id)
+
+      if (updateError) throw updateError
     }
 
     // Handle zones — delete removed, upsert existing
@@ -159,55 +177,84 @@ export async function PUT(
 
       // Delete zones that are no longer in the list
       if (incomingIds.length > 0) {
-        await prisma.cityZone.deleteMany({
-          where: {
-            cityId: params.id,
-            id: { notIn: incomingIds },
-          },
-        })
+        const { error: deleteError } = await supabase
+          .from('city_zones')
+          .delete()
+          .eq('cityId', params.id)
+          .not('id', 'in', `(${incomingIds.join(',')})`)
+
+        if (deleteError) throw deleteError
       } else {
         // All zones are new — delete all existing
-        await prisma.cityZone.deleteMany({
-          where: { cityId: params.id },
-        })
+        const { error: deleteError } = await supabase
+          .from('city_zones')
+          .delete()
+          .eq('cityId', params.id)
+
+        if (deleteError) throw deleteError
       }
 
       for (const zone of data.zones) {
         if (zone.id) {
           // Update existing zone
-          await prisma.cityZone.update({
-            where: { id: zone.id },
-            data: {
+          const { error: zoneUpdateError } = await supabase
+            .from('city_zones')
+            .update({
               name: zone.name,
               pincodes: zone.pincodes,
               extraCharge: zone.extraCharge,
-            },
-          })
+            })
+            .eq('id', zone.id)
+
+          if (zoneUpdateError) throw zoneUpdateError
         } else {
           // Create new zone
-          await prisma.cityZone.create({
-            data: {
+          const { error: zoneCreateError } = await supabase
+            .from('city_zones')
+            .insert({
               cityId: params.id,
               name: zone.name,
               pincodes: zone.pincodes,
               extraCharge: zone.extraCharge,
-            },
-          })
+            })
+
+          if (zoneCreateError) throw zoneCreateError
         }
       }
     }
 
     // Fetch updated city
-    const updated = await prisma.city.findUnique({
-      where: { id: params.id },
-      include: {
-        zones: { orderBy: { name: 'asc' } },
-        deliveryConfig: { include: { slot: true } },
-        _count: { select: { vendors: true } },
+    const { data: updated, error: fetchError } = await supabase
+      .from('cities')
+      .select('*, city_zones(*), city_delivery_configs(*, delivery_slots(*))')
+      .eq('id', params.id)
+      .single()
+
+    if (fetchError) throw fetchError
+
+    // Get vendor count
+    const { count: vendorCount } = await supabase
+      .from('vendors')
+      .select('*', { count: 'exact', head: true })
+      .eq('cityId', params.id)
+
+    // Sort zones by name
+    const zones = (updated.city_zones || []).sort((a: { name: string }, b: { name: string }) =>
+      a.name.localeCompare(b.name)
+    )
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updated,
+        zones,
+        deliveryConfig: updated.city_delivery_configs?.map((dc: { delivery_slots: unknown; [key: string]: unknown }) => ({
+          ...dc,
+          slot: dc.delivery_slots,
+        })),
+        _count: { vendors: vendorCount || 0 },
       },
     })
-
-    return NextResponse.json({ success: true, data: updated })
   } catch (error) {
     console.error('PUT /api/admin/cities/[id] error:', error)
     const message = error instanceof Error ? error.message : 'Failed to update city'

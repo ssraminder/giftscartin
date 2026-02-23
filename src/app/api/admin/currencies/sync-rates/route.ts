@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
 interface ExchangeRateResponse {
@@ -94,13 +93,8 @@ export async function POST(request: NextRequest) {
       cronSecret && process.env.CRON_SECRET && cronSecret === process.env.CRON_SECRET
 
     if (!isAuthedViaCron) {
-      const session = await getServerSession(authOptions)
-      if (
-        !session?.user ||
-        !isAdminRole(
-          (session.user as { role?: string }).role || ''
-        )
-      ) {
+      const user = await getSessionFromRequest(request)
+      if (!user || !isAdminRole(user.role)) {
         return NextResponse.json(
           { success: false, error: 'Unauthorized' },
           { status: 401 }
@@ -129,12 +123,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get all non-default currencies from our DB
-    const currencies = await prisma.currencyConfig.findMany({
-      where: { isDefault: false },
-    })
+    const supabase = getSupabaseAdmin()
 
-    if (currencies.length === 0) {
+    // Get all non-default currencies from our DB
+    const { data: currencies, error } = await supabase
+      .from('currency_configs')
+      .select('*')
+      .eq('isDefault', false)
+
+    if (error) throw error
+
+    if (!currencies || currencies.length === 0) {
       return NextResponse.json({
         success: true,
         data: {
@@ -155,11 +154,11 @@ export async function POST(request: NextRequest) {
       const newRate = rateData.rates[currency.code]
 
       if (newRate != null && newRate > 0) {
-        await prisma.currencyConfig.update({
-          where: { id: currency.id },
-          data: { exchangeRate: newRate },
-        })
-        updated.push(`${currency.code}: ${Number(currency.exchangeRate)} → ${newRate}`)
+        await supabase
+          .from('currency_configs')
+          .update({ exchangeRate: newRate, updatedAt: new Date().toISOString() })
+          .eq('id', currency.id)
+        updated.push(`${currency.code}: ${Number(currency.exchangeRate)} -> ${newRate}`)
       } else {
         skipped.push(currency.code)
       }

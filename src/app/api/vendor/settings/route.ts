@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -26,33 +25,31 @@ const updateVendorSettingsSchema = z.object({
   deliveryRadiusKm: z.number().min(1).max(100).optional(),
 })
 
-async function getVendor() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
-  return prisma.vendor.findUnique({
-    where: { userId: user.id },
-    include: {
-      city: { select: { id: true, name: true, slug: true } },
-      workingHours: { orderBy: { dayOfWeek: 'asc' } },
-      slots: { include: { slot: true } },
-      pincodes: true,
-      holidays: { orderBy: { date: 'asc' } },
-    },
-  })
+async function getVendorWithRelations(request: NextRequest) {
+  const session = await getSessionFromRequest(request)
+  if (!session?.id) return null
+  if (!isVendorRole(session.role) && !isAdminRole(session.role)) return null
+  const supabase = getSupabaseAdmin()
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('*, cities(id, name, slug), vendor_working_hours(*), vendor_slots(*, delivery_slots(*)), vendor_pincodes(*), vendor_holidays(*)')
+    .eq('userId', session.id)
+    .single()
+  return { vendor, session }
 }
 
 // GET: Vendor profile + settings
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const vendor = await getVendor()
-    if (!vendor) {
+    const result = await getVendorWithRelations(request)
+    if (!result?.vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
         { status: 403 }
       )
     }
+
+    const vendor = result.vendor
 
     return NextResponse.json({
       success: true,
@@ -62,19 +59,25 @@ export async function GET() {
         rating: Number(vendor.rating),
         lat: vendor.lat ? Number(vendor.lat) : null,
         lng: vendor.lng ? Number(vendor.lng) : null,
-        deliveryRadiusKm: Number(vendor.deliveryRadiusKm),
-        pincodes: vendor.pincodes.map((p) => ({
+        deliveryRadiusKm: Number(vendor.delivery_radius_km ?? 0),
+        city: vendor.cities,
+        workingHours: vendor.vendor_working_hours,
+        pincodes: (vendor.vendor_pincodes || []).map((p: Record<string, unknown>) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),
         })),
-        slots: vendor.slots.map((s) => ({
-          ...s,
-          customCharge: s.customCharge ? Number(s.customCharge) : null,
-          slot: {
-            ...s.slot,
-            baseCharge: Number(s.slot.baseCharge),
-          },
-        })),
+        slots: (vendor.vendor_slots || []).map((s: Record<string, unknown>) => {
+          const slot = s.delivery_slots as Record<string, unknown> | null
+          return {
+            ...s,
+            customCharge: s.customCharge ? Number(s.customCharge) : null,
+            slot: slot ? {
+              ...slot,
+              baseCharge: Number(slot.baseCharge),
+            } : null,
+          }
+        }),
+        holidays: vendor.vendor_holidays,
       },
     })
   } catch (error) {
@@ -89,23 +92,29 @@ export async function GET() {
 // PATCH: Update vendor settings
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.id) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
         { status: 401 }
       )
     }
 
-    const user = session.user as { id: string; role: string }
-    if (!isVendorRole(user.role) && !isAdminRole(user.role)) {
+    if (!isVendorRole(session.role) && !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
         { status: 403 }
       )
     }
 
-    const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } })
+    const supabase = getSupabaseAdmin()
+
+    const { data: vendor } = await supabase
+      .from('vendors')
+      .select('*')
+      .eq('userId', session.id)
+      .single()
+
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor profile not found' },
@@ -125,31 +134,34 @@ export async function PATCH(request: NextRequest) {
 
     const data = parsed.data
 
-    const updated = await prisma.vendor.update({
-      where: { id: vendor.id },
-      data: {
-        ...(data.businessName !== undefined ? { businessName: data.businessName } : {}),
-        ...(data.ownerName !== undefined ? { ownerName: data.ownerName } : {}),
-        ...(data.phone !== undefined ? { phone: data.phone } : {}),
-        ...(data.email !== undefined ? { email: data.email } : {}),
-        ...(data.address !== undefined ? { address: data.address } : {}),
-        ...(data.isOnline !== undefined ? { isOnline: data.isOnline } : {}),
-        ...(data.autoAccept !== undefined ? { autoAccept: data.autoAccept } : {}),
-        ...(data.vacationStart !== undefined
-          ? { vacationStart: data.vacationStart ? new Date(data.vacationStart) : null }
-          : {}),
-        ...(data.vacationEnd !== undefined
-          ? { vacationEnd: data.vacationEnd ? new Date(data.vacationEnd) : null }
-          : {}),
-        ...(data.panNumber !== undefined ? { panNumber: data.panNumber } : {}),
-        ...(data.gstNumber !== undefined ? { gstNumber: data.gstNumber } : {}),
-        ...(data.fssaiNumber !== undefined ? { fssaiNumber: data.fssaiNumber } : {}),
-        ...(data.bankAccountNo !== undefined ? { bankAccountNo: data.bankAccountNo } : {}),
-        ...(data.bankIfsc !== undefined ? { bankIfsc: data.bankIfsc } : {}),
-        ...(data.bankName !== undefined ? { bankName: data.bankName } : {}),
-        ...(data.deliveryRadiusKm !== undefined ? { deliveryRadiusKm: data.deliveryRadiusKm } : {}),
-      },
-    })
+    const updateData: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
+    }
+    if (data.businessName !== undefined) updateData.businessName = data.businessName
+    if (data.ownerName !== undefined) updateData.ownerName = data.ownerName
+    if (data.phone !== undefined) updateData.phone = data.phone
+    if (data.email !== undefined) updateData.email = data.email
+    if (data.address !== undefined) updateData.address = data.address
+    if (data.isOnline !== undefined) updateData.isOnline = data.isOnline
+    if (data.autoAccept !== undefined) updateData.autoAccept = data.autoAccept
+    if (data.vacationStart !== undefined) updateData.vacationStart = data.vacationStart ? new Date(data.vacationStart).toISOString() : null
+    if (data.vacationEnd !== undefined) updateData.vacationEnd = data.vacationEnd ? new Date(data.vacationEnd).toISOString() : null
+    if (data.panNumber !== undefined) updateData.panNumber = data.panNumber
+    if (data.gstNumber !== undefined) updateData.gstNumber = data.gstNumber
+    if (data.fssaiNumber !== undefined) updateData.fssaiNumber = data.fssaiNumber
+    if (data.bankAccountNo !== undefined) updateData.bankAccountNo = data.bankAccountNo
+    if (data.bankIfsc !== undefined) updateData.bankIfsc = data.bankIfsc
+    if (data.bankName !== undefined) updateData.bankName = data.bankName
+    if (data.deliveryRadiusKm !== undefined) updateData.delivery_radius_km = data.deliveryRadiusKm
+
+    const { data: updated, error: updateError } = await supabase
+      .from('vendors')
+      .update(updateData)
+      .eq('id', vendor.id)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
 
     return NextResponse.json({
       success: true,

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/use-auth'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -45,13 +45,13 @@ interface SenderDetailsStepProps {
 }
 
 export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideButtons }: SenderDetailsStepProps) {
-  const { data: session } = useSession()
+  const { user } = useAuth()
   const [errors, setErrors] = useState<Partial<Record<keyof SenderDetails, string>>>({})
 
-  // Auto-fill from session on first render
+  // Auto-fill from user on first render
   useEffect(() => {
-    if (session?.user && !value.senderName) {
-      const rawPhone = ((session.user as Record<string, unknown>).phone as string) || ''
+    if (user && !value.senderName) {
+      const rawPhone = user.phone || ''
       // If stored as 10 digits without code, prepend +91; if already has +, use as-is
       let senderPhone = rawPhone
       if (rawPhone && !rawPhone.startsWith('+')) {
@@ -59,12 +59,12 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideBut
       }
       onChange({
         ...value,
-        senderName: session.user.name || '',
+        senderName: user.name || '',
         senderPhone,
-        senderEmail: session.user.email || '',
+        senderEmail: user.email || '',
       })
     }
-  }, [session]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const validate = () => {
     const newErrors: typeof errors = {}

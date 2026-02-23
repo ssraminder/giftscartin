@@ -1,16 +1,31 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-// NOTE: We use this ONLY for storage uploads and realtime subscriptions
-// All data queries go through Prisma
+// Server-side client — uses service role key, bypasses RLS
+// Use this in API routes for all database queries
+let _supabaseAdmin: SupabaseClient | null = null
 
-let _supabase: SupabaseClient | null = null
+export function getSupabaseAdmin(): SupabaseClient {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  }
+  return _supabaseAdmin
+}
 
-export function getSupabase(): SupabaseClient {
-  if (!_supabase) {
-    _supabase = createClient(
+// Alias for backward compatibility (storage uploads, etc.)
+export const getSupabase = getSupabaseAdmin
+
+// Client-side client — uses anon key (for storage, realtime only)
+let _supabaseClient: SupabaseClient | null = null
+
+export function getSupabaseClient(): SupabaseClient {
+  if (!_supabaseClient) {
+    _supabaseClient = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
   }
-  return _supabase
+  return _supabaseClient
 }

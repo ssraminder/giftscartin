@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { getSessionFromRequest } from '@/lib/auth'
 import { getSupabase } from '@/lib/supabase'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png']
@@ -43,8 +42,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get session ID (or generate a random one for guests)
-    const session = await getServerSession(authOptions)
-    const sessionId = session?.user?.id || `guest-${crypto.randomUUID().slice(0, 12)}`
+    const session = await getSessionFromRequest(request)
+    const sessionId = session?.id || `guest-${crypto.randomUUID().slice(0, 12)}`
 
     // Sanitize filename
     const sanitizedFilename = file.name

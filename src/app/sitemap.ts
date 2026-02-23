@@ -1,25 +1,22 @@
 import { MetadataRoute } from 'next'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const SITE_URL = process.env.NEXTAUTH_URL || 'https://giftscart.netlify.app'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://giftscart.netlify.app'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [products, categories, cities] = await Promise.all([
-    prisma.product.findMany({
-      where: { isActive: true },
-      select: { slug: true, updatedAt: true },
-    }),
-    prisma.category.findMany({
-      where: { isActive: true },
-      select: { slug: true },
-    }),
-    prisma.city.findMany({
-      where: { isActive: true },
-      select: { slug: true },
-    }),
+  const supabase = getSupabaseAdmin()
+
+  const [productsRes, categoriesRes, citiesRes] = await Promise.all([
+    supabase.from('products').select('slug, updatedAt').eq('isActive', true),
+    supabase.from('categories').select('slug').eq('isActive', true),
+    supabase.from('cities').select('slug').eq('isActive', true),
   ])
+
+  const products = productsRes.data || []
+  const categories = categoriesRes.data || []
+  const cities = citiesRes.data || []
 
   return [
     { url: SITE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
@@ -31,7 +28,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
     ...products.map((p) => ({
       url: `${SITE_URL}/product/${p.slug}`,
-      lastModified: p.updatedAt,
+      lastModified: p.updatedAt ? new Date(p.updatedAt) : undefined,
       changeFrequency: 'weekly' as const,
       priority: 0.8,
     })),

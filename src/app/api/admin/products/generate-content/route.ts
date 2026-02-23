@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(req)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
-import { prisma } from "@/lib/prisma"
+import { getSupabaseAdmin } from "@/lib/supabase"
 import { formatPrice } from "@/lib/utils"
 
 function formatDeliveryDate(date: Date): string {
@@ -29,22 +29,17 @@ export default async function OrderConfirmationPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const supabase = getSupabaseAdmin()
 
-  let order
+  let order: Record<string, unknown> | null = null
   try {
-    order = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        user: { select: { name: true } },
-        address: true,
-        items: {
-          include: {
-            product: { select: { name: true, slug: true } },
-          },
-        },
-        payment: true,
-      },
-    })
+    const { data } = await supabase
+      .from('orders')
+      .select('*, users:userId(name), addresses:addressId(*), order_items(*, products:productId(name, slug)), payments(*)')
+      .eq('id', id)
+      .single()
+
+    order = data
   } catch {
     redirect("/")
   }
@@ -53,16 +48,25 @@ export default async function OrderConfirmationPage({
     redirect("/")
   }
 
-  const userName = order.senderName || order.user?.name || "friend"
-  const firstItemName = order.items[0]?.product?.name || order.items[0]?.name || "a gift"
+  const user = order.users as { name: string } | null
+  const address = order.addresses as Record<string, unknown> | null
+  const items = (order.order_items as Array<Record<string, unknown>>) || []
+  const payment = order.payments as Record<string, unknown> | null
+
+  const userName = (order.senderName as string) || user?.name || "friend"
+  const firstProduct = items[0]?.products as { name: string; slug: string } | null
+  const firstItemName = firstProduct?.name || (items[0]?.name as string) || "a gift"
   const total = Number(order.total)
-  const paymentLabel = getPaymentMethodLabel(order.paymentMethod)
-  const deliveryDateFormatted = formatDeliveryDate(order.deliveryDate)
+  const paymentLabel = getPaymentMethodLabel(order.paymentMethod as string | null)
+  const deliveryDateFormatted = formatDeliveryDate(order.deliveryDate as Date)
 
   // WhatsApp share message
   const whatsappMessage = encodeURIComponent(
     `I just placed an order for ${firstItemName} from Gifts Cart India! Order #${order.orderNumber}. Track it at giftscart.netlify.app/orders/${id}`
   )
+
+  // Suppress unused variable warning
+  void payment
 
   return (
     <div className="max-w-lg mx-auto px-4 py-16">
@@ -126,7 +130,7 @@ export default async function OrderConfirmationPage({
       <div className="bg-gray-50 rounded-xl p-4 text-center mt-6 border animate-fade-up">
         <p className="text-sm text-gray-500">Your Order Number</p>
         <p className="text-2xl font-mono font-bold text-pink-600 mt-1">
-          #{order.orderNumber}
+          #{order.orderNumber as string}
         </p>
         <p className="text-xs text-gray-400 mt-1">
           Save this for tracking your order
@@ -142,18 +146,18 @@ export default async function OrderConfirmationPage({
             <span className="text-gray-500">📅 Delivering on</span>
             <span className="text-right text-gray-900">
               {deliveryDateFormatted}
-              {order.deliverySlot && (
-                <span className="text-gray-500"> · {order.deliverySlot}</span>
+              {String(order.deliverySlot || '') && (
+                <span className="text-gray-500"> · {String(order.deliverySlot)}</span>
               )}
             </span>
           </div>
 
           {/* Address */}
-          {order.address && (
+          {address && (
             <div className="flex justify-between text-sm">
               <span className="text-gray-500 shrink-0">📍 Delivering to</span>
               <span className="text-right text-gray-900 ml-2">
-                {order.address.name}, {order.address.address}, {order.address.city} - {order.address.pincode}
+                {address.name as string}, {address.address as string}, {address.city as string} - {address.pincode as string}
               </span>
             </div>
           )}

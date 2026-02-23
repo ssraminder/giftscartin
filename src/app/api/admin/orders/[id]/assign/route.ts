@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -9,22 +8,14 @@ const assignVendorSchema = z.object({
   vendorId: z.string().min(1),
 })
 
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
-
 // POST: Assign a vendor to an order
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -43,9 +34,10 @@ export async function POST(
     }
 
     const { vendorId } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Verify order exists
-    const order = await prisma.order.findUnique({ where: { id } })
+    const { data: order } = await supabase.from('orders').select('*').eq('id', id).maybeSingle()
     if (!order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
@@ -54,7 +46,7 @@ export async function POST(
     }
 
     // Verify vendor exists and is approved
-    const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } })
+    const { data: vendor } = await supabase.from('vendors').select('*').eq('id', vendorId).maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -69,33 +61,33 @@ export async function POST(
       )
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-    const updated = await prisma.order.update({
-      where: { id },
-      data: { vendorId },
+    // Update order
+    const { data: updated, error } = await supabase
+      .from('orders')
+      .update({ vendorId, updatedAt: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    await supabase.from('order_status_history').insert({
+      orderId: id,
+      status: order.status,
+      note: `Vendor assigned: ${vendor.businessName}`,
+      changedBy: user.id,
     })
 
-    await prisma.orderStatusHistory.create({
-      data: {
-        orderId: id,
-        status: order.status,
-        note: `Vendor assigned: ${vendor.businessName}`,
-        changedBy: admin.id,
-      },
-    })
-
-    await prisma.auditLog.create({
-      data: {
-        adminId: admin.id,
-        adminRole: admin.role,
-        actionType: 'order_assign_vendor',
-        entityType: 'order',
-        entityId: id,
-        fieldChanged: 'vendorId',
-        oldValue: { vendorId: order.vendorId },
-        newValue: { vendorId },
-        reason: `Assigned vendor ${vendor.businessName} to order ${order.orderNumber}`,
-      },
+    await supabase.from('audit_logs').insert({
+      adminId: user.id,
+      adminRole: user.role,
+      actionType: 'order_assign_vendor',
+      entityType: 'order',
+      entityId: id,
+      fieldChanged: 'vendorId',
+      oldValue: { vendorId: order.vendorId },
+      newValue: { vendorId },
+      reason: `Assigned vendor ${vendor.businessName} to order ${order.orderNumber}`,
     })
 
     return NextResponse.json({ success: true, data: updated })

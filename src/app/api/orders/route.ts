@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
-import { getSupabase } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin, getSupabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
 import { paginationSchema } from '@/lib/validations'
 import { generateOrderNumber } from '@/lib/utils'
@@ -64,13 +62,7 @@ const createOrderBodySchema = z.object({
   guestPhone: z.string().regex(/^\+[1-9]\d{6,14}$/).optional(),
 })
 
-async function getSessionUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  return session.user as { id: string; role: string; email: string }
-}
-
-// Smart vendor assignment — slot, capacity, hours, holiday aware
+// Smart vendor assignment -- slot, capacity, hours, holiday aware
 async function findBestVendor(
   cityId: string,
   pincode: string,
@@ -79,67 +71,155 @@ async function findBestVendor(
   deliveryDate: Date,
   requiredLeadTimeHours: number
 ): Promise<string | null> {
+  const supabase = getSupabaseAdmin()
   const dayOfWeek = deliveryDate.getDay()
-  const dateOnly  = new Date(deliveryDate.toISOString().split('T')[0])
+  const dateOnly = new Date(deliveryDate.toISOString().split('T')[0]).toISOString()
 
-  const vendorPincodes = await prisma.vendorPincode.findMany({
-    where: { pincode, isActive: true },
-    select: { vendorId: true },
-  })
-  const candidateIds = vendorPincodes.map(vp => vp.vendorId)
+
+  // Find vendors serving this pincode
+  const { data: vendorPincodes } = await supabase
+    .from('vendor_pincodes')
+    .select('vendorId')
+    .eq('pincode', pincode)
+    .eq('isActive', true)
+
+  const candidateIds = (vendorPincodes || []).map((vp: { vendorId: string }) => vp.vendorId)
   if (candidateIds.length === 0) return null
 
-  const vendors = await prisma.vendor.findMany({
-    where: {
-      id:      { in: candidateIds },
-      cityId,
-      status:  'APPROVED',
-      isOnline: true,
-      OR: [
-        { vacationStart: null },
-        { vacationEnd:   { lt: new Date() } },
-        { vacationStart: { gt: new Date() } },
-      ],
-    },
-    include: {
-      workingHours: { where: { dayOfWeek } },
-      slots:        { where: { slotId, isEnabled: true } },
-      holidays:     { where: { date: dateOnly } },
-      capacity:     { where: { date: dateOnly, slotId } },
-      products:     { where: { productId: { in: productIds }, isAvailable: true } },
-    },
-  })
+  // Fetch approved, online vendors in this city (not on vacation)
+  const { data: vendors } = await supabase
+    .from('vendors')
+    .select('id, rating')
+    .in('id', candidateIds)
+    .eq('cityId', cityId)
+    .eq('status', 'APPROVED')
+    .eq('isOnline', true)
 
-  const eligible = vendors.filter(vendor => {
+  if (!vendors || vendors.length === 0) return null
+
+  // Filter out vendors currently on vacation
+  const activeVendors: Array<{ id: string; rating: unknown }> = []
+  for (const vendor of vendors) {
+    const { data: vendorFull } = await supabase
+      .from('vendors')
+      .select('vacationStart, vacationEnd')
+      .eq('id', vendor.id)
+      .single()
+
+    if (vendorFull) {
+      const onVacation =
+        vendorFull.vacationStart &&
+        vendorFull.vacationEnd &&
+        new Date(vendorFull.vacationStart) <= new Date() &&
+        new Date(vendorFull.vacationEnd) >= new Date()
+      if (!onVacation) {
+        activeVendors.push(vendor)
+      }
+    }
+  }
+
+  if (activeVendors.length === 0) return null
+
+  const activeVendorIds = activeVendors.map((v) => v.id)
+
+  // Fetch working hours for today
+  const { data: workingHours } = await supabase
+    .from('vendor_working_hours')
+    .select('vendorId, isClosed')
+    .in('vendorId', activeVendorIds)
+    .eq('dayOfWeek', dayOfWeek)
+
+  const workingHoursMap = new Map(
+    (workingHours || []).map((wh: { vendorId: string; isClosed: boolean }) => [wh.vendorId, wh])
+  )
+
+  // Fetch slot assignments
+  const { data: vendorSlots } = await supabase
+    .from('vendor_slots')
+    .select('vendorId')
+    .in('vendorId', activeVendorIds)
+    .eq('slotId', slotId)
+    .eq('isEnabled', true)
+
+  const vendorsWithSlot = new Set(
+    (vendorSlots || []).map((vs: { vendorId: string }) => vs.vendorId)
+  )
+
+  // Fetch holidays
+  const { data: holidays } = await supabase
+    .from('vendor_holidays')
+    .select('vendorId, blockedSlots')
+    .in('vendorId', activeVendorIds)
+    .eq('date', dateOnly)
+
+  const holidayMap = new Map(
+    (holidays || []).map((h: { vendorId: string; blockedSlots: string[] | null }) => [h.vendorId, h])
+  )
+
+  // Fetch capacity
+  const { data: capacities } = await supabase
+    .from('vendor_capacity')
+    .select('vendorId, maxOrders, bookedOrders')
+    .in('vendorId', activeVendorIds)
+    .eq('date', dateOnly)
+    .eq('slotId', slotId)
+
+  const capacityMap = new Map(
+    (capacities || []).map((c: { vendorId: string; maxOrders: number; bookedOrders: number }) => [c.vendorId, c])
+  )
+
+  // Fetch vendor products
+  const { data: vendorProducts } = await supabase
+    .from('vendor_products')
+    .select('vendorId, productId, preparationTime')
+    .in('vendorId', activeVendorIds)
+    .in('productId', productIds)
+    .eq('isAvailable', true)
+
+  // Group vendor products by vendorId
+  const vendorProductMap = new Map<string, Array<{ productId: string; preparationTime: number }>>()
+  for (const vp of vendorProducts || []) {
+    const existing = vendorProductMap.get(vp.vendorId) || []
+    existing.push({ productId: vp.productId, preparationTime: vp.preparationTime })
+    vendorProductMap.set(vp.vendorId, existing)
+  }
+
+  // Filter eligible vendors
+  const eligible: Array<{ id: string; rating: unknown; bookedOrders: number }> = []
+  for (const vendor of activeVendors) {
+    const vProducts = vendorProductMap.get(vendor.id) || []
+    const vendorProductIds = vProducts.map((vp) => vp.productId)
+
     // Must stock all ordered products
-    const vendorProductIds = vendor.products.map(vp => vp.productId)
-    if (!productIds.every(pid => vendorProductIds.includes(pid))) return false
+    if (!productIds.every((pid) => vendorProductIds.includes(pid))) continue
 
     // Must offer this slot
-    if (vendor.slots.length === 0) return false
+    if (!vendorsWithSlot.has(vendor.id)) continue
 
     // Must be open today
-    const workDay = vendor.workingHours[0]
-    if (!workDay || workDay.isClosed) return false
+    const workDay = workingHoursMap.get(vendor.id)
+    if (!workDay || workDay.isClosed) continue
 
     // Must not be on holiday for this slot
-    const holiday = vendor.holidays[0]
+    const holiday = holidayMap.get(vendor.id)
     if (holiday) {
       const overrides = (holiday.blockedSlots ?? []) as string[]
-      // blockedSlots = [] means full day blocked; otherwise check if slotId is listed
-      if (overrides.length === 0 || overrides.includes(slotId)) return false
+      if (overrides.length === 0 || overrides.includes(slotId)) continue
     }
 
     // Must have capacity
-    const cap = vendor.capacity[0]
-    if (cap && cap.bookedOrders >= cap.maxOrders) return false
+    const cap = capacityMap.get(vendor.id)
+    if (cap && cap.bookedOrders >= cap.maxOrders) continue
 
     // Must meet product lead time
-    const maxPrep = Math.max(...vendor.products.map(vp => vp.preparationTime))
-    if (Math.ceil(maxPrep / 60) > requiredLeadTimeHours) return false
+    const maxPrep = Math.max(...vProducts.map((vp) => vp.preparationTime))
+    if (Math.ceil(maxPrep / 60) > requiredLeadTimeHours) continue
 
-    return true
-  })
+    eligible.push({
+      ...vendor,
+      bookedOrders: cap?.bookedOrders ?? 0,
+    })
+  }
 
   if (eligible.length === 0) return null
 
@@ -147,17 +227,31 @@ async function findBestVendor(
   eligible.sort((a, b) => {
     const rDiff = Number(b.rating) - Number(a.rating)
     if (rDiff !== 0) return rDiff
-    return (a.capacity[0]?.bookedOrders ?? 0) - (b.capacity[0]?.bookedOrders ?? 0)
+    return a.bookedOrders - b.bookedOrders
   })
 
   const best = eligible[0]
 
-  // Increment booked orders atomically
-  await prisma.vendorCapacity.upsert({
-    where:  { vendorId_date_slotId: { vendorId: best.id, date: dateOnly, slotId } },
-    update: { bookedOrders: { increment: 1 } },
-    create: { vendorId: best.id, date: dateOnly, slotId, maxOrders: 10, bookedOrders: 1 },
-  })
+  // Increment booked orders atomically via upsert
+  const existingCap = capacityMap.get(best.id)
+  if (existingCap) {
+    await supabase
+      .from('vendor_capacity')
+      .update({ bookedOrders: existingCap.bookedOrders + 1, updatedAt: new Date().toISOString() })
+      .eq('vendorId', best.id)
+      .eq('date', dateOnly)
+      .eq('slotId', slotId)
+  } else {
+    await supabase
+      .from('vendor_capacity')
+      .insert({
+        vendorId: best.id,
+        date: dateOnly,
+        slotId,
+        maxOrders: 10,
+        bookedOrders: 1,
+      })
+  }
 
   return best.id
 }
@@ -165,7 +259,7 @@ async function findBestVendor(
 // GET: List user's orders
 export async function GET(request: NextRequest) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -185,33 +279,55 @@ export async function GET(request: NextRequest) {
 
     const { page, pageSize } = parsed.data
     const skip = (page - 1) * pageSize
-
+    const supabase = getSupabaseAdmin()
     const isAdmin = isAdminRole(user.role)
-    const where = isAdmin ? {} : { userId: user.id }
 
-    const [items, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: pageSize,
-        include: {
-          items: {
-            include: {
-              product: {
-                select: { id: true, name: true, slug: true, images: true },
-              },
-            },
-          },
-          address: true,
-        },
-      }),
-      prisma.order.count({ where }),
+    // Build the query
+    let query = supabase
+      .from('orders')
+      .select('*, order_items(*, products(id, name, slug, images)), addresses(*)')
+      .order('createdAt', { ascending: false })
+      .range(skip, skip + pageSize - 1)
+
+    let countQuery = supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+
+    if (!isAdmin) {
+      query = query.eq('userId', user.id)
+      countQuery = countQuery.eq('userId', user.id)
+    }
+
+    const [{ data: items, error: itemsError }, { count: total, error: countError }] = await Promise.all([
+      query,
+      countQuery,
     ])
+
+    if (itemsError) {
+      console.error('Orders query error:', itemsError)
+      throw itemsError
+    }
+    if (countError) {
+      console.error('Orders count error:', countError)
+      throw countError
+    }
+
+    // Reshape: order_items -> items, addresses -> address
+    const reshapedItems = (items || []).map((order: Record<string, unknown>) => ({
+      ...order,
+      items: ((order.order_items as Array<Record<string, unknown>>) || []).map((item) => ({
+        ...item,
+        product: item.products,
+        products: undefined,
+      })),
+      order_items: undefined,
+      address: order.addresses,
+      addresses: undefined,
+    }))
 
     return NextResponse.json({
       success: true,
-      data: { items, total, page, pageSize },
+      data: { items: reshapedItems, total: total || 0, page, pageSize },
     })
   } catch (error) {
     console.error('GET /api/orders error:', error)
@@ -225,7 +341,7 @@ export async function GET(request: NextRequest) {
 // POST: Create a new order
 export async function POST(request: NextRequest) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     const isGuest = !user
 
     const body = await request.json()
@@ -257,6 +373,8 @@ export async function POST(request: NextRequest) {
       guestPhone,
     } = parsed.data
 
+    const supabase = getSupabaseAdmin()
+
     // Guests must provide email + phone
     if (isGuest) {
       if (!guestEmail || !guestPhone) {
@@ -273,10 +391,13 @@ export async function POST(request: NextRequest) {
       const refCode = request.cookies.get('gci_ref')?.value ?? null
       if (refCode) {
         try {
-          const partner = await prisma.partner.findUnique({
-            where: { refCode, isActive: true },
-            select: { id: true },
-          })
+          const { data: partner } = await supabase
+            .from('partners')
+            .select('id')
+            .eq('refCode', refCode)
+            .eq('isActive', true)
+            .single()
+
           if (partner) {
             partnerId = partner.id
           }
@@ -287,10 +408,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve address: create inline or look up existing
-    let address
+    let address: Record<string, unknown> | null = null
     if (inlineAddress && (addressId === 'inline' || addressId === '__CREATE__')) {
-      address = await prisma.address.create({
-        data: {
+      const { data: newAddress, error: addrError } = await supabase
+        .from('addresses')
+        .insert({
           userId: isGuest ? null : user!.id,
           name: inlineAddress.name,
           phone: inlineAddress.phone,
@@ -299,14 +421,22 @@ export async function POST(request: NextRequest) {
           city: inlineAddress.city,
           state: inlineAddress.state,
           pincode: inlineAddress.pincode,
-        },
-      })
+        })
+        .select()
+        .single()
+
+      if (addrError) {
+        console.error('Address creation error:', addrError)
+        throw addrError
+      }
+      address = newAddress
     } else {
-      address = await prisma.address.findFirst({
-        where: isGuest
-          ? { id: addressId }
-          : { id: addressId, userId: user!.id },
-      })
+      let addrQuery = supabase.from('addresses').select('*').eq('id', addressId)
+      if (!isGuest) {
+        addrQuery = addrQuery.eq('userId', user!.id)
+      }
+      const { data: existingAddress } = await addrQuery.single()
+      address = existingAddress
     }
 
     if (!address) {
@@ -318,15 +448,14 @@ export async function POST(request: NextRequest) {
 
     // Verify each product exists and is active, calculate subtotal
     const productIds = orderItems.map((item) => item.productId)
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, isActive: true },
-      include: {
-        variations: { where: { isActive: true } },
-      },
-    })
+    const { data: products } = await supabase
+      .from('products')
+      .select('*, product_variations(*)')
+      .in('id', productIds)
+      .eq('isActive', true)
 
-    if (products.length !== productIds.length) {
-      const foundIds = new Set(products.map((p) => p.id))
+    if (!products || products.length !== productIds.length) {
+      const foundIds = new Set((products || []).map((p: { id: string }) => p.id))
       const missing = productIds.filter((id) => !foundIds.has(id))
       return NextResponse.json(
         { success: false, error: `Products not found or inactive: ${missing.join(', ')}` },
@@ -334,19 +463,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const productMap = new Map(products.map((p) => [p.id, p]))
+    const productMap = new Map(products.map((p: Record<string, unknown>) => [p.id as string, p]))
 
     // Fetch variation IDs for items that have them
     const variationIds = orderItems
       .map((item) => item.variationId)
       .filter((id): id is string => !!id)
 
-    const variationMap = new Map<string, typeof products[0]['variations'][0]>()
+    const variationMap = new Map<string, Record<string, unknown>>()
     if (variationIds.length > 0) {
-      const variations = await prisma.productVariation.findMany({
-        where: { id: { in: variationIds }, isActive: true },
-      })
-      for (const v of variations) {
+      const { data: variations } = await supabase
+        .from('product_variations')
+        .select('*')
+        .in('id', variationIds)
+        .eq('isActive', true)
+
+      for (const v of variations || []) {
         variationMap.set(v.id, v)
       }
     }
@@ -365,8 +497,8 @@ export async function POST(request: NextRequest) {
           // Check for active sale price
           const now = new Date()
           const hasSale = variation.salePrice &&
-            (!variation.saleFrom || variation.saleFrom <= now) &&
-            (!variation.saleTo || variation.saleTo >= now)
+            (!variation.saleFrom || new Date(variation.saleFrom as string) <= now) &&
+            (!variation.saleTo || new Date(variation.saleTo as string) >= now)
           unitPrice = Number(hasSale ? variation.salePrice : variation.price)
           // Build variation label from attributes
           const attrs = variation.attributes as Record<string, string>
@@ -393,49 +525,60 @@ export async function POST(request: NextRequest) {
 
       return {
         productId: product.id,
-        name: product.name,
+        name: product.name as string,
         quantity: item.quantity,
         price: unitPrice,
         variationId: item.variationId || null,
         variationLabel,
-        addons: item.addons ?? undefined,
+        addons: item.addons ?? null,
       }
     })
 
     // Calculate delivery charge based on pincode zone
     let deliveryCharge = 0
-    const zone = await prisma.cityZone.findFirst({
-      where: { pincodes: { has: address.pincode }, isActive: true },
-      include: { city: true },
-    })
+    const { data: zone } = await supabase
+      .from('city_zones')
+      .select('*, cities(*)')
+      .contains('pincodes', [address.pincode as string])
+      .eq('isActive', true)
+      .limit(1)
+      .single()
 
     if (zone) {
-      const cityCharge = Number(zone.city.baseDeliveryCharge)
+      const city = zone.cities as Record<string, unknown>
+      const cityCharge = Number(city.baseDeliveryCharge)
       const zoneExtra = Number(zone.extraCharge)
-      deliveryCharge = subtotal >= Number(zone.city.freeDeliveryAbove) ? 0 : cityCharge + zoneExtra
+      deliveryCharge = subtotal >= Number(city.freeDeliveryAbove) ? 0 : cityCharge + zoneExtra
 
-      // Add slot-specific charge
-      const slotConfig = await prisma.cityDeliveryConfig.findFirst({
-        where: { cityId: zone.city.id, slot: { slug: deliverySlot } },
-        include: { slot: true },
-      })
-      if (slotConfig) {
-        deliveryCharge += Number(slotConfig.chargeOverride ?? slotConfig.slot.baseCharge)
+      // Add slot-specific charge — find matching slot config by slug
+      const { data: slotConfigs } = await supabase
+        .from('city_delivery_configs')
+        .select('chargeOverride, delivery_slots(slug, baseCharge)')
+        .eq('cityId', (city as { id: string }).id)
+
+      if (slotConfigs) {
+        const matchingConfig = slotConfigs.find((sc: Record<string, unknown>) => {
+          const slot = sc.delivery_slots as { slug: string } | null
+          return slot?.slug === deliverySlot
+        })
+        if (matchingConfig) {
+          const slot = matchingConfig.delivery_slots as unknown as { baseCharge: unknown }
+          deliveryCharge += Number(matchingConfig.chargeOverride ?? slot.baseCharge)
+        }
       }
     }
 
     // Check for active delivery surcharges on deliveryDate
     let surcharge = 0
     const deliveryDateObj = new Date(deliveryDate)
-    const surcharges = await prisma.deliverySurcharge.findMany({
-      where: {
-        isActive: true,
-        startDate: { lte: deliveryDateObj },
-        endDate: { gte: deliveryDateObj },
-      },
-    })
+    const { data: surcharges } = await supabase
+      .from('delivery_surcharges')
+      .select('amount')
+      .eq('isActive', true)
+      .lte('startDate', deliveryDateObj.toISOString())
+      .gte('endDate', deliveryDateObj.toISOString())
 
-    for (const s of surcharges) {
+    for (const s of surcharges || []) {
       surcharge += Number(s.amount)
     }
 
@@ -443,38 +586,40 @@ export async function POST(request: NextRequest) {
     let discount = 0
     let appliedCouponId: string | null = null
     if (couponCode) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: couponCode },
-      })
+      const { data: coupon } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', couponCode)
+        .single()
 
       if (
         coupon &&
         coupon.isActive &&
-        new Date() >= coupon.validFrom &&
-        new Date() <= coupon.validUntil &&
+        new Date() >= new Date(coupon.validFrom) &&
+        new Date() <= new Date(coupon.validUntil) &&
         subtotal >= Number(coupon.minOrderAmount) &&
         (coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit)
       ) {
         // Check per-user limit
         let couponAllowed = true
         if (!isGuest) {
-          const userUsage = await prisma.order.count({
-            where: {
-              userId: user!.id,
-              couponCode: coupon.code,
-              status: { notIn: ['CANCELLED', 'REFUNDED'] },
-            },
-          })
-          if (userUsage >= coupon.perUserLimit) couponAllowed = false
+          const { count: userUsage } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('userId', user!.id)
+            .eq('couponCode', coupon.code)
+            .not('status', 'in', '("CANCELLED","REFUNDED")')
+
+          if ((userUsage || 0) >= coupon.perUserLimit) couponAllowed = false
         } else if (guestEmail) {
-          const guestUsage = await prisma.order.count({
-            where: {
-              guestEmail,
-              couponCode: coupon.code,
-              status: { notIn: ['CANCELLED', 'REFUNDED'] },
-            },
-          })
-          if (guestUsage >= coupon.perUserLimit) couponAllowed = false
+          const { count: guestUsage } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('guestEmail', guestEmail)
+            .eq('couponCode', coupon.code)
+            .not('status', 'in', '("CANCELLED","REFUNDED")')
+
+          if ((guestUsage || 0) >= coupon.perUserLimit) couponAllowed = false
         }
 
         if (couponAllowed) {
@@ -497,27 +642,32 @@ export async function POST(request: NextRequest) {
     const total = subtotal + deliveryCharge + surcharge + codFee - discount
 
     // Determine city code for order number
-    const cityCode = zone?.city.slug.substring(0, 3).toUpperCase() || 'GEN'
+    const cityCode = zone
+      ? ((zone.cities as { slug: string }).slug).substring(0, 3).toUpperCase()
+      : 'GEN'
 
     // Derive effective lead time from ordered products
-    const orderedProducts = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { minLeadTimeHours: true },
-    })
-    const requiredLeadTimeHours = Math.max(...orderedProducts.map(p => p.minLeadTimeHours), 2)
+    const orderedProducts = products.filter((p: { id: string }) => productIds.includes(p.id))
+    const requiredLeadTimeHours = Math.max(
+      ...orderedProducts.map((p: { minLeadTimeHours: number }) => p.minLeadTimeHours),
+      2
+    )
 
     // Find best vendor using smart assignment (slot, capacity, hours, holiday aware)
     let bestVendorId: string | null = null
 
     if (zone) {
       // Look up the delivery slot record by slug to get its ID
-      const slotRecord = await prisma.deliverySlot.findUnique({
-        where: { slug: deliverySlot },
-      })
+      const { data: slotRecord } = await supabase
+        .from('delivery_slots')
+        .select('id')
+        .eq('slug', deliverySlot)
+        .single()
+
       if (slotRecord) {
         bestVendorId = await findBestVendor(
-          zone.city.id,
-          address.pincode,
+          (zone.cities as { id: string }).id,
+          address.pincode as string,
           productIds,
           slotRecord.id,
           deliveryDateObj,
@@ -528,30 +678,42 @@ export async function POST(request: NextRequest) {
 
     // Fallback: simple pincode-based vendor matching
     if (!bestVendorId) {
-      const vendorPincode = await prisma.vendorPincode.findFirst({
-        where: {
-          pincode: address.pincode,
-          isActive: true,
-          vendor: { status: 'APPROVED' },
-        },
-        include: { vendor: true },
-        orderBy: { vendor: { rating: 'desc' } },
-      })
-      bestVendorId = vendorPincode?.vendor.id ?? null
+      const { data: vendorPincodes } = await supabase
+        .from('vendor_pincodes')
+        .select('vendorId, vendors(id, rating, status)')
+        .eq('pincode', address.pincode as string)
+        .eq('isActive', true)
+
+      // Find the best approved vendor
+      const approvedEntries = (vendorPincodes || []).filter(
+        (vp: Record<string, unknown>) => {
+          const vendor = vp.vendors as { status: string } | null
+          return vendor?.status === 'APPROVED'
+        }
+      )
+
+      if (approvedEntries.length > 0) {
+        approvedEntries.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+          const aVendor = a.vendors as unknown as { rating: unknown }
+          const bVendor = b.vendors as unknown as { rating: unknown }
+          return Number(bVendor.rating) - Number(aVendor.rating)
+        })
+        bestVendorId = (approvedEntries[0].vendors as unknown as { id: string }).id
+      }
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-
-    const order = await prisma.order.create({
-      data: {
+    // Create the order
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert({
         orderNumber: generateOrderNumber(cityCode),
         userId: isGuest ? null : user!.id,
         guestEmail: isGuest ? guestEmail : null,
         guestPhone: isGuest ? guestPhone : null,
         vendorId: bestVendorId,
         partnerId: partnerId || null,
-        addressId: address.id,
-        deliveryDate: deliveryDateObj,
+        addressId: address.id as string,
+        deliveryDate: deliveryDateObj.toISOString(),
         deliverySlot,
         deliveryCharge,
         subtotal,
@@ -566,40 +728,76 @@ export async function POST(request: NextRequest) {
         specialInstructions: specialInstructions || null,
         couponCode: couponCode || null,
         paymentMethod: paymentMethod || null,
-        items: {
-          create: itemsForOrder,
-        },
-        statusHistory: {
-          create: {
-            status: 'PENDING',
-            note: 'Order placed',
-          },
-        },
-      },
-      include: {
-        items: true,
-        address: true,
-        statusHistory: true,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (orderError) {
+      console.error('Order creation error:', orderError)
+      throw orderError
+    }
+
+    // Insert order items
+    const orderItemRecords = itemsForOrder.map((item) => ({
+      orderId: order.id,
+      productId: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      variationId: item.variationId,
+      variationLabel: item.variationLabel,
+      addons: item.addons,
+    }))
+
+    const { data: createdItems, error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItemRecords)
+      .select()
+
+    if (itemsError) {
+      console.error('Order items creation error:', itemsError)
+    }
+
+    // Insert status history entry
+    const { data: statusHistory, error: statusError } = await supabase
+      .from('order_status_history')
+      .insert({
+        orderId: order.id,
+        status: 'PENDING',
+        note: 'Order placed',
+      })
+      .select()
+
+    if (statusError) {
+      console.error('Status history creation error:', statusError)
+    }
+
+    // Fetch the address for the response
+    const { data: orderAddress } = await supabase
+      .from('addresses')
+      .select('*')
+      .eq('id', order.addressId)
+      .single()
 
     // Create partner earning if partner is set
     if (partnerId) {
       try {
-        const partnerRecord = await prisma.partner.findUnique({
-          where: { id: partnerId },
-          select: { commissionPercent: true },
-        })
+        const { data: partnerRecord } = await supabase
+          .from('partners')
+          .select('commissionPercent')
+          .eq('id', partnerId)
+          .single()
+
         if (partnerRecord) {
           const earningAmount = (Number(order.total) * Number(partnerRecord.commissionPercent)) / 100
-          await prisma.partnerEarning.create({
-            data: {
+          await supabase
+            .from('partner_earnings')
+            .insert({
               partnerId,
               orderId: order.id,
               amount: earningAmount,
               status: 'pending',
-            },
-          })
+            })
         }
       } catch (partnerErr) {
         // Non-critical: log but don't fail the order
@@ -609,7 +807,7 @@ export async function POST(request: NextRequest) {
 
     // Move FILE_UPLOAD addon files from pending/ to orders/{orderId}/
     try {
-      const supabase = getSupabase()
+      const storageClient = getSupabase()
       for (const item of orderItems) {
         if (!item.addons) continue
         for (const addon of item.addons) {
@@ -624,12 +822,12 @@ export async function POST(request: NextRequest) {
               const newPath = `orders/${order.id}/${groupId}/${filename}`
 
               // Move file: copy then delete
-              const { error: copyError } = await supabase.storage
+              const { error: copyError } = await storageClient.storage
                 .from('order-uploads')
                 .copy(pendingPath, newPath)
 
               if (!copyError) {
-                await supabase.storage
+                await storageClient.storage
                   .from('order-uploads')
                   .remove([pendingPath])
               }
@@ -644,18 +842,37 @@ export async function POST(request: NextRequest) {
 
     // Increment coupon usage if applied
     if (appliedCouponId) {
-      await prisma.coupon.update({
-        where: { id: appliedCouponId },
-        data: { usedCount: { increment: 1 } },
-      })
+      const { data: currentCoupon } = await supabase
+        .from('coupons')
+        .select('usedCount')
+        .eq('id', appliedCouponId)
+        .single()
+
+      if (currentCoupon) {
+        await supabase
+          .from('coupons')
+          .update({
+            usedCount: (currentCoupon.usedCount || 0) + 1,
+            updatedAt: new Date().toISOString(),
+          })
+          .eq('id', appliedCouponId)
+      }
     }
 
     // Clear the user's cart (only for logged-in users; guest cart is Zustand client-side)
     if (!isGuest) {
-      await prisma.cartItem.deleteMany({ where: { userId: user!.id } })
+      await supabase.from('cart_items').delete().eq('userId', user!.id)
     }
 
-    return NextResponse.json({ success: true, data: order }, { status: 201 })
+    // Build response matching old format
+    const fullOrder = {
+      ...order,
+      items: createdItems || [],
+      address: orderAddress,
+      statusHistory: statusHistory || [],
+    }
+
+    return NextResponse.json({ success: true, data: fullOrder }, { status: 201 })
   } catch (error) {
     console.error('POST /api/orders error:', error)
     return NextResponse.json(

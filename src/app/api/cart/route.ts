@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { addToCartSchema, updateCartItemSchema } from '@/lib/validations'
 
-async function getSessionUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  return session.user as { id: string; role: string; email: string }
-}
-
 // GET: Fetch user's cart items
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -21,32 +14,55 @@ export async function GET() {
       )
     }
 
-    const items = await prisma.cartItem.findMany({
-      where: { userId: user.id },
-      include: {
-        product: {
-          include: {
-            category: { select: { id: true, name: true, slug: true } },
-            vendorProducts: {
-              where: { isAvailable: true },
-              take: 1,
-              select: { preparationTime: true },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const supabase = getSupabaseAdmin()
 
-    const maxPreparationTime = items.length > 0
-      ? Math.max(
-          ...items.map(item =>
-            item.product.vendorProducts[0]?.preparationTime ?? 120
-          )
+    const { data: items, error } = await supabase
+      .from('cart_items')
+      .select('*, products(*, categories(id, name, slug))')
+      .eq('userId', user.id)
+      .order('createdAt', { ascending: false })
+
+    if (error) {
+      console.error('Cart fetch error:', error)
+      throw error
+    }
+
+    // Reshape to match expected format: items[].product instead of items[].products
+    const reshapedItems = (items || []).map((item: Record<string, unknown>) => ({
+      ...item,
+      product: item.products,
+      products: undefined,
+    }))
+
+    // Fetch vendor preparation times for each product
+    const productIds = reshapedItems.map((item: Record<string, unknown>) => (item.product as Record<string, unknown> | null)?.id as string).filter(Boolean)
+
+    let maxPreparationTime = 120
+    if (productIds.length > 0) {
+      const { data: vendorProducts } = await supabase
+        .from('vendor_products')
+        .select('productId, preparationTime')
+        .in('productId', productIds)
+        .eq('isAvailable', true)
+
+      if (vendorProducts && vendorProducts.length > 0) {
+        // Group by product, take first available
+        const prepTimeMap = new Map<string, number>()
+        for (const vp of vendorProducts) {
+          if (!prepTimeMap.has(vp.productId)) {
+            prepTimeMap.set(vp.productId, vp.preparationTime)
+          }
+        }
+
+        const prepTimes = reshapedItems.map(
+          (item: Record<string, unknown>) =>
+            prepTimeMap.get((item.product as Record<string, unknown> | null)?.id as string) ?? 120
         )
-      : 120
+        maxPreparationTime = Math.max(...prepTimes, 120)
+      }
+    }
 
-    return NextResponse.json({ success: true, data: { items, maxPreparationTime } })
+    return NextResponse.json({ success: true, data: { items: reshapedItems, maxPreparationTime } })
   } catch (error) {
     console.error('GET /api/cart error:', error)
     return NextResponse.json(
@@ -59,7 +75,7 @@ export async function GET() {
 // POST: Add item to cart
 export async function POST(request: NextRequest) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -78,11 +94,15 @@ export async function POST(request: NextRequest) {
     }
 
     const { productId, quantity, addons, deliveryDate, deliverySlot } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Verify product exists and is active
-    const product = await prisma.product.findUnique({
-      where: { id: productId, isActive: true },
-    })
+    const { data: product } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', productId)
+      .eq('isActive', true)
+      .single()
 
     if (!product) {
       return NextResponse.json(
@@ -92,30 +112,36 @@ export async function POST(request: NextRequest) {
     }
 
     // Upsert cart item (update quantity if already in cart)
-    const cartItem = await prisma.cartItem.upsert({
-      where: {
-        userId_productId: { userId: user.id, productId },
-      },
-      update: {
-        quantity,
-        addons: addons ?? undefined,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : undefined,
-        deliverySlot: deliverySlot ?? undefined,
-      },
-      create: {
-        userId: user.id,
-        productId,
-        quantity,
-        addons: addons ?? undefined,
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-        deliverySlot: deliverySlot ?? null,
-      },
-      include: {
-        product: true,
-      },
-    })
+    const { data: cartItem, error } = await supabase
+      .from('cart_items')
+      .upsert(
+        {
+          userId: user.id,
+          productId,
+          quantity,
+          addons: addons ?? null,
+          deliveryDate: deliveryDate ? new Date(deliveryDate).toISOString() : null,
+          deliverySlot: deliverySlot ?? null,
+          updatedAt: new Date().toISOString(),
+        },
+        { onConflict: 'userId,productId' }
+      )
+      .select('*, products(*)')
+      .single()
 
-    return NextResponse.json({ success: true, data: cartItem }, { status: 201 })
+    if (error) {
+      console.error('Cart upsert error:', error)
+      throw error
+    }
+
+    // Reshape product relation
+    const result = {
+      ...cartItem,
+      product: cartItem.products,
+      products: undefined,
+    }
+
+    return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {
     console.error('POST /api/cart error:', error)
     return NextResponse.json(
@@ -128,7 +154,7 @@ export async function POST(request: NextRequest) {
 // PUT: Update cart item quantity
 export async function PUT(request: NextRequest) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -155,11 +181,15 @@ export async function PUT(request: NextRequest) {
     }
 
     const { quantity } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Verify the cart item belongs to the user
-    const existing = await prisma.cartItem.findFirst({
-      where: { id: cartItemId, userId: user.id },
-    })
+    const { data: existing } = await supabase
+      .from('cart_items')
+      .select('id')
+      .eq('id', cartItemId)
+      .eq('userId', user.id)
+      .single()
 
     if (!existing) {
       return NextResponse.json(
@@ -170,17 +200,29 @@ export async function PUT(request: NextRequest) {
 
     // If quantity is 0, delete the item
     if (quantity === 0) {
-      await prisma.cartItem.delete({ where: { id: cartItemId } })
+      await supabase.from('cart_items').delete().eq('id', cartItemId)
       return NextResponse.json({ success: true, data: null })
     }
 
-    const updated = await prisma.cartItem.update({
-      where: { id: cartItemId },
-      data: { quantity },
-      include: { product: true },
-    })
+    const { data: updated, error } = await supabase
+      .from('cart_items')
+      .update({ quantity, updatedAt: new Date().toISOString() })
+      .eq('id', cartItemId)
+      .select('*, products(*)')
+      .single()
 
-    return NextResponse.json({ success: true, data: updated })
+    if (error) {
+      console.error('Cart update error:', error)
+      throw error
+    }
+
+    const result = {
+      ...updated,
+      product: updated.products,
+      products: undefined,
+    }
+
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('PUT /api/cart error:', error)
     return NextResponse.json(
@@ -193,7 +235,7 @@ export async function PUT(request: NextRequest) {
 // DELETE: Remove item from cart (or clear cart)
 export async function DELETE(request: NextRequest) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
@@ -203,12 +245,16 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = request.nextUrl
     const cartItemId = searchParams.get('cartItemId')
+    const supabase = getSupabaseAdmin()
 
     if (cartItemId) {
       // Delete specific item
-      const existing = await prisma.cartItem.findFirst({
-        where: { id: cartItemId, userId: user.id },
-      })
+      const { data: existing } = await supabase
+        .from('cart_items')
+        .select('id')
+        .eq('id', cartItemId)
+        .eq('userId', user.id)
+        .single()
 
       if (!existing) {
         return NextResponse.json(
@@ -217,10 +263,10 @@ export async function DELETE(request: NextRequest) {
         )
       }
 
-      await prisma.cartItem.delete({ where: { id: cartItemId } })
+      await supabase.from('cart_items').delete().eq('id', cartItemId)
     } else {
       // Clear entire cart
-      await prisma.cartItem.deleteMany({ where: { userId: user.id } })
+      await supabase.from('cart_items').delete().eq('userId', user.id)
     }
 
     return NextResponse.json({ success: true, data: null })

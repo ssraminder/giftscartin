@@ -1,17 +1,31 @@
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminPartnersPage() {
-  const partners = await prisma.partner.findMany({
-    include: {
-      defaultCity: { select: { name: true } },
-      defaultVendor: { select: { businessName: true } },
-      _count: { select: { orders: true, earnings: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
+  const supabase = getSupabaseAdmin()
+
+  const { data: partners } = await supabase
+    .from('partners')
+    .select('*, cities!default_city_id(name), vendors!default_vendor_id(businessName)')
+    .order('createdAt', { ascending: false })
+
+  // Get order counts per partner
+  const partnerList = await Promise.all(
+    (partners || []).map(async (p) => {
+      const { count: orderCount } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('partnerId', p.id)
+      return {
+        ...p,
+        defaultCity: p.cities || null,
+        defaultVendor: p.vendors || null,
+        _count: { orders: orderCount || 0 },
+      }
+    })
+  )
 
   return (
     <div className="p-6">
@@ -41,7 +55,7 @@ export default async function AdminPartnersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {partners.map((p) => (
+              {partnerList.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium">{p.name}</td>
                   <td className="px-4 py-3">
@@ -81,7 +95,7 @@ export default async function AdminPartnersPage() {
             </tbody>
           </table>
         </div>
-        {partners.length === 0 && (
+        {partnerList.length === 0 && (
           <div className="text-center py-12 text-gray-400">
             No partners yet. Create your first partner.
           </div>

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { useAuth } from "@/hooks/use-auth"
 import {
   ChevronDown,
   Gift,
@@ -57,7 +57,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const { data: session } = useSession()
+  const { user, logout } = useAuth()
   const cartCount = useCart((s) => s.getItemCount())
   const { partner } = usePartner()
   const router = useRouter()
@@ -70,8 +70,6 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
     const sep = path.includes('?') ? '&' : '?'
     return `${path}${sep}ref=${partner.refCode}`
   }
-
-  const user = session?.user as { id?: string; name?: string | null; phone?: string; role?: string } | undefined
 
   useEffect(() => {
     setMounted(true)
@@ -128,7 +126,7 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="cursor-pointer text-destructive focus:text-destructive"
-                    onClick={() => signOut({ callbackUrl: "/" })}
+                    onClick={() => logout()}
                   >
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout

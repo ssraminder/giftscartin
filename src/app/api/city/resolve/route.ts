@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data: [] })
     }
 
+    const supabase = getSupabaseAdmin()
     const cacheHeaders = {
       'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
     }
@@ -17,70 +18,92 @@ export async function POST(request: NextRequest) {
     // Exact 6-digit pincode
     if (/^\d{6}$/.test(query)) {
       // Layer 1: service_areas (primary source, always seeded)
-      const area = await prisma.serviceArea.findFirst({
-        where: { pincode: query, isActive: true },
-        include: { city: true },
-      })
+      // Note: service_areas uses @map columns: city_id, is_active, created_at
+      const { data: area } = await supabase
+        .from('service_areas')
+        .select('*, cities(*)')
+        .eq('pincode', query)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+
       if (area) {
+        const city = area.cities as Record<string, unknown>
         return NextResponse.json({
           success: true,
           data: [{
-            cityId: area.city.id,
-            cityName: area.city.name,
-            citySlug: area.city.slug,
+            cityId: (city as { id: string }).id,
+            cityName: (city as { name: string }).name,
+            citySlug: (city as { slug: string }).slug,
             pincode: area.pincode,
             areaName: area.name,
-            isActive: area.city.isActive,
-            isComingSoon: area.city.isComingSoon,
+            isActive: (city as { isActive: boolean }).isActive,
+            isComingSoon: (city as { is_coming_soon: boolean }).is_coming_soon,
           }],
         }, { headers: cacheHeaders })
       }
 
       // Layer 2: pincode_city_map
-      const pin = await prisma.pincodeCityMap.findUnique({
-        where: { pincode: query },
-        include: { city: true },
-      })
+      // Note: pincode_city_map uses @map columns: city_id, area_name, is_active, created_at
+      const { data: pin } = await supabase
+        .from('pincode_city_map')
+        .select('*, cities(*)')
+        .eq('pincode', query)
+        .maybeSingle()
+
       if (pin) {
+        const city = pin.cities as Record<string, unknown>
         return NextResponse.json({
           success: true,
           data: [{
-            cityId: pin.city.id,
-            cityName: pin.city.name,
-            citySlug: pin.city.slug,
+            cityId: (city as { id: string }).id,
+            cityName: (city as { name: string }).name,
+            citySlug: (city as { slug: string }).slug,
             pincode: pin.pincode,
-            areaName: pin.areaName,
-            isActive: pin.city.isActive,
-            isComingSoon: pin.city.isComingSoon,
+            areaName: pin.area_name,
+            isActive: (city as { isActive: boolean }).isActive,
+            isComingSoon: (city as { is_coming_soon: boolean }).is_coming_soon,
           }],
         }, { headers: cacheHeaders })
       }
 
       // Layer 3: city_zones (pincodes[] array)
-      const zone = await prisma.cityZone.findFirst({
-        where: { pincodes: { has: query }, isActive: true },
-        include: { city: true },
-      })
-      if (zone) {
+      const { data: zones } = await supabase
+        .from('city_zones')
+        .select('*, cities(*)')
+        .contains('pincodes', [query])
+        .eq('isActive', true)
+        .limit(1)
+
+      if (zones && zones.length > 0) {
+        const zone = zones[0]
+        const city = zone.cities as Record<string, unknown>
         return NextResponse.json({
           success: true,
           data: [{
-            cityId: zone.city.id,
-            cityName: zone.city.name,
-            citySlug: zone.city.slug,
+            cityId: (city as { id: string }).id,
+            cityName: (city as { name: string }).name,
+            citySlug: (city as { slug: string }).slug,
             pincode: query,
             areaName: zone.name,
-            isActive: zone.city.isActive,
-            isComingSoon: zone.city.isComingSoon,
+            isActive: (city as { isActive: boolean }).isActive,
+            isComingSoon: (city as { is_coming_soon: boolean }).is_coming_soon,
           }],
         }, { headers: cacheHeaders })
       }
 
       // Layer 4: cities.pincodePrefixes
+      // Note: cities uses @map column pincode_prefix for pincodePrefixes
       const prefix = query.slice(0, 3)
-      const prefixCity = await prisma.city.findFirst({
-        where: { pincodePrefixes: { has: prefix } },
+      const { data: allCities } = await supabase
+        .from('cities')
+        .select('*')
+
+      const prefixCity = (allCities || []).find((c: Record<string, unknown>) => {
+        const prefixes = (c.pincode_prefix as string[]) || []
+        return prefixes.includes(prefix)
       })
+
       if (prefixCity) {
         return NextResponse.json({
           success: true,
@@ -91,7 +114,7 @@ export async function POST(request: NextRequest) {
             pincode: query,
             areaName: null,
             isActive: prefixCity.isActive,
-            isComingSoon: prefixCity.isComingSoon,
+            isComingSoon: prefixCity.is_coming_soon,
           }],
         }, { headers: cacheHeaders })
       }
@@ -102,73 +125,88 @@ export async function POST(request: NextRequest) {
     // Partial pincode (2-5 digits)
     if (/^\d{2,5}$/.test(query)) {
       // Try service_areas first
-      const areas = await prisma.serviceArea.findMany({
-        where: { pincode: { startsWith: query }, isActive: true },
-        include: { city: true },
-        take: 8,
-      })
+      const { data: areas } = await supabase
+        .from('service_areas')
+        .select('*, cities(*)')
+        .like('pincode', `${query}%`)
+        .eq('is_active', true)
+        .limit(8)
 
-      if (areas.length > 0) {
+      if (areas && areas.length > 0) {
         const seen = new Set<string>()
         const data = areas
-          .filter(a => {
-            if (seen.has(a.city.id)) return false
-            seen.add(a.city.id)
+          .filter((a: Record<string, unknown>) => {
+            const city = a.cities as { id: string }
+            if (seen.has(city.id)) return false
+            seen.add(city.id)
             return true
           })
-          .map(a => ({
-            cityId: a.city.id,
-            cityName: a.city.name,
-            citySlug: a.city.slug,
-            pincode: a.pincode,
-            areaName: a.name,
-            isActive: a.city.isActive,
-            isComingSoon: a.city.isComingSoon,
-          }))
+          .map((a: Record<string, unknown>) => {
+            const city = a.cities as Record<string, unknown>
+            return {
+              cityId: (city as { id: string }).id,
+              cityName: (city as { name: string }).name,
+              citySlug: (city as { slug: string }).slug,
+              pincode: a.pincode,
+              areaName: a.name,
+              isActive: (city as { isActive: boolean }).isActive,
+              isComingSoon: (city as { is_coming_soon: boolean }).is_coming_soon,
+            }
+          })
         return NextResponse.json({ success: true, data }, { headers: cacheHeaders })
       }
 
       // Fallback: pincode_city_map
-      const pins = await prisma.pincodeCityMap.findMany({
-        where: { pincode: { startsWith: query }, isActive: true },
-        include: { city: true },
-        take: 8,
-      })
+      const { data: pins } = await supabase
+        .from('pincode_city_map')
+        .select('*, cities(*)')
+        .like('pincode', `${query}%`)
+        .eq('is_active', true)
+        .limit(8)
 
-      if (pins.length > 0) {
+      if (pins && pins.length > 0) {
         const seen = new Set<string>()
         const data = pins
-          .filter(p => {
-            if (seen.has(p.city.id)) return false
-            seen.add(p.city.id)
+          .filter((p: Record<string, unknown>) => {
+            const city = p.cities as { id: string }
+            if (seen.has(city.id)) return false
+            seen.add(city.id)
             return true
           })
-          .map(p => ({
-            cityId: p.city.id,
-            cityName: p.city.name,
-            citySlug: p.city.slug,
-            pincode: p.pincode,
-            areaName: p.areaName,
-            isActive: p.city.isActive,
-            isComingSoon: p.city.isComingSoon,
-          }))
+          .map((p: Record<string, unknown>) => {
+            const city = p.cities as Record<string, unknown>
+            return {
+              cityId: (city as { id: string }).id,
+              cityName: (city as { name: string }).name,
+              citySlug: (city as { slug: string }).slug,
+              pincode: p.pincode,
+              areaName: p.area_name,
+              isActive: (city as { isActive: boolean }).isActive,
+              isComingSoon: (city as { is_coming_soon: boolean }).is_coming_soon,
+            }
+          })
         return NextResponse.json({ success: true, data }, { headers: cacheHeaders })
       }
 
       // Fallback: cities.pincodePrefixes
-      const matchingCities = await prisma.city.findMany({
-        where: { pincodePrefixes: { has: query } },
-        take: 5,
-      })
+      const { data: allCities } = await supabase
+        .from('cities')
+        .select('*')
+
+      const matchingCities = (allCities || []).filter((c: Record<string, unknown>) => {
+        const prefixes = (c.pincode_prefix as string[]) || []
+        return prefixes.includes(query)
+      }).slice(0, 5)
+
       if (matchingCities.length > 0) {
-        const data = matchingCities.map(c => ({
+        const data = matchingCities.map((c: Record<string, unknown>) => ({
           cityId: c.id,
           cityName: c.name,
           citySlug: c.slug,
           pincode: null,
           areaName: null,
           isActive: c.isActive,
-          isComingSoon: c.isComingSoon,
+          isComingSoon: c.is_coming_soon,
         }))
         return NextResponse.json({ success: true, data }, { headers: cacheHeaders })
       }
@@ -177,25 +215,37 @@ export async function POST(request: NextRequest) {
     }
 
     // City name text search (also search aliases)
-    const cities = await prisma.city.findMany({
-      where: {
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { aliases: { has: query.toLowerCase() } },
-        ],
-      },
-      take: 8,
-      orderBy: { name: 'asc' },
-    })
+    const { data: cities } = await supabase
+      .from('cities')
+      .select('*')
+      .ilike('name', `%${query}%`)
+      .order('name', { ascending: true })
+      .limit(8)
 
-    const data = cities.map(c => ({
+    // Also search by aliases -- aliases is an array, use contains for exact match
+    const { data: aliasCities } = await supabase
+      .from('cities')
+      .select('*')
+      .contains('aliases', [query.toLowerCase()])
+      .limit(8)
+
+    // Merge and deduplicate
+    const allResults = [...(cities || []), ...(aliasCities || [])]
+    const seen = new Set<string>()
+    const dedupedCities = allResults.filter((c: { id: string }) => {
+      if (seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    }).slice(0, 8)
+
+    const data = dedupedCities.map((c: Record<string, unknown>) => ({
       cityId: c.id,
       cityName: c.name,
       citySlug: c.slug,
       pincode: null,
       areaName: null,
       isActive: c.isActive,
-      isComingSoon: c.isComingSoon,
+      isComingSoon: c.is_coming_soon,
     }))
 
     return NextResponse.json({ success: true, data }, { headers: cacheHeaders })

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -9,31 +8,57 @@ export const dynamic = 'force-dynamic'
 
 // ==================== GET — List all categories with tree structure ====================
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const categories = await prisma.category.findMany({
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-      include: {
-        _count: { select: { products: true } },
-        addonTemplates: {
-          where: { isActive: true },
-          include: {
-            options: { orderBy: { sortOrder: 'asc' } },
-          },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
-    })
+    const supabase = getSupabaseAdmin()
 
-    // Build tree in-memory: nest children under parents
+    const { data: categories, error } = await supabase
+      .from('categories')
+      .select('*')
+      .order('sortOrder', { ascending: true })
+
+    if (error) throw error
+
+    // Get product counts per category
+    const catIds = (categories || []).map(c => c.id)
+    const productCounts: Record<string, number> = {}
+    if (catIds.length > 0) {
+      const { data: productRows } = await supabase
+        .from('products')
+        .select('categoryId')
+        .in('categoryId', catIds)
+      if (productRows) {
+        for (const row of productRows) {
+          productCounts[row.categoryId] = (productCounts[row.categoryId] || 0) + 1
+        }
+      }
+    }
+
+    // Get addon templates with options
+    const { data: templates } = await supabase
+      .from('category_addon_templates')
+      .select('*, category_addon_template_options(*)')
+      .eq('isActive', true)
+      .order('sortOrder', { ascending: true })
+
+    const templatesByCategory: Record<string, Record<string, unknown>[]> = {}
+    for (const t of (templates || [])) {
+      if (!templatesByCategory[t.categoryId]) templatesByCategory[t.categoryId] = []
+      templatesByCategory[t.categoryId].push({
+        ...t,
+        options: ((t.category_addon_template_options as Record<string, unknown>[]) || []).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+      })
+    }
+
+    // Build tree in-memory
     interface CategoryNode {
       id: string
       name: string
@@ -47,55 +72,29 @@ export async function GET() {
       metaDescription: string | null
       metaKeywords: string[]
       ogImage: string | null
-      createdAt: Date
+      createdAt: string
       _count: { products: number }
-      addonTemplates: Array<{
-        id: string
-        categoryId: string
-        name: string
-        description: string | null
-        type: string
-        required: boolean
-        maxLength: number | null
-        placeholder: string | null
-        acceptedFileTypes: string[]
-        maxFileSizeMb: number | null
-        sortOrder: number
-        isActive: boolean
-        createdAt: Date
-        updatedAt: Date
-        options: Array<{
-          id: string
-          templateId: string
-          label: string
-          price: unknown
-          image: string | null
-          isDefault: boolean
-          sortOrder: number
-          isActive: boolean
-        }>
-      }>
+      addonTemplates: Record<string, unknown>[]
       children: CategoryNode[]
     }
 
     const nodeMap = new Map<string, CategoryNode>()
     const roots: CategoryNode[] = []
 
-    // Create nodes
-    for (const cat of categories) {
+    for (const cat of (categories || [])) {
       nodeMap.set(cat.id, {
         ...cat,
+        _count: { products: productCounts[cat.id] || 0 },
+        addonTemplates: templatesByCategory[cat.id] || [],
         children: [],
       })
     }
 
-    // Build tree
-    for (const cat of categories) {
+    for (const cat of (categories || [])) {
       const node = nodeMap.get(cat.id)!
       if (cat.parentId && nodeMap.has(cat.parentId)) {
         nodeMap.get(cat.parentId)!.children.push(node)
       } else {
-        // Root-level (either no parent or orphaned — parent not found)
         roots.push(node)
       }
     }
@@ -141,12 +140,10 @@ const createCategorySchema = z.object({
   parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().default(0),
   isActive: z.boolean().default(true),
-  // SEO
   metaTitle: z.string().max(60).nullable().optional(),
   metaDescription: z.string().max(160).nullable().optional(),
   metaKeywords: z.array(z.string()).default([]),
   ogImage: z.string().nullable().optional(),
-  // Addon templates
   addonTemplates: z.array(addonTemplateSchema).default([]),
 })
 
@@ -161,8 +158,8 @@ function generateSlug(name: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -180,9 +177,15 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data
     const slug = data.slug?.trim() || generateSlug(data.name)
+    const supabase = getSupabaseAdmin()
 
     // Check slug uniqueness
-    const existingSlug = await prisma.category.findUnique({ where: { slug } })
+    const { data: existingSlug } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle()
+
     if (existingSlug) {
       return NextResponse.json(
         { success: false, error: `Slug "${slug}" is already in use` },
@@ -190,10 +193,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-
-    const category = await prisma.category.create({
-      data: {
+    const { data: category, error: catError } = await supabase
+      .from('categories')
+      .insert({
         name: data.name,
         slug,
         description: data.description ?? null,
@@ -205,13 +207,17 @@ export async function POST(request: NextRequest) {
         metaDescription: data.metaDescription ?? null,
         metaKeywords: data.metaKeywords,
         ogImage: data.ogImage ?? null,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (catError) throw catError
 
     // Create addon templates and their options
     for (const template of data.addonTemplates) {
-      const createdTemplate = await prisma.categoryAddonTemplate.create({
-        data: {
+      const { data: createdTemplate, error: tErr } = await supabase
+        .from('category_addon_templates')
+        .insert({
           categoryId: category.id,
           name: template.name,
           description: template.description ?? null,
@@ -222,33 +228,50 @@ export async function POST(request: NextRequest) {
           acceptedFileTypes: template.acceptedFileTypes,
           maxFileSizeMb: template.maxFileSizeMb ?? 5,
           sortOrder: template.sortOrder,
-        },
-      })
+        })
+        .select()
+        .single()
+
+      if (tErr) throw tErr
+
       for (const opt of template.options) {
-        await prisma.categoryAddonTemplateOption.create({
-          data: {
-            templateId: createdTemplate.id,
-            label: opt.label,
-            price: opt.price,
-            image: opt.image ?? null,
-            isDefault: opt.isDefault,
-            sortOrder: opt.sortOrder,
-          },
+        await supabase.from('category_addon_template_options').insert({
+          templateId: createdTemplate.id,
+          label: opt.label,
+          price: opt.price,
+          image: opt.image ?? null,
+          isDefault: opt.isDefault,
+          sortOrder: opt.sortOrder,
         })
       }
     }
 
     // Fetch full category with relations
-    const full = await prisma.category.findUnique({
-      where: { id: category.id },
-      include: {
-        _count: { select: { products: true } },
-        addonTemplates: {
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
-    })
+    const { data: fullCat } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('id', category.id)
+      .single()
+
+    const { data: catTemplates } = await supabase
+      .from('category_addon_templates')
+      .select('*, category_addon_template_options(*)')
+      .eq('categoryId', category.id)
+      .order('sortOrder', { ascending: true })
+
+    const { count: productCount } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('categoryId', category.id)
+
+    const full = {
+      ...fullCat,
+      _count: { products: productCount ?? 0 },
+      addonTemplates: (catTemplates || []).map((t: Record<string, unknown>) => ({
+        ...t,
+        options: ((t.category_addon_template_options as Record<string, unknown>[]) || []).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+      })),
+    }
 
     return NextResponse.json({ success: true, data: full }, { status: 201 })
   } catch (error) {

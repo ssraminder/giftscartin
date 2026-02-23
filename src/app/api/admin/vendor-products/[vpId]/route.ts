@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -13,22 +12,14 @@ const updateSchema = z.object({
   isSameDayEligible: z.boolean().optional(),
 })
 
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
-
 // PATCH: Update vendor product fields
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ vpId: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -46,9 +37,13 @@ export async function PATCH(
       )
     }
 
-    const existing = await prisma.vendorProduct.findUnique({
-      where: { id: vpId },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing } = await supabase
+      .from('vendor_products')
+      .select('id')
+      .eq('id', vpId)
+      .maybeSingle()
 
     if (!existing) {
       return NextResponse.json(
@@ -57,17 +52,21 @@ export async function PATCH(
       )
     }
 
-    const data: Record<string, unknown> = {}
+    const data: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (parsed.data.costPrice !== undefined) data.costPrice = parsed.data.costPrice
     if (parsed.data.preparationTime !== undefined) data.preparationTime = parsed.data.preparationTime
     if (parsed.data.dailyLimit !== undefined) data.dailyLimit = parsed.data.dailyLimit
     if (parsed.data.isAvailable !== undefined) data.isAvailable = parsed.data.isAvailable
     if (parsed.data.isSameDayEligible !== undefined) data.isSameDayEligible = parsed.data.isSameDayEligible
 
-    const updated = await prisma.vendorProduct.update({
-      where: { id: vpId },
-      data,
-    })
+    const { data: updated, error } = await supabase
+      .from('vendor_products')
+      .update(data)
+      .eq('id', vpId)
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({
       success: true,
@@ -92,12 +91,12 @@ export async function PATCH(
 
 // DELETE: Hard delete vendor_product record
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ vpId: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -105,10 +104,13 @@ export async function DELETE(
     }
 
     const { vpId } = await params
+    const supabase = getSupabaseAdmin()
 
-    const existing = await prisma.vendorProduct.findUnique({
-      where: { id: vpId },
-    })
+    const { data: existing } = await supabase
+      .from('vendor_products')
+      .select('id')
+      .eq('id', vpId)
+      .maybeSingle()
 
     if (!existing) {
       return NextResponse.json(
@@ -117,9 +119,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.vendorProduct.delete({
-      where: { id: vpId },
-    })
+    await supabase.from('vendor_products').delete().eq('id', vpId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,29 +1,34 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
 
 export const dynamic = 'force-dynamic'
 
-async function getVendor() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
-  const vendor = await prisma.vendor.findUnique({ where: { userId: user.id } })
+async function getVendor(request: NextRequest) {
+  const session = await getSessionFromRequest(request)
+  if (!session?.id) return null
+  if (!isVendorRole(session.role) && !isAdminRole(session.role)) return null
+  const supabase = getSupabaseAdmin()
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('*')
+    .eq('userId', session.id)
+    .single()
   return vendor
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
         { status: 403 }
       )
     }
+
+    const supabase = getSupabaseAdmin()
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -37,91 +42,78 @@ export async function GET() {
     monthAgo.setMonth(monthAgo.getMonth() - 1)
 
     // Today's orders
-    const todayOrders = await prisma.order.count({
-      where: {
-        vendorId: vendor.id,
-        createdAt: { gte: today, lt: tomorrow },
-      },
-    })
+    const { count: todayOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('vendorId', vendor.id)
+      .gte('createdAt', today.toISOString())
+      .lt('createdAt', tomorrow.toISOString())
 
     // Pending orders (need attention)
-    const pendingOrders = await prisma.order.count({
-      where: {
-        vendorId: vendor.id,
-        status: { in: ['PENDING', 'CONFIRMED'] },
-      },
-    })
+    const { count: pendingOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('vendorId', vendor.id)
+      .in('status', ['PENDING', 'CONFIRMED'])
 
     // This week's earnings (paid orders)
-    const weekEarnings = await prisma.order.aggregate({
-      _sum: { total: true },
-      where: {
-        vendorId: vendor.id,
-        createdAt: { gte: weekAgo },
-        paymentStatus: 'PAID',
-      },
-    })
+    const { data: weekOrders } = await supabase
+      .from('orders')
+      .select('total')
+      .eq('vendorId', vendor.id)
+      .gte('createdAt', weekAgo.toISOString())
+      .eq('paymentStatus', 'PAID')
+
+    const weekEarnings = (weekOrders || []).reduce((sum, o) => sum + Number(o.total), 0)
 
     // This month's earnings
-    const monthEarnings = await prisma.order.aggregate({
-      _sum: { total: true },
-      where: {
-        vendorId: vendor.id,
-        createdAt: { gte: monthAgo },
-        paymentStatus: 'PAID',
-      },
-    })
+    const { data: monthOrders } = await supabase
+      .from('orders')
+      .select('total')
+      .eq('vendorId', vendor.id)
+      .gte('createdAt', monthAgo.toISOString())
+      .eq('paymentStatus', 'PAID')
+
+    const monthEarnings = (monthOrders || []).reduce((sum, o) => sum + Number(o.total), 0)
 
     // Total orders completed
-    const totalDelivered = await prisma.order.count({
-      where: {
-        vendorId: vendor.id,
-        status: 'DELIVERED',
-      },
-    })
+    const { count: totalDelivered } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('vendorId', vendor.id)
+      .eq('status', 'DELIVERED')
 
     // Active products count
-    const activeProducts = await prisma.vendorProduct.count({
-      where: {
-        vendorId: vendor.id,
-        isAvailable: true,
-      },
-    })
+    const { count: activeProducts } = await supabase
+      .from('vendor_products')
+      .select('*', { count: 'exact', head: true })
+      .eq('vendorId', vendor.id)
+      .eq('isAvailable', true)
 
     // Recent orders (last 5)
-    const recentOrders = await prisma.order.findMany({
-      where: { vendorId: vendor.id },
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        total: true,
-        deliveryDate: true,
-        deliverySlot: true,
-        createdAt: true,
-        items: {
-          select: { name: true, quantity: true },
-        },
-      },
-    })
+    const { data: recentOrders } = await supabase
+      .from('orders')
+      .select('id, orderNumber, status, total, deliveryDate, deliverySlot, createdAt, order_items(name, quantity)')
+      .eq('vendorId', vendor.id)
+      .order('createdAt', { ascending: false })
+      .limit(5)
 
     return NextResponse.json({
       success: true,
       data: {
-        todayOrders,
-        pendingOrders,
-        weekEarnings: Number(weekEarnings._sum.total ?? 0),
-        monthEarnings: Number(monthEarnings._sum.total ?? 0),
-        totalDelivered,
-        activeProducts,
+        todayOrders: todayOrders ?? 0,
+        pendingOrders: pendingOrders ?? 0,
+        weekEarnings,
+        monthEarnings,
+        totalDelivered: totalDelivered ?? 0,
+        activeProducts: activeProducts ?? 0,
         rating: Number(vendor.rating),
         status: vendor.status,
         isOnline: vendor.isOnline,
-        recentOrders: recentOrders.map((o) => ({
+        recentOrders: (recentOrders || []).map((o: Record<string, unknown>) => ({
           ...o,
           total: Number(o.total),
+          items: o.order_items,
         })),
       },
     })

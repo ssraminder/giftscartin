@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -16,8 +15,8 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -34,11 +33,14 @@ export async function POST(
     }
 
     const { addonGroupId } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Load the addon group and confirm it belongs to this product
-    const group = await prisma.productAddonGroup.findUnique({
-      where: { id: addonGroupId },
-    })
+    const { data: group } = await supabase
+      .from('product_addon_groups')
+      .select('*')
+      .eq('id', addonGroupId)
+      .maybeSingle()
 
     if (!group || group.productId !== params.id) {
       return NextResponse.json(
@@ -55,10 +57,11 @@ export async function POST(
     }
 
     // Load the category addon template
-    const template = await prisma.categoryAddonTemplate.findUnique({
-      where: { id: group.templateGroupId },
-      include: { options: { orderBy: { sortOrder: 'asc' } } },
-    })
+    const { data: template } = await supabase
+      .from('category_addon_templates')
+      .select('*')
+      .eq('id', group.templateGroupId)
+      .maybeSingle()
 
     if (!template) {
       return NextResponse.json(
@@ -67,46 +70,53 @@ export async function POST(
       )
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-    await prisma.productAddonGroup.update({
-      where: { id: addonGroupId },
-      data: {
-        name: template.name,
-        description: template.description,
-        type: template.type,
-        required: template.required,
-        maxLength: template.maxLength,
-        placeholder: template.placeholder,
-        acceptedFileTypes: template.acceptedFileTypes,
-        maxFileSizeMb: template.maxFileSizeMb,
-        isOverridden: false,
-      },
-    })
+    const { data: templateOptions } = await supabase
+      .from('category_addon_template_options')
+      .select('*')
+      .eq('templateId', template.id)
+      .order('sortOrder', { ascending: true })
+
+    // Update addon group to match template
+    await supabase.from('product_addon_groups').update({
+      name: template.name,
+      description: template.description,
+      type: template.type,
+      required: template.required,
+      maxLength: template.maxLength,
+      placeholder: template.placeholder,
+      acceptedFileTypes: template.acceptedFileTypes,
+      maxFileSizeMb: template.maxFileSizeMb,
+      isOverridden: false,
+      updatedAt: new Date().toISOString(),
+    }).eq('id', addonGroupId)
 
     // Delete existing options and insert fresh from template
-    await prisma.productAddonOption.deleteMany({
-      where: { groupId: addonGroupId },
-    })
-    for (const opt of template.options) {
-      await prisma.productAddonOption.create({
-        data: {
-          groupId: addonGroupId,
-          label: opt.label,
-          price: opt.price,
-          image: opt.image,
-          isDefault: opt.isDefault,
-          sortOrder: opt.sortOrder,
-        },
+    await supabase.from('product_addon_options').delete().eq('groupId', addonGroupId)
+
+    for (const opt of (templateOptions || [])) {
+      await supabase.from('product_addon_options').insert({
+        groupId: addonGroupId,
+        label: opt.label,
+        price: opt.price,
+        image: opt.image,
+        isDefault: opt.isDefault,
+        sortOrder: opt.sortOrder,
       })
     }
 
     // Return the updated group with options
-    const updated = await prisma.productAddonGroup.findUnique({
-      where: { id: addonGroupId },
-      include: { options: { orderBy: { sortOrder: 'asc' } } },
-    })
+    const { data: updatedGroup } = await supabase
+      .from('product_addon_groups')
+      .select('*, product_addon_options(*)')
+      .eq('id', addonGroupId)
+      .single()
 
-    return NextResponse.json({ success: true, data: updated })
+    const result = {
+      ...updatedGroup,
+      options: ((updatedGroup?.product_addon_options || []) as Record<string, unknown>[]).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+    }
+
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('POST /api/admin/products/[id]/sync-addon-group error:', error)
     return NextResponse.json(

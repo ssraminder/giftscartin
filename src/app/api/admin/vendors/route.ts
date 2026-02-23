@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -39,19 +38,11 @@ const createVendorSchema = z.object({
   })).optional(),
 })
 
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
-
 // GET — list vendors with filters, search, pagination
 export async function GET(request: NextRequest) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -70,41 +61,49 @@ export async function GET(request: NextRequest) {
     }
 
     const { status, cityId, search, page, pageSize } = parsed.data
+    const supabase = getSupabaseAdmin()
 
-    const where: Record<string, unknown> = {}
-    if (status) where.status = status
-    if (cityId) where.cityId = cityId
+    let query = supabase.from('vendors').select('*, cities!inner(id, name, slug)', { count: 'exact' })
+
+    if (status) query = query.eq('status', status)
+    if (cityId) query = query.eq('cityId', cityId)
     if (search) {
-      where.OR = [
-        { businessName: { contains: search, mode: 'insensitive' } },
-        { ownerName: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search } },
-      ]
+      query = query.or(`businessName.ilike.%${search}%,ownerName.ilike.%${search}%,phone.ilike.%${search}%`)
     }
 
-    const [vendors, total] = await Promise.all([
-      prisma.vendor.findMany({
-        where,
-        include: {
-          city: { select: { id: true, name: true, slug: true } },
-          _count: { select: { orders: true, products: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.vendor.count({ where }),
-    ])
+    const skip = (page - 1) * pageSize
+    query = query.order('createdAt', { ascending: false }).range(skip, skip + pageSize - 1)
+
+    const { data: vendors, count: total, error } = await query
+    if (error) throw error
+
+    // Get order and product counts
+    const vendorIds = (vendors || []).map((v: Record<string, unknown>) => v.id)
+    const orderCounts: Record<string, number> = {}
+    const productCounts: Record<string, number> = {}
+
+    if (vendorIds.length > 0) {
+      const { data: orderRows } = await supabase.from('orders').select('vendorId').in('vendorId', vendorIds)
+      for (const row of orderRows || []) {
+        if (row.vendorId) orderCounts[row.vendorId] = (orderCounts[row.vendorId] || 0) + 1
+      }
+      const { data: vpRows } = await supabase.from('vendor_products').select('vendorId').in('vendorId', vendorIds)
+      for (const row of vpRows || []) {
+        productCounts[row.vendorId] = (productCounts[row.vendorId] || 0) + 1
+      }
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        items: vendors.map((v) => ({
+        items: (vendors || []).map((v: Record<string, unknown>) => ({
           ...v,
+          city: v.cities,
           commissionRate: Number(v.commissionRate),
           rating: Number(v.rating),
+          _count: { orders: orderCounts[v.id as string] || 0, products: productCounts[v.id as string] || 0 },
         })),
-        total,
+        total: total ?? 0,
         page,
         pageSize,
       },
@@ -121,8 +120,8 @@ export async function GET(request: NextRequest) {
 // POST — create vendor + user account + default working hours
 export async function POST(request: NextRequest) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -140,18 +139,22 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Check if user with this email or phone already exists
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: data.email },
-          { phone: data.phone },
-        ],
-      },
-    })
+    const { data: existingByEmail } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', data.email)
+      .maybeSingle()
 
-    if (existingUser) {
+    const { data: existingByPhone } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone', data.phone)
+      .maybeSingle()
+
+    if (existingByEmail || existingByPhone) {
       return NextResponse.json(
         { success: false, error: 'A user with this email or phone already exists' },
         { status: 409 }
@@ -159,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if city exists
-    const city = await prisma.city.findUnique({ where: { id: data.cityId } })
+    const { data: city } = await supabase.from('cities').select('id').eq('id', data.cityId).maybeSingle()
     if (!city) {
       return NextResponse.json(
         { success: false, error: 'City not found' },
@@ -168,19 +171,24 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. Create user with VENDOR role
-    const user = await prisma.user.create({
-      data: {
+    const { data: newUser, error: userError } = await supabase
+      .from('users')
+      .insert({
         email: data.email,
         phone: data.phone,
         name: data.ownerName,
         role: 'VENDOR',
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (userError) throw userError
 
     // 2. Create vendor linked to user
-    const vendor = await prisma.vendor.create({
-      data: {
-        userId: user.id,
+    const { data: vendor, error: vendorError } = await supabase
+      .from('vendors')
+      .insert({
+        userId: newUser.id,
         businessName: data.businessName,
         ownerName: data.ownerName,
         phone: data.phone,
@@ -193,8 +201,11 @@ export async function POST(request: NextRequest) {
         lat: data.lat ?? null,
         lng: data.lng ?? null,
         status: 'APPROVED',
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (vendorError) throw vendorError
 
     // 3. Create working hours (custom or default 9AM-9PM all days)
     const workingHours = data.workingHours && data.workingHours.length === 7
@@ -207,59 +218,56 @@ export async function POST(request: NextRequest) {
         }))
 
     for (const wh of workingHours) {
-      await prisma.vendorWorkingHours.create({
-        data: {
-          vendorId: vendor.id,
-          dayOfWeek: wh.dayOfWeek,
-          openTime: wh.openTime,
-          closeTime: wh.closeTime,
-          isClosed: wh.isClosed,
-        },
+      await supabase.from('vendor_working_hours').insert({
+        vendorId: vendor.id,
+        dayOfWeek: wh.dayOfWeek,
+        openTime: wh.openTime,
+        closeTime: wh.closeTime,
+        isClosed: wh.isClosed,
       })
     }
 
     // 4. Create pincodes if provided
     if (data.pincodes && data.pincodes.length > 0) {
       for (const pc of data.pincodes) {
-        await prisma.vendorPincode.create({
-          data: {
-            vendorId: vendor.id,
-            pincode: pc.pincode,
-            deliveryCharge: pc.deliveryCharge,
-          },
+        await supabase.from('vendor_pincodes').insert({
+          vendorId: vendor.id,
+          pincode: pc.pincode,
+          deliveryCharge: pc.deliveryCharge,
         })
       }
     }
 
     // Log the action
-    await prisma.auditLog.create({
-      data: {
-        adminId: admin.id,
-        adminRole: admin.role,
-        actionType: 'vendor_create',
-        entityType: 'vendor',
-        entityId: vendor.id,
-        fieldChanged: 'all',
-        newValue: { businessName: data.businessName, ownerName: data.ownerName, email: data.email },
-        reason: 'Admin created vendor',
-      },
+    await supabase.from('audit_logs').insert({
+      adminId: user.id,
+      adminRole: user.role,
+      actionType: 'vendor_create',
+      entityType: 'vendor',
+      entityId: vendor.id,
+      fieldChanged: 'all',
+      newValue: { businessName: data.businessName, ownerName: data.ownerName, email: data.email },
+      reason: 'Admin created vendor',
     })
 
     // Fetch the full vendor with relations
-    const fullVendor = await prisma.vendor.findUnique({
-      where: { id: vendor.id },
-      include: {
-        city: { select: { id: true, name: true, slug: true } },
-        _count: { select: { orders: true, products: true } },
-      },
-    })
+    const { data: fullVendor } = await supabase
+      .from('vendors')
+      .select('*, cities!inner(id, name, slug)')
+      .eq('id', vendor.id)
+      .single()
+
+    const { count: orderCount } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('vendorId', vendor.id)
+    const { count: productCount } = await supabase.from('vendor_products').select('*', { count: 'exact', head: true }).eq('vendorId', vendor.id)
 
     return NextResponse.json({
       success: true,
       data: fullVendor ? {
         ...fullVendor,
+        city: fullVendor.cities,
         commissionRate: Number(fullVendor.commissionRate),
         rating: Number(fullVendor.rating),
+        _count: { orders: orderCount ?? 0, products: productCount ?? 0 },
       } : vendor,
     }, { status: 201 })
   } catch (error) {

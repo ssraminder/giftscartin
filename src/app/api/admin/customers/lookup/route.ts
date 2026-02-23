@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
-import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.role || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -22,10 +21,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const user = await prisma.user.findUnique({
-      where: { phone },
-      select: { id: true, name: true, email: true, phone: true },
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, name, email, phone')
+      .eq('phone', phone)
+      .maybeSingle()
 
     return NextResponse.json({ success: true, data: user || null })
   } catch (error) {

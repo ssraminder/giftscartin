@@ -1,75 +1,98 @@
-import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const user = await getSessionFromRequest(request)
+    if (!user || !['ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'CITY_MANAGER', 'OPERATIONS'].includes(user.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const supabase = getSupabaseAdmin()
+
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
 
+    const todayISO = today.toISOString()
+    const tomorrowISO = tomorrow.toISOString()
+
     // Today's orders count
-    const todayOrders = await prisma.order.count({
-      where: {
-        createdAt: { gte: today, lt: tomorrow },
-      },
-    })
+    const { count: todayOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .gte('createdAt', todayISO)
+      .lt('createdAt', tomorrowISO)
 
     // Today's revenue (paid orders only)
-    const revenueResult = await prisma.order.aggregate({
-      _sum: { total: true },
-      where: {
-        createdAt: { gte: today, lt: tomorrow },
-        paymentStatus: 'PAID',
-      },
-    })
-    const todayRevenue = Number(revenueResult._sum.total ?? 0)
+    const { data: revenueRows } = await supabase
+      .from('orders')
+      .select('total')
+      .gte('createdAt', todayISO)
+      .lt('createdAt', tomorrowISO)
+      .eq('paymentStatus', 'PAID')
+
+    const todayRevenue = (revenueRows || []).reduce((sum, r) => sum + Number(r.total ?? 0), 0)
 
     // HITL pending count (orders in PENDING status needing review)
-    const hitlPending = await prisma.order.count({
-      where: { status: 'PENDING' },
-    })
+    const { count: hitlPending } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'PENDING')
 
     // Recent activity — last 10 order updates
-    const recentOrders = await prisma.order.findMany({
-      take: 10,
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        updatedAt: true,
-        user: { select: { name: true, phone: true } },
-      },
-    })
+    const { data: recentOrders } = await supabase
+      .from('orders')
+      .select('id, orderNumber, status, updatedAt, userId')
+      .order('updatedAt', { ascending: false })
+      .limit(10)
 
-    const recentActivity = recentOrders.map((order) => ({
-      id: order.id,
-      type: 'order',
-      description: `Order ${order.orderNumber} — ${order.status}${
-        order.user?.name ? ` by ${order.user.name}` : ''
-      }`,
-      time: order.updatedAt.toISOString(),
-    }))
+    // Fetch user names for the recent orders
+    const userIds = (recentOrders || []).map(o => o.userId).filter(Boolean)
+    let userMap: Record<string, { name: string | null; phone: string | null }> = {}
+    if (userIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, name, phone')
+        .in('id', userIds)
+      if (users) {
+        userMap = Object.fromEntries(users.map(u => [u.id, { name: u.name, phone: u.phone }]))
+      }
+    }
+
+    const recentActivity = (recentOrders || []).map((order) => {
+      const u = order.userId ? userMap[order.userId] : null
+      return {
+        id: order.id,
+        type: 'order',
+        description: `Order ${order.orderNumber} — ${order.status}${
+          u?.name ? ` by ${u.name}` : ''
+        }`,
+        time: order.updatedAt,
+      }
+    })
 
     // Today's quotes — no quotes table yet, return 0
     const todayQuotes = 0
 
     // Pending area review count (inactive service areas needing admin review)
-    const pendingAreaReviewCount = await prisma.serviceArea.count({
-      where: { isActive: false },
-    })
+    const { count: pendingAreaReviewCount } = await supabase
+      .from('service_areas')
+      .select('*', { count: 'exact', head: true })
+      .eq('is_active', false)
 
     return NextResponse.json({
       success: true,
       data: {
         todayQuotes,
-        todayOrders,
+        todayOrders: todayOrders ?? 0,
         todayRevenue,
-        hitlPending,
-        pendingAreaReviewCount,
+        hitlPending: hitlPending ?? 0,
+        pendingAreaReviewCount: pendingAreaReviewCount ?? 0,
         recentActivity,
       },
     })

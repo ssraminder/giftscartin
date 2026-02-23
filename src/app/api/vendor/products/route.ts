@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -16,18 +15,23 @@ const updateVendorProductSchema = z.object({
   dailyLimit: z.number().int().min(0).nullable().optional(),
 })
 
-async function getVendor() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
-  return prisma.vendor.findUnique({ where: { userId: user.id } })
+async function getVendor(request: NextRequest) {
+  const session = await getSessionFromRequest(request)
+  if (!session?.id) return null
+  if (!isVendorRole(session.role) && !isAdminRole(session.role)) return null
+  const supabase = getSupabaseAdmin()
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('*')
+    .eq('userId', session.id)
+    .single()
+  return vendor
 }
 
 // GET: List vendor's products (linked via vendor_products)
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
@@ -35,39 +39,43 @@ export async function GET() {
       )
     }
 
-    const vendorProducts = await prisma.vendorProduct.findMany({
-      where: { vendorId: vendor.id },
-      include: {
-        product: {
-          include: {
-            category: { select: { id: true, name: true, slug: true } },
-            variations: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
-          },
-        },
-      },
-      orderBy: { product: { name: 'asc' } },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: vendorProducts, error } = await supabase
+      .from('vendor_products')
+      .select('*, products(*, categories(id, name, slug), product_variations(*))')
+      .eq('vendorId', vendor.id)
+      .order('createdAt', { ascending: false })
+
+    if (error) throw error
 
     return NextResponse.json({
       success: true,
-      data: vendorProducts.map((vp) => ({
-        id: vp.id,
-        productId: vp.productId,
-        costPrice: Number(vp.costPrice),
-        sellingPrice: vp.sellingPrice ? Number(vp.sellingPrice) : null,
-        isAvailable: vp.isAvailable,
-        preparationTime: vp.preparationTime,
-        dailyLimit: vp.dailyLimit,
-        product: {
-          ...vp.product,
-          basePrice: Number(vp.product.basePrice),
-          avgRating: Number(vp.product.avgRating),
-          variations: vp.product.variations.map((v) => ({
-            ...v,
-            price: Number(v.price),
-          })),
-        },
-      })),
+      data: (vendorProducts || []).map((vp: Record<string, unknown>) => {
+        const product = vp.products as Record<string, unknown> | null
+        const variations = (product?.product_variations as Record<string, unknown>[] | null) || []
+        return {
+          id: vp.id,
+          productId: vp.productId,
+          costPrice: Number(vp.costPrice),
+          sellingPrice: vp.sellingPrice ? Number(vp.sellingPrice) : null,
+          isAvailable: vp.isAvailable,
+          preparationTime: vp.preparationTime,
+          dailyLimit: vp.dailyLimit,
+          product: product ? {
+            ...product,
+            basePrice: Number(product.basePrice),
+            avgRating: Number(product.avgRating),
+            category: product.categories,
+            variations: variations
+              .filter((v: Record<string, unknown>) => v.isActive)
+              .map((v: Record<string, unknown>) => ({
+                ...v,
+                price: Number(v.price),
+              })),
+          } : null,
+        }
+      }),
     })
   } catch (error) {
     console.error('Vendor products GET error:', error)
@@ -81,7 +89,7 @@ export async function GET() {
 // PUT: Update vendor product (availability, pricing, prep time)
 export async function PUT(request: NextRequest) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
@@ -100,27 +108,40 @@ export async function PUT(request: NextRequest) {
     }
 
     const { productId, costPrice, sellingPrice, isAvailable, preparationTime, dailyLimit } = parsed.data
+    const supabase = getSupabaseAdmin()
 
-    // Find existing vendor product or create new
-    const existing = await prisma.vendorProduct.findUnique({
-      where: { vendorId_productId: { vendorId: vendor.id, productId } },
-    })
+    // Find existing vendor product
+    const { data: existing } = await supabase
+      .from('vendor_products')
+      .select('*')
+      .eq('vendorId', vendor.id)
+      .eq('productId', productId)
+      .single()
 
     let vendorProduct
     if (existing) {
-      vendorProduct = await prisma.vendorProduct.update({
-        where: { id: existing.id },
-        data: {
-          costPrice,
-          ...(sellingPrice !== undefined ? { sellingPrice } : {}),
-          ...(isAvailable !== undefined ? { isAvailable } : {}),
-          ...(preparationTime !== undefined ? { preparationTime } : {}),
-          ...(dailyLimit !== undefined ? { dailyLimit } : {}),
-        },
-      })
+      const updateData: Record<string, unknown> = {
+        costPrice,
+        updatedAt: new Date().toISOString(),
+      }
+      if (sellingPrice !== undefined) updateData.sellingPrice = sellingPrice
+      if (isAvailable !== undefined) updateData.isAvailable = isAvailable
+      if (preparationTime !== undefined) updateData.preparationTime = preparationTime
+      if (dailyLimit !== undefined) updateData.dailyLimit = dailyLimit
+
+      const { data, error } = await supabase
+        .from('vendor_products')
+        .update(updateData)
+        .eq('id', existing.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      vendorProduct = data
     } else {
-      vendorProduct = await prisma.vendorProduct.create({
-        data: {
+      const { data, error } = await supabase
+        .from('vendor_products')
+        .insert({
           vendorId: vendor.id,
           productId,
           costPrice,
@@ -128,8 +149,12 @@ export async function PUT(request: NextRequest) {
           isAvailable: isAvailable ?? true,
           preparationTime: preparationTime ?? 120,
           dailyLimit: dailyLimit ?? null,
-        },
-      })
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      vendorProduct = data
     }
 
     return NextResponse.json({

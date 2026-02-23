@@ -1,55 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
 // ==================== GET — Single category with all fields ====================
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
     }
 
-    const category = await prisma.category.findUnique({
-      where: { id: params.id },
-      include: {
-        _count: { select: { products: true } },
-        addonTemplates: {
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
-          orderBy: { sortOrder: 'asc' },
-        },
-        parent: { select: { id: true, name: true, slug: true } },
-        children: {
-          select: { id: true, name: true, slug: true, isActive: true },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: category } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('id', params.id)
+      .maybeSingle()
 
     if (!category) {
-      return NextResponse.json(
-        { success: false, error: 'Category not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ success: false, error: 'Category not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, data: category })
+    const [
+      { count: productCount },
+      { data: templates },
+      { data: parent },
+      { data: children },
+    ] = await Promise.all([
+      supabase.from('products').select('*', { count: 'exact', head: true }).eq('categoryId', params.id),
+      supabase.from('category_addon_templates').select('*, category_addon_template_options(*)').eq('categoryId', params.id).order('sortOrder', { ascending: true }),
+      category.parentId
+        ? supabase.from('categories').select('id, name, slug').eq('id', category.parentId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from('categories').select('id, name, slug, isActive').eq('parentId', params.id).order('sortOrder', { ascending: true }),
+    ])
+
+    const result = {
+      ...category,
+      _count: { products: productCount ?? 0 },
+      addonTemplates: (templates || []).map((t: Record<string, unknown>) => ({
+        ...t,
+        options: ((t.category_addon_template_options as Record<string, unknown>[]) || []).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+      })),
+      parent: parent,
+      children: children || [],
+    }
+
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('GET /api/admin/categories/[id] error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch category' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Failed to fetch category' }, { status: 500 })
   }
 }
 
@@ -86,12 +93,10 @@ const updateCategorySchema = z.object({
   parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
-  // SEO
   metaTitle: z.string().max(60).nullable().optional(),
   metaDescription: z.string().max(160).nullable().optional(),
   metaKeywords: z.array(z.string()).optional(),
   ogImage: z.string().nullable().optional(),
-  // Addon templates
   addonTemplates: z.array(addonTemplateSchema).optional(),
 })
 
@@ -100,47 +105,44 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
     }
 
-    const existing = await prisma.category.findUnique({ where: { id: params.id } })
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('id', params.id)
+      .maybeSingle()
+
     if (!existing) {
-      return NextResponse.json(
-        { success: false, error: 'Category not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ success: false, error: 'Category not found' }, { status: 404 })
     }
 
     const body = await request.json()
     const parsed = updateCategorySchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues[0].message },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: parsed.error.issues[0].message }, { status: 400 })
     }
 
     const data = parsed.data
 
     // Check slug uniqueness if changing slug
     if (data.slug && data.slug !== existing.slug) {
-      const slugExists = await prisma.category.findUnique({ where: { slug: data.slug } })
+      const { data: slugExists } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', data.slug)
+        .maybeSingle()
       if (slugExists) {
-        return NextResponse.json(
-          { success: false, error: `Slug "${data.slug}" is already in use` },
-          { status: 400 }
-        )
+        return NextResponse.json({ success: false, error: `Slug "${data.slug}" is already in use` }, { status: 400 })
       }
     }
 
     let groupsUpdated = 0
-
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
 
     // Update category fields
     const categoryUpdate: Record<string, unknown> = {}
@@ -157,30 +159,65 @@ export async function PUT(
     if (data.ogImage !== undefined) categoryUpdate.ogImage = data.ogImage
 
     if (Object.keys(categoryUpdate).length > 0) {
-      await prisma.category.update({
-        where: { id: params.id },
-        data: categoryUpdate,
-      })
+      await supabase.from('categories').update(categoryUpdate).eq('id', params.id)
     }
 
-    // Handle addon templates — delete removed, upsert existing
+    // Handle addon templates
     if (data.addonTemplates !== undefined) {
       const incomingIds = data.addonTemplates.filter((t) => t.id).map((t) => t.id!)
 
-      // Delete templates that are no longer in the list
-      await prisma.categoryAddonTemplate.deleteMany({
-        where: {
-          categoryId: params.id,
-          ...(incomingIds.length > 0 ? { id: { notIn: incomingIds } } : {}),
-        },
-      })
+      // Delete templates not in list
+      if (incomingIds.length > 0) {
+        const { data: toDelete } = await supabase
+          .from('category_addon_templates')
+          .select('id')
+          .eq('categoryId', params.id)
+          .not('id', 'in', `(${incomingIds.join(',')})`)
+        if (toDelete && toDelete.length > 0) {
+          await supabase.from('category_addon_templates').delete().in('id', toDelete.map(t => t.id))
+        }
+      } else {
+        await supabase.from('category_addon_templates').delete().eq('categoryId', params.id)
+      }
 
       for (const template of data.addonTemplates) {
         if (template.id) {
           // Update existing template
-          await prisma.categoryAddonTemplate.update({
-            where: { id: template.id },
-            data: {
+          await supabase.from('category_addon_templates').update({
+            name: template.name,
+            description: template.description ?? null,
+            type: template.type,
+            required: template.required,
+            maxLength: template.maxLength ?? null,
+            placeholder: template.placeholder ?? null,
+            acceptedFileTypes: template.acceptedFileTypes,
+            maxFileSizeMb: template.maxFileSizeMb ?? 5,
+            sortOrder: template.sortOrder,
+            updatedAt: new Date().toISOString(),
+          }).eq('id', template.id)
+
+          // Replace options
+          await supabase.from('category_addon_template_options').delete().eq('templateId', template.id)
+          for (const opt of template.options) {
+            await supabase.from('category_addon_template_options').insert({
+              templateId: template.id,
+              label: opt.label,
+              price: opt.price,
+              image: opt.image ?? null,
+              isDefault: opt.isDefault,
+              sortOrder: opt.sortOrder,
+            })
+          }
+
+          // Propagate to linked product addon groups (non-overridden)
+          const { data: linkedGroups } = await supabase
+            .from('product_addon_groups')
+            .select('id')
+            .eq('templateGroupId', template.id)
+            .eq('isOverridden', false)
+
+          for (const group of (linkedGroups || [])) {
+            await supabase.from('product_addon_groups').update({
               name: template.name,
               description: template.description ?? null,
               type: template.type,
@@ -189,72 +226,27 @@ export async function PUT(
               placeholder: template.placeholder ?? null,
               acceptedFileTypes: template.acceptedFileTypes,
               maxFileSizeMb: template.maxFileSizeMb ?? 5,
-              sortOrder: template.sortOrder,
-            },
-          })
+              updatedAt: new Date().toISOString(),
+            }).eq('id', group.id)
 
-          // Replace options: delete all existing, insert fresh
-          await prisma.categoryAddonTemplateOption.deleteMany({
-            where: { templateId: template.id },
-          })
-          for (const opt of template.options) {
-            await prisma.categoryAddonTemplateOption.create({
-              data: {
-                templateId: template.id,
+            await supabase.from('product_addon_options').delete().eq('groupId', group.id)
+            for (const opt of template.options) {
+              await supabase.from('product_addon_options').insert({
+                groupId: group.id,
                 label: opt.label,
                 price: opt.price,
                 image: opt.image ?? null,
                 isDefault: opt.isDefault,
                 sortOrder: opt.sortOrder,
-              },
-            })
-          }
-
-          // Propagate to linked product addon groups (non-overridden)
-          const linkedGroups = await prisma.productAddonGroup.findMany({
-            where: {
-              templateGroupId: template.id,
-              isOverridden: false,
-            },
-          })
-
-          for (const group of linkedGroups) {
-            await prisma.productAddonGroup.update({
-              where: { id: group.id },
-              data: {
-                name: template.name,
-                description: template.description ?? null,
-                type: template.type,
-                required: template.required,
-                maxLength: template.maxLength ?? null,
-                placeholder: template.placeholder ?? null,
-                acceptedFileTypes: template.acceptedFileTypes,
-                maxFileSizeMb: template.maxFileSizeMb ?? 5,
-              },
-            })
-
-            // Replace product addon options with fresh from template
-            await prisma.productAddonOption.deleteMany({
-              where: { groupId: group.id },
-            })
-            for (const opt of template.options) {
-              await prisma.productAddonOption.create({
-                data: {
-                  groupId: group.id,
-                  label: opt.label,
-                  price: opt.price,
-                  image: opt.image ?? null,
-                  isDefault: opt.isDefault,
-                  sortOrder: opt.sortOrder,
-                },
               })
             }
             groupsUpdated++
           }
         } else {
           // Create new template
-          const created = await prisma.categoryAddonTemplate.create({
-            data: {
+          const { data: created } = await supabase
+            .from('category_addon_templates')
+            .insert({
               categoryId: params.id,
               name: template.name,
               description: template.description ?? null,
@@ -265,101 +257,101 @@ export async function PUT(
               acceptedFileTypes: template.acceptedFileTypes,
               maxFileSizeMb: template.maxFileSizeMb ?? 5,
               sortOrder: template.sortOrder,
-            },
-          })
-          for (const opt of template.options) {
-            await prisma.categoryAddonTemplateOption.create({
-              data: {
+            })
+            .select()
+            .single()
+
+          if (created) {
+            for (const opt of template.options) {
+              await supabase.from('category_addon_template_options').insert({
                 templateId: created.id,
                 label: opt.label,
                 price: opt.price,
                 image: opt.image ?? null,
                 isDefault: opt.isDefault,
                 sortOrder: opt.sortOrder,
-              },
-            })
+              })
+            }
           }
         }
       }
     }
 
     // Fetch updated category
-    const updated = await prisma.category.findUnique({
-      where: { id: params.id },
-      include: {
-        _count: { select: { products: true } },
-        addonTemplates: {
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
-    })
+    const { data: updatedCat } = await supabase.from('categories').select('*').eq('id', params.id).single()
+    const { data: updatedTemplates } = await supabase
+      .from('category_addon_templates')
+      .select('*, category_addon_template_options(*)')
+      .eq('categoryId', params.id)
+      .order('sortOrder', { ascending: true })
+    const { count: pCount } = await supabase.from('products').select('*', { count: 'exact', head: true }).eq('categoryId', params.id)
 
     return NextResponse.json({
       success: true,
       data: {
-        category: updated,
+        category: {
+          ...updatedCat,
+          _count: { products: pCount ?? 0 },
+          addonTemplates: (updatedTemplates || []).map((t: Record<string, unknown>) => ({
+            ...t,
+            options: ((t.category_addon_template_options as Record<string, unknown>[]) || []).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+          })),
+        },
         propagated: { groupsUpdated },
       },
     })
   } catch (error) {
     console.error('PUT /api/admin/categories/[id] error:', error)
     const message = error instanceof Error ? error.message : 'Failed to update category'
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }
 
-// ==================== DELETE — Soft delete (set isActive = false) ====================
+// ==================== DELETE — Soft delete ====================
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 })
     }
 
-    const existing = await prisma.category.findUnique({
-      where: { id: params.id },
-      include: { _count: { select: { products: { where: { isActive: true } } } } },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('id', params.id)
+      .maybeSingle()
 
     if (!existing) {
-      return NextResponse.json(
-        { success: false, error: 'Category not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ success: false, error: 'Category not found' }, { status: 404 })
     }
 
-    if (existing._count.products > 0) {
+    const { count: activeProducts } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('categoryId', params.id)
+      .eq('isActive', true)
+
+    if ((activeProducts ?? 0) > 0) {
       return NextResponse.json(
         {
           success: false,
-          error: `Cannot delete — ${existing._count.products} active product${existing._count.products !== 1 ? 's' : ''} in this category.`,
+          error: `Cannot delete — ${activeProducts} active product${activeProducts !== 1 ? 's' : ''} in this category.`,
         },
         { status: 400 }
       )
     }
 
-    await prisma.category.update({
-      where: { id: params.id },
-      data: { isActive: false },
-    })
+    await supabase.from('categories').update({ isActive: false }).eq('id', params.id)
 
     return NextResponse.json({ success: true, data: { id: params.id } })
   } catch (error) {
     console.error('DELETE /api/admin/categories/[id] error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete category' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Failed to delete category' }, { status: 500 })
   }
 }

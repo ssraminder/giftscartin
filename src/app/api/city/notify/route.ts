@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod/v4'
 
 const notifySchema = z.object({
@@ -23,29 +23,34 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, phone, cityName } = parsed.data
+    const supabase = getSupabaseAdmin()
 
-    await prisma.cityNotification.create({
-      data: {
+    // Note: city_notifications uses @map columns: city_name, created_at
+    await supabase
+      .from('city_notifications')
+      .insert({
         email: email || null,
         phone: phone || null,
-        cityName,
-      },
-    })
+        city_name: cityName,
+      })
 
     // Increment notify count on the city if it exists
-    const city = await prisma.city.findFirst({
-      where: {
-        OR: [
-          { name: { equals: cityName, mode: 'insensitive' } },
-          { slug: { equals: cityName.toLowerCase().replace(/\s+/g, '-') } },
-        ],
-      },
-    })
-    if (city) {
-      await prisma.city.update({
-        where: { id: city.id },
-        data: { notifyCount: { increment: 1 } },
-      })
+    // Note: cities uses @map columns: is_coming_soon, notify_count, display_name
+    const { data: cities } = await supabase
+      .from('cities')
+      .select('id, notify_count')
+      .or(`name.ilike.${cityName},slug.eq.${cityName.toLowerCase().replace(/\s+/g, '-')}`)
+      .limit(1)
+
+    if (cities && cities.length > 0) {
+      const city = cities[0]
+      await supabase
+        .from('cities')
+        .update({
+          notify_count: (city.notify_count || 0) + 1,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', city.id)
     }
 
     return NextResponse.json({

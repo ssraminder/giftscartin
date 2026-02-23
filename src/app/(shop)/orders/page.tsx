@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/hooks/use-auth"
 import { Package, ChevronRight, ShoppingBag } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -46,15 +46,15 @@ function OrderCardSkeleton() {
 }
 
 export default function OrdersPage() {
-  const { data: session, status: authStatus } = useSession()
+  const { user, loading: authLoading } = useAuth()
   const { formatPrice } = useCurrency()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (authStatus === "loading") return
-    if (!session) {
+    if (authLoading) return
+    if (!user) {
       setLoading(false)
       return
     }
@@ -76,9 +76,9 @@ export default function OrdersPage() {
     }
 
     fetchOrders()
-  }, [session, authStatus])
+  }, [user, authLoading])
 
-  if (authStatus === "loading" || loading) {
+  if (authLoading || loading) {
     return (
       <div className="container mx-auto max-w-2xl px-4 py-6">
         <h1 className="text-xl font-bold mb-4">My Orders</h1>
@@ -91,7 +91,7 @@ export default function OrdersPage() {
     )
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="container mx-auto max-w-md px-4 py-16 text-center">
         <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />

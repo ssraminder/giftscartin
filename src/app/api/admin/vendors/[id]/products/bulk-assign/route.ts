@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -15,22 +14,14 @@ const bulkAssignSchema = z.object({
   })).min(1, 'At least one product required'),
 })
 
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
-
 // POST: Bulk assign products to vendor
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -48,12 +39,10 @@ export async function POST(
       )
     }
 
-    // Verify vendor exists
-    const vendor = await prisma.vendor.findUnique({
-      where: { id },
-      select: { id: true, businessName: true },
-    })
+    const supabase = getSupabaseAdmin()
 
+    // Verify vendor exists
+    const { data: vendor } = await supabase.from('vendors').select('id, businessName').eq('id', id).maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -67,36 +56,38 @@ export async function POST(
     let assigned = 0
     let skipped = 0
 
-    // Use Promise.all instead of interactive transaction (P2028 with pgBouncer)
     const results = await Promise.all(
       items.map(async (item) => {
-        const product = await prisma.product.findUnique({
-          where: { id: item.productId },
-          select: { basePrice: true },
-        })
+        const { data: product } = await supabase
+          .from('products')
+          .select('basePrice')
+          .eq('id', item.productId)
+          .maybeSingle()
 
         if (!product) return { status: 'skipped' as const }
 
         const costPrice = item.costPrice ?? Math.round(Number(product.basePrice) * 0.68)
         const preparationTime = item.preparationTime ?? 240
 
-        const existing = await prisma.vendorProduct.findUnique({
-          where: { vendorId_productId: { vendorId, productId: item.productId } },
-        })
+        // Check if already assigned
+        const { data: existing } = await supabase
+          .from('vendor_products')
+          .select('id')
+          .eq('vendorId', vendorId)
+          .eq('productId', item.productId)
+          .maybeSingle()
 
         if (existing) {
           return { status: 'skipped' as const }
         }
 
-        await prisma.vendorProduct.create({
-          data: {
-            vendorId,
-            productId: item.productId,
-            costPrice,
-            preparationTime,
-            dailyLimit: item.dailyLimit ?? null,
-            isAvailable: true,
-          },
+        await supabase.from('vendor_products').insert({
+          vendorId,
+          productId: item.productId,
+          costPrice,
+          preparationTime,
+          dailyLimit: item.dailyLimit ?? null,
+          isAvailable: true,
         })
 
         return { status: 'assigned' as const }
