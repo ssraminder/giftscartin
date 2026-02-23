@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { MapPin, CheckCircle2, Clock, XCircle, Loader2 } from 'lucide-react'
 import { useCity } from '@/hooks/use-city'
 
@@ -22,19 +22,34 @@ type Status =
   | null
 
 export function ProductLocationCheck({ productId, onServiceabilityChange }: ProductLocationCheckProps) {
-  const { setCity, setArea } = useCity()
-  const [pincode, setPincode] = useState('')
+  const { pincode: contextPincode, areaName: contextAreaName, setCity, setArea } = useCity()
+  const [pincode, setPincode] = useState(contextPincode ?? '')
   const [status, setStatus] = useState<Status>(null)
+  const lastCheckedPincode = useRef<string | null>(null)
 
-  const handleCheck = useCallback(async () => {
-    if (!/^\d{6}$/.test(pincode)) return
+  // Auto-fill pincode from city context and trigger serviceability check
+  useEffect(() => {
+    if (contextPincode && /^\d{6}$/.test(contextPincode)) {
+      setPincode(contextPincode)
+      // Avoid re-checking if we already checked this pincode
+      if (lastCheckedPincode.current !== contextPincode) {
+        lastCheckedPincode.current = contextPincode
+        triggerCheck(contextPincode)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextPincode, productId])
+
+  // Extracted check logic so it can be called from useEffect and button click
+  const triggerCheck = useCallback(async (pincodeToCheck: string) => {
+    if (!/^\d{6}$/.test(pincodeToCheck)) return
     setStatus({ type: 'checking' })
 
     try {
       const res = await fetch('/api/serviceability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pincode, productId }),
+        body: JSON.stringify({ pincode: pincodeToCheck, productId }),
       })
       const json = await res.json()
       const d = json.success ? json.data : null
@@ -48,11 +63,11 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
           message: "We're coming to your area soon!",
         })
       } else if (d?.isServiceable && d.vendorCount > 0) {
-        const areaName = d.areaName || ''
-        const msg = areaName
-          ? `Delivery available in ${areaName}`
+        const area = d.areaName || contextAreaName || ''
+        const msg = area
+          ? `Delivery available in ${area}`
           : 'Delivery available'
-        setStatus({ type: 'success', message: msg, areaName })
+        setStatus({ type: 'success', message: msg, areaName: area })
 
         // Update city context with full result
         const cName = d.city?.name || d.cityName || ''
@@ -64,12 +79,12 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
             cityId: cId,
             cityName: cName,
             citySlug: cSlug,
-            pincode,
-            areaName: areaName || undefined,
+            pincode: pincodeToCheck,
+            areaName: area || undefined,
           })
         }
 
-        setArea({ name: areaName, pincode, isServiceable: true })
+        setArea({ name: area, pincode: pincodeToCheck, isServiceable: true })
 
         onServiceabilityChange?.({
           isServiceable: true,
@@ -95,7 +110,13 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
         message: 'Failed to check delivery availability',
       })
     }
-  }, [pincode, productId, setCity, setArea, onServiceabilityChange])
+  }, [productId, contextAreaName, setCity, setArea, onServiceabilityChange])
+
+  const handleCheck = useCallback(async () => {
+    if (!/^\d{6}$/.test(pincode)) return
+    lastCheckedPincode.current = pincode
+    triggerCheck(pincode)
+  }, [pincode, triggerCheck])
 
   return (
     <div className="mb-4">

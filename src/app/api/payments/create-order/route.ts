@@ -15,9 +15,15 @@ const createPaymentSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const t0 = Date.now()
 
-    const body = await request.json()
+    // Parallelize session auth + body parsing for faster startup
+    const [session, body] = await Promise.all([
+      getServerSession(authOptions),
+      request.json(),
+    ])
+    console.log(`[payments] auth+parse: ${Date.now() - t0}ms`)
+
     const parsed = createPaymentSchema.safeParse(body)
 
     if (!parsed.success) {
@@ -30,10 +36,12 @@ export async function POST(request: NextRequest) {
     const { orderId, gateway: requestedGateway } = parsed.data
 
     // Fetch the order and verify ownership
+    const t1 = Date.now()
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: { payment: true },
     })
+    console.log(`[payments] order_fetch: ${Date.now() - t1}ms`)
 
     if (!order) {
       return NextResponse.json(
@@ -74,6 +82,7 @@ export async function POST(request: NextRequest) {
 
     // ─── COD ───
     if (gateway === 'cod') {
+      const tCod = Date.now()
       await prisma.payment.upsert({
         where: { orderId: order.id },
         update: {
@@ -108,6 +117,8 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      console.log(`[payments] cod_total: ${Date.now() - tCod}ms`)
+
       return NextResponse.json({
         success: true,
         data: {
@@ -120,9 +131,13 @@ export async function POST(request: NextRequest) {
 
     // ─── RAZORPAY ───
     if (gateway === 'razorpay') {
+      const t2 = Date.now()
       const razorpayOrder = await createRazorpayOrder(amount, 'INR', order.orderNumber)
+      console.log(`[payments] razorpay_create: ${Date.now() - t2}ms`)
 
-      await prisma.payment.upsert({
+      // Fire DB upsert without awaiting — we already have razorpayOrder.id for the response
+      const t3 = Date.now()
+      prisma.payment.upsert({
         where: { orderId: order.id },
         update: {
           amount: order.total,
@@ -139,7 +154,13 @@ export async function POST(request: NextRequest) {
           razorpayOrderId: razorpayOrder.id,
           status: 'PENDING',
         },
+      }).then(() => {
+        console.log(`[payments] payment_upsert: ${Date.now() - t3}ms`)
+      }).catch((err) => {
+        console.error('[payments] payment_upsert failed:', err)
       })
+
+      console.log(`[payments] total: ${Date.now() - t0}ms`)
 
       return NextResponse.json({
         success: true,
@@ -155,6 +176,7 @@ export async function POST(request: NextRequest) {
 
     // ─── STRIPE ───
     if (gateway === 'stripe') {
+      const tStripe = Date.now()
       const usdAmount = inrToUsd(amount)
 
       const stripeSession = await createStripeCheckoutSession({
@@ -185,6 +207,8 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      console.log(`[payments] stripe_total: ${Date.now() - tStripe}ms`)
+
       return NextResponse.json({
         success: true,
         data: {
@@ -197,6 +221,7 @@ export async function POST(request: NextRequest) {
 
     // ─── PAYPAL ───
     if (gateway === 'paypal') {
+      const tPaypal = Date.now()
       const usdAmount = inrToUsd(amount)
 
       const paypalOrder = await createPayPalOrder({
@@ -225,6 +250,8 @@ export async function POST(request: NextRequest) {
           status: 'PENDING',
         },
       })
+
+      console.log(`[payments] paypal_total: ${Date.now() - tPaypal}ms`)
 
       return NextResponse.json({
         success: true,
