@@ -1,3 +1,4 @@
+// Header — updated city display with inline location dropdown
 "use client"
 
 import { useState, useEffect, useRef } from "react"
