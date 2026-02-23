@@ -59,6 +59,7 @@ const createOrderBodySchema = z.object({
   specialInstructions: z.string().max(500).optional(),
   couponCode: z.string().max(50).optional(),
   partnerId: z.string().optional(),
+  paymentMethod: z.enum(['upi', 'card', 'netbanking', 'cod']).optional(),
   guestEmail: z.string().email().optional().or(z.literal('').transform(() => undefined)),
   guestPhone: z.string().regex(/^\+[1-9]\d{6,14}$/).optional(),
 })
@@ -251,6 +252,7 @@ export async function POST(request: NextRequest) {
       specialInstructions,
       couponCode,
       partnerId: bodyPartnerId,
+      paymentMethod,
       guestEmail,
       guestPhone,
     } = parsed.data
@@ -490,7 +492,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const total = subtotal + deliveryCharge + surcharge - discount
+    // Add COD fee if payment method is cash on delivery
+    const codFee = paymentMethod === 'cod' ? 50 : 0
+    const total = subtotal + deliveryCharge + surcharge + codFee - discount
 
     // Determine city code for order number
     const cityCode = zone?.city.slug.substring(0, 3).toUpperCase() || 'GEN'
@@ -561,6 +565,7 @@ export async function POST(request: NextRequest) {
         giftMessage: giftMessage || null,
         specialInstructions: specialInstructions || null,
         couponCode: couponCode || null,
+        paymentMethod: paymentMethod || null,
         items: {
           create: itemsForOrder,
         },

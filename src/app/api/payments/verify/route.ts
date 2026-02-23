@@ -19,12 +19,6 @@ const verifyPaymentSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
 
     const body = await request.json()
     const parsed = verifyPaymentSchema.safeParse(body)
@@ -38,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const { orderId, gateway } = parsed.data
 
-    // Verify the order exists and belongs to the user
+    // Verify the order exists and belongs to the user (or is a guest order)
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: { payment: true },
@@ -51,10 +45,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (order.userId !== session.user.id) {
+    // Verify ownership: logged-in user must own the order, guest orders are allowed
+    if (session?.user?.id) {
+      if (order.userId && order.userId !== session.user.id) {
+        return NextResponse.json(
+          { success: false, error: 'Not authorized' },
+          { status: 403 }
+        )
+      }
+    } else if (order.userId) {
       return NextResponse.json(
-        { success: false, error: 'Not authorized' },
-        { status: 403 }
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
       )
     }
 
