@@ -1,3 +1,4 @@
+// CityGate — non-blocking; location is optional until checkout
 "use client"
 
 /**

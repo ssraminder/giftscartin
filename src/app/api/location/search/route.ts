@@ -1,3 +1,4 @@
+// Location search API — Google-first approach (FNP-style)
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import type { LocationResult } from '@/types'

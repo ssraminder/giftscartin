@@ -1,3 +1,4 @@
+// City selection modal — dismissible, non-blocking
 "use client"
 
 import { useState } from "react"

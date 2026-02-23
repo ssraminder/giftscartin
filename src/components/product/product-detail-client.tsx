@@ -1,3 +1,4 @@
+// Product detail — inline location prompt for delivery check
 "use client"
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
