@@ -91,9 +91,23 @@ type StepNumber = 1 | 2 | 3
 // ─── Step Definitions ───
 
 const STEPS: { number: StepNumber; label: string; emoji: string }[] = [
-  { number: 1, label: "Delivery Address", emoji: "\uD83D\uDCCD" },
+  { number: 1, label: "Address & Details", emoji: "\uD83D\uDCCD" },
   { number: 2, label: "Delivery Options", emoji: "\uD83D\uDCC5" },
   { number: 3, label: "Payment", emoji: "\uD83D\uDCB3" },
+]
+
+// ─── Indian States & UTs ───
+
+const INDIAN_STATES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+  "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+  "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+  "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+  "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  // Union Territories
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+  "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
 ]
 
 // ─── Hardcoded Coupons (placeholder) ───
@@ -228,6 +242,15 @@ export default function CheckoutPage() {
   const [paymentStep, setPaymentStep] = useState<string | null>(null)
   const [orderError, setOrderError] = useState("")
 
+  // Order created in step 2→3 transition (stored for step 3 payment)
+  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
+  const [createdOrderNumber, setCreatedOrderNumber] = useState<string | null>(null)
+  const [creatingOrder, setCreatingOrder] = useState(false)
+
+  // Geo-based payment gateway
+  const [gateway, setGateway] = useState<'razorpay' | 'stripe' | null>(null)
+  const [usdRate, setUsdRate] = useState(84)
+
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   // ─── Load Razorpay Checkout Script ───
@@ -244,6 +267,21 @@ export default function CheckoutPage() {
     script.async = true
     script.onload = () => setRazorpayLoaded(true)
     document.body.appendChild(script)
+  }, [])
+
+  // ─── Detect payment gateway based on geo-location ───
+
+  useEffect(() => {
+    fetch('/api/location/country')
+      .then((res) => res.json())
+      .then((data) => {
+        setGateway(data.gateway === 'razorpay' ? 'razorpay' : 'stripe')
+        if (data.usdRate) setUsdRate(data.usdRate)
+      })
+      .catch(() => {
+        // Default to razorpay (India) on error
+        setGateway('razorpay')
+      })
   }, [])
 
   // ─── Initialize delivery date from cart ───
@@ -481,6 +519,11 @@ export default function CheckoutPage() {
     } else if (!/^\+[1-9]\d{6,14}$/.test(formData.senderPhone)) {
       errors.senderPhone = "Enter a valid phone number with country code"
     }
+    if (!formData.senderEmail.trim()) {
+      errors.senderEmail = "Email is required"
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.senderEmail)) {
+      errors.senderEmail = "Enter a valid email address"
+    }
 
     // If a saved address is selected, skip address field validation
     if (formData.selectedAddressId) {
@@ -585,11 +628,80 @@ export default function CheckoutPage() {
     return true
   }, [formData.deliverySlot, formData.deliveryWindow])
 
-  const handleContinueStep2 = useCallback(() => {
-    if (formData.deliveryDate && isSlotComplete) {
+  const handleContinueStep2 = useCallback(async () => {
+    if (!formData.deliveryDate || !isSlotComplete) return
+
+    // If order was already created (user went back and returned), skip creation
+    if (createdOrderId) {
       goToStep(3)
+      return
     }
-  }, [formData.deliveryDate, isSlotComplete, goToStep])
+
+    setCreatingOrder(true)
+    setOrderError("")
+
+    try {
+      const t0 = Date.now()
+
+      const isNewAddress = !formData.selectedAddressId
+      const isGuestCheckout = !session?.user
+
+      const orderBody: Record<string, unknown> = {
+        items: items.map((item) => ({
+          productId: item.productId,
+          variationId: item.variationId || undefined,
+          quantity: item.quantity,
+          addons: item.addonSelections?.length > 0 ? item.addonSelections : undefined,
+        })),
+        addressId: isNewAddress ? "__CREATE__" : formData.selectedAddressId,
+        ...(isNewAddress && {
+          address: {
+            name: formData.recipientName.trim(),
+            phone: formData.recipientPhone.trim(),
+            address: formData.address.trim(),
+            city: formData.city.trim(),
+            state: formData.state.trim(),
+            pincode: formData.pincode.trim(),
+            landmark: formData.landmark.trim() || undefined,
+          },
+        }),
+        deliveryDate: formData.deliveryDate,
+        deliverySlot: formData.deliverySlotSlug || formData.deliverySlot,
+        senderName: formData.senderName || undefined,
+        senderPhone: formData.senderPhone || undefined,
+        senderEmail: formData.senderEmail || undefined,
+        occasion: formData.occasion || undefined,
+        giftMessage: formData.giftMessage || undefined,
+        specialInstructions: formData.specialInstructions || undefined,
+        couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
+        guestEmail: isGuestCheckout && formData.senderEmail ? formData.senderEmail : undefined,
+        guestPhone: isGuestCheckout && formData.senderPhone ? formData.senderPhone : undefined,
+      }
+
+      const orderRes = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderBody),
+      })
+
+      const orderData = await orderRes.json()
+      console.log(`[checkout] step2_to_step3_order_create: ${Date.now() - t0}ms`)
+
+      if (!orderData.success || !orderData.data?.id) {
+        setOrderError(orderData.error || "Failed to create order. Please try again.")
+        setCreatingOrder(false)
+        return
+      }
+
+      setCreatedOrderId(orderData.data.id)
+      setCreatedOrderNumber(orderData.data.orderNumber)
+      setCreatingOrder(false)
+      goToStep(3)
+    } catch {
+      setOrderError("Something went wrong creating your order. Please try again.")
+      setCreatingOrder(false)
+    }
+  }, [formData, items, isSlotComplete, createdOrderId, goToStep, session?.user])
 
   // Formatted date for display
   const deliveryDateDisplay = useMemo(() => {
@@ -730,102 +842,38 @@ export default function CheckoutPage() {
   // ─── Place Order ───
 
   const handlePlaceOrder = useCallback(async () => {
-    // Validate required fields before submission
+    // Order must already exist from step 2→3 transition
+    if (!createdOrderId) {
+      setOrderError("Order not found. Please go back and try again.")
+      return
+    }
+
+    // Validate payment method selection
     if (!formData.paymentMethod) {
       setOrderError("Please select a payment method")
       return
     }
-    if (formData.paymentMethod !== "cod" && !razorpayLoaded) {
+    if (formData.paymentMethod !== "cod" && gateway === 'razorpay' && !razorpayLoaded) {
       setOrderError("Payment gateway is still loading. Please wait a moment and try again.")
-      return
-    }
-    if (!formData.deliveryDate) {
-      setOrderError("Please select a delivery date")
-      return
-    }
-    if (!formData.deliverySlot) {
-      setOrderError("Please select a delivery time slot")
-      return
-    }
-    if (!formData.selectedAddressId && !formData.recipientName.trim()) {
-      setOrderError("Please provide a delivery address")
       return
     }
 
     setPlacingOrder(true)
     setOrderError("")
-    setPaymentStep("Creating your order...")
+    setPaymentStep("Initializing payment...")
 
     try {
       const t0 = Date.now()
-      // ─── Step 1: Create the order ───
-      const isNewAddress = !formData.selectedAddressId
-      const isGuestCheckout = !session?.user
-
-      const orderBody: Record<string, unknown> = {
-        items: items.map((item) => ({
-          productId: item.productId,
-          variationId: item.variationId || undefined,
-          quantity: item.quantity,
-          addons: item.addonSelections?.length > 0 ? item.addonSelections : undefined,
-        })),
-        addressId: isNewAddress ? "__CREATE__" : formData.selectedAddressId,
-        ...(isNewAddress && {
-          address: {
-            name: formData.recipientName.trim(),
-            phone: formData.recipientPhone.trim(),
-            address: formData.address.trim(),
-            city: formData.city.trim(),
-            state: formData.state.trim(),
-            pincode: formData.pincode.trim(),
-            landmark: formData.landmark.trim() || undefined,
-          },
-        }),
-        deliveryDate: formData.deliveryDate,
-        deliverySlot: formData.deliverySlotSlug || formData.deliverySlot,
-        senderName: formData.senderName || undefined,
-        senderPhone: formData.senderPhone || undefined,
-        senderEmail: formData.senderEmail || undefined,
-        occasion: formData.occasion || undefined,
-        giftMessage: formData.giftMessage || undefined,
-        specialInstructions: formData.specialInstructions || undefined,
-        couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
-        paymentMethod: formData.paymentMethod,
-        guestEmail: isGuestCheckout && formData.senderEmail ? formData.senderEmail : undefined,
-        guestPhone: isGuestCheckout && formData.senderPhone ? formData.senderPhone : undefined,
-      }
-
-      const orderRes = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderBody),
-      })
-
-      const orderData = await orderRes.json()
-      console.log(`[checkout] order_create: ${Date.now() - t0}ms`)
-
-      if (!orderData.success || !orderData.data?.id) {
-        setOrderError(orderData.error || "Failed to place order. Please try again.")
-        setPlacingOrder(false)
-        setPaymentStep(null)
-        return
-      }
-
-      const orderId = orderData.data.id
-
-      // ─── Step 2: Initiate payment ───
-      setPaymentStep("Initializing payment...")
-      const t1 = Date.now()
-      const gateway = formData.paymentMethod === "cod" ? "cod" : "razorpay"
+      const paymentGateway = formData.paymentMethod === "cod" ? "cod" : (gateway || "razorpay")
 
       const paymentRes = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, gateway }),
+        body: JSON.stringify({ orderId: createdOrderId, gateway: paymentGateway }),
       })
 
       const paymentData = await paymentRes.json()
-      console.log(`[checkout] payment_create: ${Date.now() - t1}ms`)
+      console.log(`[checkout] payment_create: ${Date.now() - t0}ms`)
       console.log(`[checkout] total_before_popup: ${Date.now() - t0}ms`)
 
       if (!paymentData.success) {
@@ -837,25 +885,36 @@ export default function CheckoutPage() {
 
       setPaymentStep(null)
 
-      // ─── Step 3: Handle gateway response ───
-      if (gateway === "cod") {
-        // COD: order is auto-confirmed by the payment API
+      // Handle COD
+      if (paymentGateway === "cod") {
         clearReferral()
         clearCart()
-        router.push(`/orders/${orderId}/confirmation`)
+        router.push(`/orders/${createdOrderId}/confirmation`)
         return
       }
 
-      // Razorpay: open the checkout popup
-      const { razorpayOrderId, amount, currency, keyId } = paymentData.data
-      openRazorpayCheckout(razorpayOrderId, amount, currency, keyId, orderId)
+      // Handle Razorpay
+      if (paymentGateway === "razorpay") {
+        const { razorpayOrderId, amount, currency, keyId } = paymentData.data
+        openRazorpayCheckout(razorpayOrderId, amount, currency, keyId, createdOrderId)
+        return
+      }
 
+      // Handle Stripe (placeholder — redirect)
+      if (paymentGateway === "stripe" && paymentData.data?.url) {
+        window.location.href = paymentData.data.url
+        return
+      }
+
+      setOrderError("Unsupported payment gateway.")
+      setPlacingOrder(false)
+      setPaymentStep(null)
     } catch {
       setOrderError("Something went wrong. Please try again.")
       setPlacingOrder(false)
       setPaymentStep(null)
     }
-  }, [formData, items, clearReferral, clearCart, router, session?.user, razorpayLoaded, openRazorpayCheckout])
+  }, [createdOrderId, formData.paymentMethod, gateway, razorpayLoaded, clearReferral, clearCart, router, openRazorpayCheckout])
 
   // ─── Derived Values ───
 
@@ -867,7 +926,13 @@ export default function CheckoutPage() {
   const isNewAddressFormVisible =
     formData.showNewAddressForm || savedAddresses.length === 0
 
-  const isContinueDisabled =
+  const isSenderIncomplete =
+    !formData.senderName.trim() ||
+    !formData.senderPhone.trim() ||
+    formData.senderPhone === '+91' ||
+    !formData.senderEmail.trim()
+
+  const isAddressIncomplete =
     !formData.selectedAddressId &&
     (!formData.recipientName.trim() ||
       !formData.recipientPhone.trim() ||
@@ -878,6 +943,8 @@ export default function CheckoutPage() {
       !formData.pincode.trim() ||
       formData.pincodeStatus === "invalid" ||
       formData.pincodeStatus === "checking")
+
+  const isContinueDisabled = isSenderIncomplete || isAddressIncomplete
 
   // ─── Auth Gate ───
 
@@ -1198,15 +1265,18 @@ export default function CheckoutPage() {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           State <span className="text-red-500">*</span>
                         </label>
-                        <input
-                          type="text"
+                        <select
                           value={formData.state}
                           onChange={(e) =>
                             updateField("state", e.target.value)
                           }
-                          placeholder="State"
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        />
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                        >
+                          <option value="">Select State</option>
+                          {INDIAN_STATES.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
                         {formErrors.state && (
                           <p className="text-red-500 text-xs mt-1">
                             {formErrors.state}
@@ -1717,13 +1787,27 @@ export default function CheckoutPage() {
                   />
                 </div>
 
+                {/* Order creation error */}
+                {orderError && !creatingOrder && (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-sm font-medium text-red-800">{orderError}</p>
+                  </div>
+                )}
+
                 {/* 5. Continue Button */}
                 <button
                   onClick={handleContinueStep2}
-                  disabled={!formData.deliveryDate || !isSlotComplete}
-                  className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl text-base font-semibold transition-colors"
+                  disabled={!formData.deliveryDate || !isSlotComplete || creatingOrder}
+                  className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl text-base font-semibold transition-colors flex items-center justify-center gap-2"
                 >
-                  Continue to Payment &rarr;
+                  {creatingOrder ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Preparing your order...
+                    </>
+                  ) : (
+                    "Continue to Payment \u2192"
+                  )}
                 </button>
               </div>
             )}
@@ -1741,6 +1825,12 @@ export default function CheckoutPage() {
 
                 {/* 1. Order Review */}
                 <div className="rounded-xl bg-gray-50 p-4 mb-6">
+                  {/* Order number */}
+                  {createdOrderNumber && (
+                    <p className="text-xs text-gray-500 mb-2">
+                      Order #{createdOrderNumber}
+                    </p>
+                  )}
                   {/* Address row */}
                   <div className="flex items-start justify-between mb-2">
                     <p className="text-sm text-gray-700">
@@ -1776,71 +1866,93 @@ export default function CheckoutPage() {
                   )}
                 </div>
 
-                {/* 2. Payment Method */}
+                {/* 2. Payment Method — geo-aware */}
                 <h2 className="font-semibold mb-3">Choose Payment Method</h2>
-                <div className="space-y-2">
-                  {/* Online Payment (Razorpay) */}
-                  <div
-                    onClick={() => handlePaymentMethodChange("upi")}
-                    className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
-                      formData.paymentMethod && formData.paymentMethod !== "cod"
-                        ? "border-pink-500 bg-pink-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                          formData.paymentMethod && formData.paymentMethod !== "cod" ? "border-pink-500" : "border-gray-300"
-                        }`}
-                      >
-                        {formData.paymentMethod && formData.paymentMethod !== "cod" && (
-                          <div className="h-2 w-2 rounded-full bg-pink-500" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium">Pay Online</p>
-                        <span className="text-xs text-gray-500">UPI, Credit/Debit Card, Net Banking, Wallets</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-green-600 font-medium shrink-0">
-                      Secure
-                    </div>
-                  </div>
 
-                  {/* COD */}
-                  <div>
+                {gateway === null ? (
+                  /* Loading gateway detection */
+                  <div className="space-y-2">
+                    <div className="h-16 rounded-xl bg-gray-100 animate-pulse" />
+                    <div className="h-16 rounded-xl bg-gray-100 animate-pulse" />
+                  </div>
+                ) : gateway === 'razorpay' ? (
+                  /* India — Razorpay + COD */
+                  <div className="space-y-2">
+                    {/* Online Payment (Razorpay) */}
                     <div
-                      onClick={() => handlePaymentMethodChange("cod")}
+                      onClick={() => handlePaymentMethodChange("upi")}
                       className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
-                        formData.paymentMethod === "cod"
+                        formData.paymentMethod && formData.paymentMethod !== "cod"
                           ? "border-pink-500 bg-pink-50"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                            formData.paymentMethod === "cod" ? "border-pink-500" : "border-gray-300"
-                          }`}
-                        >
-                          {formData.paymentMethod === "cod" && (
-                            <div className="h-2 w-2 rounded-full bg-pink-500" />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">Cash on Delivery</p>
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{"\u20B9"}50 COD fee</span>
+                        <RadioDot selected={!!(formData.paymentMethod && formData.paymentMethod !== "cod")} />
+                        <div>
+                          <p className="font-medium">Pay Online</p>
+                          <span className="text-xs text-gray-500">UPI, Credit/Debit Card, Net Banking, Wallets</span>
                         </div>
                       </div>
+                      <div className="flex items-center gap-1 text-xs text-green-600 font-medium shrink-0">
+                        Secure
+                      </div>
                     </div>
-                    {formData.paymentMethod === "cod" && (
-                      <p className="text-sm text-gray-500 mt-2 ml-7 mr-4">
-                        Please keep exact change ready. COD fee of {"\u20B9"}50 is non-refundable.
-                      </p>
-                    )}
+
+                    {/* COD */}
+                    <div>
+                      <div
+                        onClick={() => handlePaymentMethodChange("cod")}
+                        className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                          formData.paymentMethod === "cod"
+                            ? "border-pink-500 bg-pink-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <RadioDot selected={formData.paymentMethod === "cod"} />
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">Cash on Delivery</p>
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{"\u20B9"}50 COD fee</span>
+                          </div>
+                        </div>
+                      </div>
+                      {formData.paymentMethod === "cod" && (
+                        <p className="text-sm text-gray-500 mt-2 ml-7 mr-4">
+                          Please keep exact change ready. COD fee of {"\u20B9"}50 is non-refundable.
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* International — Stripe placeholder */
+                  <div className="space-y-3">
+                    <div className="rounded-xl border-2 border-gray-200 p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <RadioDot selected={true} />
+                        <div>
+                          <p className="font-medium">Pay with Card</p>
+                          <span className="text-xs text-gray-500">
+                            {formatPrice(total)} (~${Math.round(total / usdRate)} USD)
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        disabled
+                        className="w-full py-3 bg-gray-300 text-gray-500 rounded-xl text-sm font-semibold cursor-not-allowed"
+                      >
+                        Pay ${Math.round(total / usdRate)} USD with Card
+                      </button>
+                      <p className="text-xs text-gray-500 mt-2 text-center">
+                        International payments coming soon. Please contact us at{" "}
+                        <a href="mailto:support@giftscart.in" className="text-pink-500 underline">
+                          support@giftscart.in
+                        </a>{" "}
+                        to place your order.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* 3. Coupon Code */}
                 {!formData.couponApplied && (
@@ -1915,7 +2027,14 @@ export default function CheckoutPage() {
                   )}
                   <div className="border-t pt-2 mt-2 flex justify-between font-bold text-xl">
                     <span>Total</span>
-                    <span>{formatPrice(total)}</span>
+                    <span>
+                      {formatPrice(total)}
+                      {gateway === 'stripe' && (
+                        <span className="text-sm font-normal text-gray-500 ml-1">
+                          (~${Math.round(total / usdRate)} USD)
+                        </span>
+                      )}
+                    </span>
                   </div>
                 </div>
 
@@ -1927,24 +2046,29 @@ export default function CheckoutPage() {
                 )}
 
                 {/* 5. Place Order */}
-                <button
-                  onClick={handlePlaceOrder}
-                  disabled={!formData.paymentMethod || placingOrder}
-                  className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-4 rounded-xl text-base font-bold transition-colors flex items-center justify-center gap-2"
-                >
-                  {placingOrder ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      {formData.paymentMethod === "cod" ? "Placing Order..." : "Processing Payment..."}
-                    </>
-                  ) : formData.paymentMethod === "cod" ? (
-                    `Place Order (COD) \u2192`
-                  ) : formData.paymentMethod ? (
-                    `Pay ${formatPrice(total)} \u2192`
-                  ) : (
-                    "Place Order \u2192"
-                  )}
-                </button>
+                {gateway === 'stripe' ? (
+                  /* International — disabled placeholder */
+                  null
+                ) : (
+                  <button
+                    onClick={handlePlaceOrder}
+                    disabled={!formData.paymentMethod || placingOrder || gateway === null}
+                    className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-4 rounded-xl text-base font-bold transition-colors flex items-center justify-center gap-2"
+                  >
+                    {placingOrder ? (
+                      <>
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        {formData.paymentMethod === "cod" ? "Placing Order..." : "Processing Payment..."}
+                      </>
+                    ) : formData.paymentMethod === "cod" ? (
+                      `Place Order (COD) \u2192`
+                    ) : formData.paymentMethod ? (
+                      `Pay ${formatPrice(total)} \u2192`
+                    ) : (
+                      "Place Order \u2192"
+                    )}
+                  </button>
+                )}
 
                 {/* Payment progress step message */}
                 {paymentStep && (
