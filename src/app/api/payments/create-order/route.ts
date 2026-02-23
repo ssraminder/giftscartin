@@ -16,12 +16,6 @@ const createPaymentSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      )
-    }
 
     const body = await request.json()
     const parsed = createPaymentSchema.safeParse(body)
@@ -48,10 +42,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (order.userId !== session.user.id) {
+    // Verify ownership: logged-in user must own the order, guest orders are allowed
+    // (guest orders were just created moments ago in the same checkout flow)
+    if (session?.user?.id) {
+      if (order.userId && order.userId !== session.user.id) {
+        return NextResponse.json(
+          { success: false, error: 'Not authorized' },
+          { status: 403 }
+        )
+      }
+    } else if (order.userId) {
+      // Guest trying to pay for a logged-in user's order
       return NextResponse.json(
-        { success: false, error: 'Not authorized' },
-        { status: 403 }
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
       )
     }
 
@@ -157,7 +161,7 @@ export async function POST(request: NextRequest) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         amountInr: amount,
-        customerEmail: (session.user as { email?: string }).email || undefined,
+        customerEmail: (session?.user as { email?: string } | undefined)?.email || undefined,
         successUrl: `${baseUrl}/orders/${order.id}?payment=success&gateway=stripe`,
         cancelUrl: `${baseUrl}/orders/${order.id}?payment=cancelled`,
       })

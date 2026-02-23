@@ -221,17 +221,29 @@ export default function CheckoutPage() {
 
   // Step 3 extra state
   const [codFee, setCodFee] = useState(0)
-  const [upiId, setUpiId] = useState("")
-  const [cardNumber, setCardNumber] = useState("")
-  const [cardExpiry, setCardExpiry] = useState("")
-  const [cardCvv, setCardCvv] = useState("")
-  const [selectedBank, setSelectedBank] = useState("")
   const [couponExpanded, setCouponExpanded] = useState(false)
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false)
   const [couponError, setCouponError] = useState("")
   const [placingOrder, setPlacingOrder] = useState(false)
   const [orderError, setOrderError] = useState("")
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
+  // ─── Load Razorpay Checkout Script ───
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (document.getElementById("razorpay-checkout-js")) {
+      setRazorpayLoaded(true)
+      return
+    }
+    const script = document.createElement("script")
+    script.id = "razorpay-checkout-js"
+    script.src = "https://checkout.razorpay.com/v1/checkout.js"
+    script.async = true
+    script.onload = () => setRazorpayLoaded(true)
+    document.body.appendChild(script)
+  }, [])
 
   // ─── Initialize delivery date from cart ───
 
@@ -593,6 +605,82 @@ export default function CheckoutPage() {
     setCodFee(method === "cod" ? 50 : 0)
   }, [])
 
+  // ─── Open Razorpay Checkout Popup ───
+
+  const openRazorpayCheckout = useCallback((
+    razorpayOrderId: string,
+    amountPaise: number,
+    currency: string,
+    keyId: string,
+    orderId: string,
+  ) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Razorpay = (window as any).Razorpay
+    if (!Razorpay) {
+      setOrderError("Payment gateway failed to load. Please refresh and try again.")
+      setPlacingOrder(false)
+      return
+    }
+
+    const options = {
+      key: keyId,
+      amount: amountPaise,
+      currency,
+      name: "Gifts Cart India",
+      description: "Order Payment",
+      order_id: razorpayOrderId,
+      prefill: {
+        name: formData.senderName || formData.recipientName || "",
+        email: formData.senderEmail || "",
+        contact: formData.senderPhone || formData.recipientPhone || "",
+      },
+      theme: { color: "#ec4899" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      handler: async (response: any) => {
+        // Payment succeeded on Razorpay's end — verify on our server
+        try {
+          const verifyRes = await fetch("/api/payments/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId,
+              gateway: "razorpay",
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+            }),
+          })
+          const verifyData = await verifyRes.json()
+
+          if (verifyData.success) {
+            clearReferral()
+            clearCart()
+            router.push(`/orders/${orderId}/confirmation`)
+          } else {
+            setOrderError(verifyData.error || "Payment verification failed. Contact support if amount was debited.")
+          }
+        } catch {
+          setOrderError("Payment verification failed. If your amount was debited, please contact support.")
+        } finally {
+          setPlacingOrder(false)
+        }
+      },
+      modal: {
+        ondismiss: () => {
+          setPlacingOrder(false)
+          setOrderError("Payment was cancelled. Your order has been saved — you can retry payment.")
+        },
+      },
+    }
+
+    const rzp = new Razorpay(options)
+    rzp.on("payment.failed", () => {
+      setPlacingOrder(false)
+      setOrderError("Payment failed. Please try again or choose a different payment method.")
+    })
+    rzp.open()
+  }, [formData, clearReferral, clearCart, router])
+
   const handleApplyCoupon = useCallback(() => {
     const code = formData.couponCode.trim().toUpperCase()
     if (!code) return
@@ -632,6 +720,10 @@ export default function CheckoutPage() {
       setOrderError("Please select a payment method")
       return
     }
+    if (formData.paymentMethod !== "cod" && !razorpayLoaded) {
+      setOrderError("Payment gateway is still loading. Please wait a moment and try again.")
+      return
+    }
     if (!formData.deliveryDate) {
       setOrderError("Please select a delivery date")
       return
@@ -649,21 +741,18 @@ export default function CheckoutPage() {
     setOrderError("")
 
     try {
-      // Determine if using a saved address or creating a new one
+      // ─── Step 1: Create the order ───
       const isNewAddress = !formData.selectedAddressId
-
       const isGuestCheckout = !session?.user
 
-      const body: Record<string, unknown> = {
+      const orderBody: Record<string, unknown> = {
         items: items.map((item) => ({
           productId: item.productId,
           variationId: item.variationId || undefined,
           quantity: item.quantity,
           addons: item.addonSelections?.length > 0 ? item.addonSelections : undefined,
         })),
-        // API requires addressId as a non-empty string; use '__CREATE__' for inline address creation
         addressId: isNewAddress ? "__CREATE__" : formData.selectedAddressId,
-        // Send inline address data when creating a new address (field must be 'address', not 'newAddress')
         ...(isNewAddress && {
           address: {
             name: formData.recipientName.trim(),
@@ -684,33 +773,62 @@ export default function CheckoutPage() {
         giftMessage: formData.giftMessage || undefined,
         specialInstructions: formData.specialInstructions || undefined,
         couponCode: formData.couponApplied ? formData.couponCode.trim().toUpperCase() : undefined,
-        // Guest checkout: pass email + phone for the API guest check
+        paymentMethod: formData.paymentMethod,
         guestEmail: isGuestCheckout && formData.senderEmail ? formData.senderEmail : undefined,
         guestPhone: isGuestCheckout && formData.senderPhone ? formData.senderPhone : undefined,
       }
 
-      const res = await fetch("/api/orders", {
+      const orderRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(orderBody),
       })
 
-      const data = await res.json()
+      const orderData = await orderRes.json()
 
-      if (data.success && data.data?.id) {
-        clearReferral()
-        // Always clear Zustand cart (handles both guest and logged-in users)
-        clearCart()
-        router.push(`/orders/${data.data.id}/confirmation`)
-      } else {
-        setOrderError(data.error || "Failed to place order. Please try again.")
+      if (!orderData.success || !orderData.data?.id) {
+        setOrderError(orderData.error || "Failed to place order. Please try again.")
+        setPlacingOrder(false)
+        return
       }
+
+      const orderId = orderData.data.id
+
+      // ─── Step 2: Initiate payment ───
+      const gateway = formData.paymentMethod === "cod" ? "cod" : "razorpay"
+
+      const paymentRes = await fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, gateway }),
+      })
+
+      const paymentData = await paymentRes.json()
+
+      if (!paymentData.success) {
+        setOrderError(paymentData.error || "Failed to initiate payment. Please try again.")
+        setPlacingOrder(false)
+        return
+      }
+
+      // ─── Step 3: Handle gateway response ───
+      if (gateway === "cod") {
+        // COD: order is auto-confirmed by the payment API
+        clearReferral()
+        clearCart()
+        router.push(`/orders/${orderId}/confirmation`)
+        return
+      }
+
+      // Razorpay: open the checkout popup
+      const { razorpayOrderId, amount, currency, keyId } = paymentData.data
+      openRazorpayCheckout(razorpayOrderId, amount, currency, keyId, orderId)
+
     } catch {
       setOrderError("Something went wrong. Please try again.")
-    } finally {
       setPlacingOrder(false)
     }
-  }, [formData, items, clearReferral, clearCart, router, session?.user])
+  }, [formData, items, clearReferral, clearCart, router, session?.user, razorpayLoaded, openRazorpayCheckout])
 
   // ─── Derived Values ───
 
@@ -1634,145 +1752,33 @@ export default function CheckoutPage() {
                 {/* 2. Payment Method */}
                 <h2 className="font-semibold mb-3">Choose Payment Method</h2>
                 <div className="space-y-2">
-                  {/* UPI */}
-                  <div>
-                    <div
-                      onClick={() => handlePaymentMethodChange("upi")}
-                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
-                        formData.paymentMethod === "upi"
-                          ? "border-pink-500 bg-pink-50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                            formData.paymentMethod === "upi" ? "border-pink-500" : "border-gray-300"
-                          }`}
-                        >
-                          {formData.paymentMethod === "upi" && (
-                            <div className="h-2 w-2 rounded-full bg-pink-500" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium">{"\u26A1"} UPI</p>
-                          <span className="text-xs text-green-600 font-medium">Instant &middot; Most Preferred</span>
-                        </div>
+                  {/* Online Payment (Razorpay) */}
+                  <div
+                    onClick={() => handlePaymentMethodChange("upi")}
+                    className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
+                      formData.paymentMethod && formData.paymentMethod !== "cod"
+                        ? "border-pink-500 bg-pink-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          formData.paymentMethod && formData.paymentMethod !== "cod" ? "border-pink-500" : "border-gray-300"
+                        }`}
+                      >
+                        {formData.paymentMethod && formData.paymentMethod !== "cod" && (
+                          <div className="h-2 w-2 rounded-full bg-pink-500" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium">Pay Online</p>
+                        <span className="text-xs text-gray-500">UPI, Credit/Debit Card, Net Banking, Wallets</span>
                       </div>
                     </div>
-                    {formData.paymentMethod === "upi" && (
-                      <div className="mt-2 ml-7 mr-4">
-                        <input
-                          type="text"
-                          value={upiId}
-                          onChange={(e) => setUpiId(e.target.value)}
-                          placeholder="yourname@upi"
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        />
-                        <p className="text-sm text-gray-500 mt-1">Enter your UPI ID to pay</p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card */}
-                  <div>
-                    <div
-                      onClick={() => handlePaymentMethodChange("card")}
-                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
-                        formData.paymentMethod === "card"
-                          ? "border-pink-500 bg-pink-50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                            formData.paymentMethod === "card" ? "border-pink-500" : "border-gray-300"
-                          }`}
-                        >
-                          {formData.paymentMethod === "card" && (
-                            <div className="h-2 w-2 rounded-full bg-pink-500" />
-                          )}
-                        </div>
-                        <p className="font-medium">{"\uD83D\uDCB3"} Credit or Debit Card</p>
-                      </div>
+                    <div className="flex items-center gap-1 text-xs text-green-600 font-medium shrink-0">
+                      Secure
                     </div>
-                    {formData.paymentMethod === "card" && (
-                      <div className="mt-2 ml-7 mr-4 grid grid-cols-3 gap-2">
-                        <input
-                          type="text"
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, "").slice(0, 16))}
-                          placeholder="Card Number"
-                          maxLength={16}
-                          className="col-span-3 sm:col-span-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        />
-                        <input
-                          type="text"
-                          value={cardExpiry}
-                          onChange={(e) => {
-                            let val = e.target.value.replace(/[^\d/]/g, "")
-                            if (val.length === 2 && !val.includes("/") && cardExpiry.length < val.length) {
-                              val = val + "/"
-                            }
-                            setCardExpiry(val.slice(0, 5))
-                          }}
-                          placeholder="MM/YY"
-                          maxLength={5}
-                          className="rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        />
-                        <input
-                          type="password"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 3))}
-                          placeholder="CVV"
-                          maxLength={3}
-                          className="rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Net Banking */}
-                  <div>
-                    <div
-                      onClick={() => handlePaymentMethodChange("netbanking")}
-                      className={`flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all ${
-                        formData.paymentMethod === "netbanking"
-                          ? "border-pink-500 bg-pink-50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                            formData.paymentMethod === "netbanking" ? "border-pink-500" : "border-gray-300"
-                          }`}
-                        >
-                          {formData.paymentMethod === "netbanking" && (
-                            <div className="h-2 w-2 rounded-full bg-pink-500" />
-                          )}
-                        </div>
-                        <p className="font-medium">{"\uD83C\uDFE6"} Net Banking</p>
-                      </div>
-                    </div>
-                    {formData.paymentMethod === "netbanking" && (
-                      <div className="mt-2 ml-7 mr-4">
-                        <select
-                          value={selectedBank}
-                          onChange={(e) => setSelectedBank(e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none bg-white"
-                        >
-                          <option value="">Select your bank</option>
-                          <option value="sbi">SBI</option>
-                          <option value="hdfc">HDFC</option>
-                          <option value="icici">ICICI</option>
-                          <option value="axis">Axis</option>
-                          <option value="kotak">Kotak</option>
-                          <option value="pnb">Punjab National Bank</option>
-                        </select>
-                      </div>
-                    )}
                   </div>
 
                   {/* COD */}
@@ -1796,7 +1802,7 @@ export default function CheckoutPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <p className="font-medium">{"\uD83E\uDD1D"} Cash on Delivery</p>
+                          <p className="font-medium">Cash on Delivery</p>
                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{"\u20B9"}50 COD fee</span>
                         </div>
                       </div>
@@ -1902,8 +1908,12 @@ export default function CheckoutPage() {
                   {placingOrder ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Placing Order...
+                      {formData.paymentMethod === "cod" ? "Placing Order..." : "Processing Payment..."}
                     </>
+                  ) : formData.paymentMethod === "cod" ? (
+                    `Place Order (COD) \u2192`
+                  ) : formData.paymentMethod ? (
+                    `Pay ${formatPrice(total)} \u2192`
                   ) : (
                     "Place Order \u2192"
                   )}
