@@ -407,7 +407,7 @@ export interface Review {
 // ==================== LOCATION SEARCH ====================
 
 export interface LocationResult {
-  type: 'area' | 'city' | 'google_place'
+  type: 'area' | 'city'
   label: string
   cityId: string | null
   cityName: string | null
@@ -416,7 +416,6 @@ export interface LocationResult {
   areaName: string | null
   lat: number | null
   lng: number | null
-  placeId: string | null
   isActive: boolean
   isComingSoon: boolean
 }

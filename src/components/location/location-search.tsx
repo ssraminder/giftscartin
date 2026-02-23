@@ -1,25 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Search, MapPin, Navigation, Loader2 } from 'lucide-react'
+import { Search, MapPin, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { useLocationSearch } from '@/hooks/use-location-search'
 import type { LocationResult } from '@/types'
-
-export interface ResolvedLocation {
-  type: 'area' | 'city' | 'google_place'
-  cityId: string | null
-  cityName: string | null
-  citySlug: string | null
-  pincode: string | null
-  areaName: string | null
-  lat: number | null
-  lng: number | null
-  placeId: string | null
-  vendorCount?: number
-  isServiceable?: boolean
-  comingSoon?: boolean
-}
 
 interface LocationSearchInputProps {
   onSelect: (result: LocationResult) => void
@@ -30,7 +15,7 @@ interface LocationSearchInputProps {
 }
 
 /**
- * Pure search input with dropdown — no serviceability checks or status messages.
+ * Pure search input with dropdown — DB-only results (areas + cities).
  * Each consumer (modal, header, product page) handles selection logic itself.
  */
 export function LocationSearchInput({
@@ -113,15 +98,11 @@ export function LocationSearchInput({
             <div className="py-1">
               {results.map((result, idx) => (
                 <button
-                  key={`${result.type}-${idx}-${result.placeId || result.pincode || result.label}`}
+                  key={`${result.type}-${idx}-${result.pincode || result.label}`}
                   onClick={() => handleSelect(result)}
                   className="w-full flex items-start gap-3 px-4 py-2.5 text-left hover:bg-gray-50 transition-colors"
                 >
-                  {result.type === 'google_place' ? (
-                    <Navigation className="h-4 w-4 shrink-0 text-gray-400 mt-0.5" />
-                  ) : (
-                    <MapPin className="h-4 w-4 shrink-0 text-[#E91E63] mt-0.5" />
-                  )}
+                  <MapPin className="h-4 w-4 shrink-0 text-[#E91E63] mt-0.5" />
                   <span className="text-sm text-gray-900 leading-snug">
                     {result.label}
                   </span>
@@ -135,5 +116,5 @@ export function LocationSearchInput({
   )
 }
 
-// Re-export for backwards compat — consumers that imported LocationSearch
+// Re-export for backwards compat
 export { LocationSearchInput as LocationSearch }

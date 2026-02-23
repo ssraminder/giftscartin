@@ -106,14 +106,6 @@ export function CityProvider({ children }: { children: React.ReactNode }) {
     setLoaded(true)
   }, [partnerLoading, partner])
 
-  // Pre-warm the location search serverless function after 2 seconds
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetch('/api/location/search?q=Ch').catch(() => {})
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [])
-
   const setCity = useCallback((city: CitySelection) => {
     setSelection(city)
     try {
