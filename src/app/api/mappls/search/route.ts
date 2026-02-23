@@ -46,6 +46,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Optional radius for bounding box (default 40km, max 100km)
+    const radiusParam = searchParams.get('radius')
+    const radiusKm = radiusParam
+      ? Math.min(Math.max(parseFloat(radiusParam) || 40, 1), 100)
+      : 40
+
     // Build Mappls Autosuggest URL
     const params = new URLSearchParams({
       query: q.trim(),
@@ -54,7 +60,25 @@ export async function GET(request: NextRequest) {
     })
 
     if (lat && lng) {
+      const latNum = parseFloat(lat)
+      const lngNum = parseFloat(lng)
+
       params.set('location', `${lat},${lng}`)
+
+      // Add bounds filter to hard-restrict results to a geographic box
+      // This prevents generic queries like "sector" from returning Delhi results
+      // when biased to Chandigarh
+      if (!isNaN(latNum) && !isNaN(lngNum)) {
+        const latOffset = radiusKm / 111
+        const lngOffset = radiusKm / (111 * Math.cos((latNum * Math.PI) / 180))
+
+        const swLat = (latNum - latOffset).toFixed(4)
+        const swLng = (lngNum - lngOffset).toFixed(4)
+        const neLat = (latNum + latOffset).toFixed(4)
+        const neLng = (lngNum + lngOffset).toFixed(4)
+
+        params.set('filter', `bounds:${swLng},${swLat};${neLng},${neLat}`)
+      }
     }
 
     const mapplsRes = await fetch(
