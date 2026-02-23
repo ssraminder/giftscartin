@@ -131,8 +131,31 @@ export async function POST(request: NextRequest) {
 
     // ─── RAZORPAY ───
     if (gateway === 'razorpay') {
+      // Validate amount before calling Razorpay
+      const amountInPaise = Math.round(Number(amount) * 100)
+      if (!Number.isInteger(amountInPaise) || amountInPaise <= 0 || isNaN(amount)) {
+        console.error('[payments] Invalid order amount:', { amount, amountInPaise, orderTotal: order.total })
+        return NextResponse.json(
+          { success: false, error: 'Invalid order amount' },
+          { status: 400 }
+        )
+      }
+
       const t2 = Date.now()
-      const razorpayOrder = await createRazorpayOrder(amount, 'INR', order.orderNumber)
+      let razorpayOrder
+      try {
+        razorpayOrder = await createRazorpayOrder(amount, 'INR', order.orderNumber)
+      } catch (error: unknown) {
+        console.error('[payments] Razorpay order create failed:', JSON.stringify(error))
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Payment initialization failed',
+            ...(process.env.NODE_ENV === 'development' && { details: String(error) }),
+          },
+          { status: 500 }
+        )
+      }
       console.log(`[payments] razorpay_create: ${Date.now() - t2}ms`)
 
       // Fire DB upsert without awaiting — we already have razorpayOrder.id for the response
