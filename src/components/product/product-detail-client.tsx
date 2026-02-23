@@ -1,4 +1,3 @@
-// Product detail — inline location prompt for delivery check
 "use client"
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
@@ -6,7 +5,7 @@ import { useRouter } from "next/navigation"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import {
-  MapPin, Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
+  Minus, Plus, ShoppingCart, Star, Truck, Clock, Calendar,
   CheckCircle, ChevronDown, ChevronUp, Lock, Leaf, RotateCcw,
   MessageSquare, Info,
 } from "lucide-react"
@@ -15,8 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ProductGallery } from "@/components/product/product-gallery"
-import { LocationSearch } from "@/components/location/location-search"
-import type { ResolvedLocation } from "@/components/location/location-search"
+import { ProductLocationCheck } from "@/components/location/product-location-check"
 const DeliveryDatePicker = dynamic(
   () => import("@/components/product/delivery-slot-picker").then(mod => ({ default: mod.DeliveryDatePicker })),
   {
@@ -204,7 +202,7 @@ export default function ProductDetailClient({
   const { formatPrice } = useCurrency()
   const addItemAdvanced = useCart((s) => s.addItemAdvanced)
   const { partner } = usePartner()
-  const { pincode: cityPincode, cityId, cityName, areaName: cityAreaName, isSelected, setCity, setArea } = useCity()
+  const { cityId, isSelected } = useCity()
   const addonSectionRef = useRef<HTMLDivElement>(null)
 
   // Product data — initialized from server (no client-side fetch needed)
@@ -227,16 +225,6 @@ export default function ProductDetailClient({
   const [selectedWeight, setSelectedWeight] = useState<string | null>(null)
   const [giftMessageOpen, setGiftMessageOpen] = useState(false)
   const [giftMessage, setGiftMessage] = useState("")
-
-  // Check serviceability when city context changes with a pincode
-  useEffect(() => {
-    if (cityPincode) {
-      handleServiceabilityCheck(cityPincode)
-    } else {
-      setComingSoon(false)
-      setComingSoonMessage("")
-    }
-  }, [cityPincode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize addon selections on mount
   useEffect(() => {
@@ -461,59 +449,15 @@ export default function ProductDetailClient({
     }, 100)
   }, [handleAddToCart, router, variationError, addonErrors, deliveryError])
 
-  const handleServiceabilityCheck = async (pincode: string) => {
-    if (pincode.length !== 6) return
-    try {
-      const res = await fetch("/api/serviceability", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pincode, productId: product.id }),
-      })
-      const json = await res.json()
-      const isComingSoon = json.success && json.data?.comingSoon === true
-      setComingSoon(isComingSoon)
-      setComingSoonMessage(isComingSoon ? (json.data?.message || "") : "")
-    } catch {
-      setComingSoon(false)
-      setComingSoonMessage("")
-    }
-  }
-
-  const handleLocationSelect = useCallback((location: ResolvedLocation) => {
-    // Update city context — set full city if not yet selected, otherwise refine area
-    if (location.cityId) {
-      if (!isSelected) {
-        setCity({
-          cityId: location.cityId,
-          cityName: location.cityName || '',
-          citySlug: location.citySlug || (location.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-          pincode: location.pincode || undefined,
-          areaName: location.areaName || undefined,
-          lat: location.lat || undefined,
-          lng: location.lng || undefined,
-          source: location.type,
-        })
-      } else {
-        setArea({
-          name: location.areaName || '',
-          pincode: location.pincode || '',
-          isServiceable: location.isServiceable || false,
-        })
-      }
-    }
-
-    // Update local delivery state
-    if (location.comingSoon) {
-      setComingSoon(true)
-      setComingSoonMessage("We're coming to your area soon! Place your order and our team will confirm delivery.")
-    } else if (location.pincode) {
-      handleServiceabilityCheck(location.pincode)
-    } else {
-      setComingSoon(false)
-      setComingSoonMessage("")
-    }
-  }, [isSelected, setCity, setArea]) // eslint-disable-line react-hooks/exhaustive-deps
-
+  const handleServiceabilityResult = useCallback((result: {
+    isServiceable: boolean
+    comingSoon: boolean
+    vendorCount: number
+    message: string
+  }) => {
+    setComingSoon(result.comingSoon)
+    setComingSoonMessage(result.comingSoon ? result.message : "")
+  }, [])
 
   const categorySlug = product.category?.slug || ""
   const categoryName = product.category?.name || ""
@@ -632,9 +576,12 @@ export default function ProductDetailClient({
 
   const locationNotSelected = !isSelected
 
-  const deliverToDefaultValue = cityPincode
-    ? (cityAreaName ? `${cityAreaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
-    : ''
+  const receiverLocationBlock = (
+    <ProductLocationCheck
+      productId={product.id}
+      onServiceabilityChange={handleServiceabilityResult}
+    />
+  )
 
   const deliveryBlock = (
     <div className="mb-3">
@@ -674,29 +621,6 @@ export default function ProductDetailClient({
           )}
         </>
       )}
-    </div>
-  )
-
-  // "Gift Receiver's Location" — prominent section (FNP style)
-  const receiverLocationBlock = (
-    <div className="mb-4">
-      <div className="rounded-xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-4">
-        <p className="font-semibold text-sm text-gray-800 mb-2 flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-[#E91E63]" />
-          Gift Receiver&apos;s Location
-        </p>
-        {locationNotSelected && (
-          <p className="text-xs text-gray-500 mb-2">
-            Enter receiver&apos;s location to check delivery availability
-          </p>
-        )}
-        <LocationSearch
-          onSelect={handleLocationSelect}
-          productId={product.id}
-          defaultValue={deliverToDefaultValue}
-          placeholder="Enter receiver's pincode, location, area"
-        />
-      </div>
     </div>
   )
 
