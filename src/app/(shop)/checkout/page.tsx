@@ -628,17 +628,26 @@ export default function CheckoutPage() {
       return
     }
 
+    if (!keyId) {
+      setOrderError("Payment gateway is not configured. Please contact support.")
+      setPlacingOrder(false)
+      return
+    }
+
     const options = {
       key: keyId,
       amount: amountPaise,
       currency,
       name: "Gifts Cart India",
-      description: "Order Payment",
+      description: `Order Payment`.substring(0, 255),
       order_id: razorpayOrderId,
       prefill: {
-        name: formData.senderName || formData.recipientName || "",
-        email: formData.senderEmail || "",
-        contact: formData.senderPhone || formData.recipientPhone || "",
+        name: String(formData.senderName || formData.recipientName || ""),
+        email: String(formData.senderEmail || ""),
+        contact: String(formData.senderPhone || formData.recipientPhone || ""),
+      },
+      notes: {
+        order_id: String(orderId),
       },
       theme: { color: "#ec4899" },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
