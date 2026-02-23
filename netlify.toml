@@ -8,6 +8,19 @@
 
 [functions]
   directory = "netlify/functions"
+  included_files = ["prisma/**"]
+
+[functions."/api/orders"]
+  [functions."/api/orders".always_on]
+    enabled = true
+
+[functions."/api/payments/create-order"]
+  [functions."/api/payments/create-order".always_on]
+    enabled = true
+
+[functions."/api/payments/verify"]
+  [functions."/api/payments/verify".always_on]
+    enabled = true
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
