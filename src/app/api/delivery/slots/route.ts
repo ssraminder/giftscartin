@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { nowIST, toISTDateString, parseLocalDate } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const supabase = getSupabaseAdmin()
     const ist = nowIST()
     const currentHourIST = ist.getUTCHours()
     const todayIST = toISTDateString(new Date())
@@ -45,35 +46,41 @@ export async function GET(req: NextRequest) {
     if (productIdsParam) {
       const productIds = productIdsParam.split(',').filter(Boolean)
       if (productIds.length > 0) {
-        const vendorProducts = await prisma.vendorProduct.findMany({
-          where: { productId: { in: productIds }, isAvailable: true },
-          select: { preparationTime: true },
-        })
-        if (vendorProducts.length > 0) {
+        const { data: vendorProducts } = await supabase
+          .from('vendor_products')
+          .select('preparationTime')
+          .in('productId', productIds)
+          .eq('isAvailable', true)
+
+        if (vendorProducts && vendorProducts.length > 0) {
           maxPreparationTime = Math.max(
-            ...vendorProducts.map(vp => vp.preparationTime)
+            ...vendorProducts.map((vp: { preparationTime: number }) => vp.preparationTime)
           )
         }
       }
     }
 
     // 1. Get city
-    const city = await prisma.city.findUnique({
-      where: { id: cityId, isActive: true },
-    })
+    const { data: city } = await supabase
+      .from('cities')
+      .select('*')
+      .eq('id', cityId)
+      .eq('isActive', true)
+      .single()
+
     if (!city) {
       return NextResponse.json({ success: false, error: 'City not found' }, { status: 404 })
     }
 
     // 2. Check holidays
-    const holidays = await prisma.deliveryHoliday.findMany({
-      where: {
-        date: deliveryDate,
-        OR: [{ cityId: city.id }, { cityId: null }],
-      },
-      orderBy: { cityId: 'desc' },
-    })
-    const holiday = holidays[0] ?? null
+    const { data: holidays } = await supabase
+      .from('delivery_holidays')
+      .select('*')
+      .eq('date', deliveryDate.toISOString())
+      .or(`cityId.eq.${city.id},cityId.is.null`)
+      .order('cityId', { ascending: false })
+
+    const holiday = (holidays && holidays.length > 0) ? holidays[0] : null
 
     if (holiday?.mode === 'FULL_BLOCK') {
       return NextResponse.json({
@@ -92,30 +99,36 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Get active surcharges for this date
-    const surcharges = await prisma.deliverySurcharge.findMany({
-      where: {
-        isActive: true,
-        startDate: { lte: deliveryDate },
-        endDate: { gte: deliveryDate },
-      },
-    })
-    const surchargeData = surcharges.length > 0
+    const { data: surcharges } = await supabase
+      .from('delivery_surcharges')
+      .select('*')
+      .eq('isActive', true)
+      .lte('startDate', deliveryDate.toISOString())
+      .gte('endDate', deliveryDate.toISOString())
+
+    const surchargeData = (surcharges && surcharges.length > 0)
       ? {
-          name: surcharges.map(s => s.name).join(', '),
-          amount: surcharges.reduce((sum, s) => sum + Number(s.amount), 0),
+          name: surcharges.map((s: Record<string, unknown>) => s.name).join(', '),
+          amount: surcharges.reduce((sum: number, s: Record<string, unknown>) => sum + Number(s.amount), 0),
         }
       : null
 
-    // 4. Get city-enabled slots
-    const cityConfigs = await prisma.cityDeliveryConfig.findMany({
-      where: {
-        cityId: city.id,
-        isAvailable: true,
-        ...(holiday?.mode === 'STANDARD_ONLY'
-          ? { slot: { is: { slotGroup: 'standard' } } }
-          : {}),
-      },
-      include: { slot: true },
+    // 4. Get city-enabled slots with their delivery_slots
+    const cityConfigsQuery = supabase
+      .from('city_delivery_configs')
+      .select('*, delivery_slots(*)')
+      .eq('cityId', city.id)
+      .eq('isAvailable', true)
+
+    // For STANDARD_ONLY holiday mode, we filter after fetching
+    const { data: allCityConfigs } = await cityConfigsQuery
+
+    const cityConfigs = (allCityConfigs || []).filter((c: Record<string, unknown>) => {
+      const slot = c.delivery_slots as Record<string, unknown>
+      if (holiday?.mode === 'STANDARD_ONLY') {
+        return slot?.slotGroup === 'standard'
+      }
+      return true
     })
 
     // Build holiday override map
@@ -128,10 +141,11 @@ export async function GET(req: NextRequest) {
     }
 
     // Helper to get charge for a slot config
-    const getSlotCharge = (config: typeof cityConfigs[number]): number => {
-      const override = holidayOverrides.get(config.slot.slug)
+    const getSlotCharge = (config: Record<string, unknown>): number => {
+      const slot = config.delivery_slots as Record<string, unknown>
+      const override = holidayOverrides.get(slot.slug as string)
       if (override?.priceOverride != null) return override.priceOverride
-      return Number(config.chargeOverride ?? config.slot.baseCharge)
+      return Number(config.chargeOverride ?? slot.baseCharge)
     }
 
     // Helper to check if slot is blocked by holiday
@@ -142,9 +156,12 @@ export async function GET(req: NextRequest) {
     // --- Build response sections ---
 
     // Standard slot
-    const standardConfig = cityConfigs.find(c => c.slot.slotGroup === 'standard' && c.slot.isActive)
+    const standardConfig = cityConfigs.find((c: Record<string, unknown>) => {
+      const slot = c.delivery_slots as Record<string, unknown>
+      return slot?.slotGroup === 'standard' && slot?.isActive
+    })
     let standardResult: { available: boolean; charge: number }
-    if (!standardConfig || isHolidayBlocked(standardConfig.slot.slug)) {
+    if (!standardConfig || isHolidayBlocked((standardConfig.delivery_slots as Record<string, unknown>).slug as string)) {
       standardResult = { available: false, charge: 0 }
     } else {
       const charge = getSlotCharge(standardConfig)
@@ -152,9 +169,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Fixed time windows
-    const fixedConfig = cityConfigs.find(c => c.slot.slotGroup === 'fixed' && c.slot.isActive)
+    const fixedConfig = cityConfigs.find((c: Record<string, unknown>) => {
+      const slot = c.delivery_slots as Record<string, unknown>
+      return slot?.slotGroup === 'fixed' && slot?.isActive
+    })
     let fixedWindows: { label: string; start: string; end: string; charge: number; available: boolean }[] = []
-    if (fixedConfig && !isHolidayBlocked(fixedConfig.slot.slug)) {
+    if (fixedConfig && !isHolidayBlocked((fixedConfig.delivery_slots as Record<string, unknown>).slug as string)) {
       const baseCharge = getSlotCharge(fixedConfig)
       fixedWindows = FIXED_WINDOWS.map(fw => {
         let available = true
@@ -183,19 +203,19 @@ export async function GET(req: NextRequest) {
     }
 
     // Early Morning slot
-    const earlyConfig = cityConfigs.find(c => c.slot.slotGroup === 'early-morning' && c.slot.isActive)
+    const earlyConfig = cityConfigs.find((c: Record<string, unknown>) => {
+      const slot = c.delivery_slots as Record<string, unknown>
+      return slot?.slotGroup === 'early-morning' && slot?.isActive
+    })
     let earlyMorningResult: { available: boolean; charge: number; cutoffPassed: boolean }
-    if (!earlyConfig || isHolidayBlocked(earlyConfig.slot.slug)) {
+    if (!earlyConfig || isHolidayBlocked((earlyConfig.delivery_slots as Record<string, unknown>).slug as string)) {
       earlyMorningResult = { available: false, charge: 149, cutoffPassed: true }
     } else {
       const charge = getSlotCharge(earlyConfig) || 149
-      // Cutoff: previous day 6 PM — for today's delivery, always passed
-      // For future dates, cutoff is 6 PM the day before
       let cutoffPassed = false
       if (isToday) {
         cutoffPassed = true // Can never order early morning for same day
       } else {
-        // Check if it's the day before delivery and past 6 PM
         const yesterday = new Date(deliveryDate)
         yesterday.setDate(yesterday.getDate() - 1)
         const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
@@ -207,9 +227,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Express slot
-    const expressConfig = cityConfigs.find(c => c.slot.slotGroup === 'express' && c.slot.isActive)
+    const expressConfig = cityConfigs.find((c: Record<string, unknown>) => {
+      const slot = c.delivery_slots as Record<string, unknown>
+      return slot?.slotGroup === 'express' && slot?.isActive
+    })
     let expressResult: { available: boolean; charge: number }
-    if (!expressConfig || isHolidayBlocked(expressConfig.slot.slug)) {
+    if (!expressConfig || isHolidayBlocked((expressConfig.delivery_slots as Record<string, unknown>).slug as string)) {
       expressResult = { available: false, charge: 249 }
     } else {
       const charge = getSlotCharge(expressConfig) || 249
@@ -217,13 +240,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Midnight slot
-    const midnightConfig = cityConfigs.find(c => c.slot.slotGroup === 'midnight' && c.slot.isActive)
+    const midnightConfig = cityConfigs.find((c: Record<string, unknown>) => {
+      const slot = c.delivery_slots as Record<string, unknown>
+      return slot?.slotGroup === 'midnight' && slot?.isActive
+    })
     let midnightResult: { available: boolean; charge: number; cutoffPassed: boolean }
-    if (!midnightConfig || isHolidayBlocked(midnightConfig.slot.slug)) {
+    if (!midnightConfig || isHolidayBlocked((midnightConfig.delivery_slots as Record<string, unknown>).slug as string)) {
       midnightResult = { available: false, charge: 199, cutoffPassed: true }
     } else {
       const charge = getSlotCharge(midnightConfig) || 199
-      // Cutoff: 6 PM same day
       let cutoffPassed = false
       if (isToday && currentHourIST >= 18) {
         cutoffPassed = true

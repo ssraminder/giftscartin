@@ -1,31 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
-
 // GET: List all payment methods
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const session = await getSessionFromRequest(request)
+    if (!session || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
       )
     }
 
-    const methods = await prisma.paymentMethod.findMany({
-      orderBy: { sortOrder: 'asc' },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: methods, error } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .order('sortOrder', { ascending: true })
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: methods })
   } catch (error) {
@@ -40,8 +36,8 @@ export async function GET() {
 // POST: Create a new payment method
 export async function POST(request: NextRequest) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const session = await getSessionFromRequest(request)
+    if (!session || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -58,8 +54,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const supabase = getSupabaseAdmin()
+
     // Check slug uniqueness
-    const existing = await prisma.paymentMethod.findUnique({ where: { slug } })
+    const { data: existing } = await supabase
+      .from('payment_methods')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle()
+
     if (existing) {
       return NextResponse.json(
         { success: false, error: 'A payment method with this slug already exists' },
@@ -67,15 +70,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const method = await prisma.paymentMethod.create({
-      data: {
+    const { data: method, error } = await supabase
+      .from('payment_methods')
+      .insert({
         name,
         slug,
         description: description || null,
         isActive: isActive !== undefined ? isActive : true,
         sortOrder: sortOrder !== undefined ? sortOrder : 0,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: method })
   } catch (error) {

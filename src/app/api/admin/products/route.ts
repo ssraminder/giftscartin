@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -22,8 +21,8 @@ const listSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -34,41 +33,74 @@ export async function GET(request: NextRequest) {
     const params = listSchema.parse(Object.fromEntries(searchParams))
     const { search, category, categorySlug, type, status, isActive, page, pageSize } = params
 
-    const where: Record<string, unknown> = {}
+    const supabase = getSupabaseAdmin()
+
+    // If filtering by categorySlug, resolve to categoryId first
+    let categoryIdFilter: string | undefined = category
+    if (categorySlug && !categoryIdFilter) {
+      const { data: cat } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', categorySlug)
+        .single()
+      if (cat) categoryIdFilter = cat.id
+    }
+
+    // Build query
+    let query = supabase
+      .from('products')
+      .select('id, name, slug, productType, basePrice, isActive, images, categoryId, categories!inner(id, name, slug)', { count: 'exact' })
+      .order('createdAt', { ascending: false })
 
     if (search) {
-      where.name = { contains: search, mode: 'insensitive' }
+      query = query.ilike('name', `%${search}%`)
     }
-    if (category) {
-      where.categoryId = category
-    }
-    if (categorySlug) {
-      where.category = { slug: categorySlug }
+    if (categoryIdFilter) {
+      query = query.eq('categoryId', categoryIdFilter)
     }
     if (type) {
-      where.productType = type
+      query = query.eq('productType', type)
     }
-    // Support both status enum and isActive boolean string
     if (status === 'active' || isActive === 'true') {
-      where.isActive = true
+      query = query.eq('isActive', true)
     } else if (status === 'inactive' || isActive === 'false') {
-      where.isActive = false
+      query = query.eq('isActive', false)
     }
-    const [items, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          category: { select: { id: true, name: true, slug: true } },
-          _count: { select: { vendorProducts: true, variations: true } },
-        },
-      }),
-      prisma.product.count({ where }),
-    ])
 
-    const data = items.map((item) => ({
+    const skip = (page - 1) * pageSize
+    query = query.range(skip, skip + pageSize - 1)
+
+    const { data: items, count: total, error } = await query
+
+    if (error) throw error
+
+    // Get vendor product counts and variation counts for these products
+    const productIds = (items || []).map(i => i.id)
+    const vpCounts: Record<string, number> = {}
+    const varCounts: Record<string, number> = {}
+    if (productIds.length > 0) {
+      const { data: vpRows } = await supabase
+        .from('vendor_products')
+        .select('productId')
+        .in('productId', productIds)
+      if (vpRows) {
+        for (const row of vpRows) {
+          vpCounts[row.productId] = (vpCounts[row.productId] || 0) + 1
+        }
+      }
+
+      const { data: varRows } = await supabase
+        .from('product_variations')
+        .select('productId')
+        .in('productId', productIds)
+      if (varRows) {
+        for (const row of varRows) {
+          varCounts[row.productId] = (varCounts[row.productId] || 0) + 1
+        }
+      }
+    }
+
+    const data = (items || []).map((item: Record<string, unknown>) => ({
       id: item.id,
       name: item.name,
       slug: item.slug,
@@ -76,13 +108,16 @@ export async function GET(request: NextRequest) {
       basePrice: Number(item.basePrice),
       isActive: item.isActive,
       images: item.images,
-      category: item.category,
-      _count: item._count,
+      category: item.categories,
+      _count: {
+        vendorProducts: vpCounts[item.id as string] || 0,
+        variations: varCounts[item.id as string] || 0,
+      },
     }))
 
     return NextResponse.json({
       success: true,
-      data: { items: data, total, page, pageSize },
+      data: { items: data, total: total ?? 0, page, pageSize },
     })
   } catch (error) {
     console.error('GET /api/admin/products error:', error)
@@ -181,8 +216,8 @@ const createProductSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -199,6 +234,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Auto-generate slug if not provided
     let slug = data.slug
@@ -214,16 +250,21 @@ export async function POST(request: NextRequest) {
     // Ensure slug is unique
     let finalSlug = slug
     let suffix = 2
-    while (await prisma.product.findUnique({ where: { slug: finalSlug } })) {
+    while (true) {
+      const { data: existing } = await supabase
+        .from('products')
+        .select('id')
+        .eq('slug', finalSlug)
+        .maybeSingle()
+      if (!existing) break
       finalSlug = `${slug}-${suffix}`
       suffix++
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-
     // Create the product
-    const product = await prisma.product.create({
-      data: {
+    const { data: product, error: productError } = await supabase
+      .from('products')
+      .insert({
         name: data.name,
         slug: finalSlug,
         description: data.description ?? null,
@@ -243,54 +284,59 @@ export async function POST(request: NextRequest) {
         metaKeywords: data.metaKeywords,
         ogImage: data.ogImage ?? null,
         canonicalUrl: data.canonicalUrl ?? null,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (productError) throw productError
 
     // Create attributes and their options
     for (const attr of data.attributes) {
-      const createdAttr = await prisma.productAttribute.create({
-        data: {
+      const { data: createdAttr, error: attrError } = await supabase
+        .from('product_attributes')
+        .insert({
           productId: product.id,
           name: attr.name,
           slug: attr.slug,
           isForVariations: attr.isForVariations,
           sortOrder: attr.sortOrder,
-        },
-      })
+        })
+        .select()
+        .single()
+
+      if (attrError) throw attrError
+
       for (const opt of attr.options) {
-        await prisma.productAttributeOption.create({
-          data: {
-            attributeId: createdAttr.id,
-            value: opt.value,
-            sortOrder: opt.sortOrder,
-          },
+        await supabase.from('product_attribute_options').insert({
+          attributeId: createdAttr.id,
+          value: opt.value,
+          sortOrder: opt.sortOrder,
         })
       }
     }
 
     // Create variations
     for (const v of data.variations) {
-      await prisma.productVariation.create({
-        data: {
-          productId: product.id,
-          attributes: v.attributes,
-          price: v.price,
-          salePrice: v.salePrice ?? null,
-          saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
-          saleTo: v.saleTo ? new Date(v.saleTo) : null,
-          sku: v.sku ?? null,
-          stockQty: v.stockQty ?? null,
-          image: v.image ?? null,
-          isActive: v.isActive,
-          sortOrder: v.sortOrder,
-        },
+      await supabase.from('product_variations').insert({
+        productId: product.id,
+        attributes: v.attributes,
+        price: v.price,
+        salePrice: v.salePrice ?? null,
+        saleFrom: v.saleFrom ? new Date(v.saleFrom).toISOString() : null,
+        saleTo: v.saleTo ? new Date(v.saleTo).toISOString() : null,
+        sku: v.sku ?? null,
+        stockQty: v.stockQty ?? null,
+        image: v.image ?? null,
+        isActive: v.isActive,
+        sortOrder: v.sortOrder,
       })
     }
 
     // Create addon groups and their options
     for (const group of data.addonGroups) {
-      const createdGroup = await prisma.productAddonGroup.create({
-        data: {
+      const { data: createdGroup, error: groupError } = await supabase
+        .from('product_addon_groups')
+        .insert({
           productId: product.id,
           name: group.name,
           description: group.description ?? null,
@@ -303,44 +349,80 @@ export async function POST(request: NextRequest) {
           templateGroupId: group.templateGroupId ?? null,
           isOverridden: group.isOverridden,
           sortOrder: group.sortOrder,
-        },
-      })
+        })
+        .select()
+        .single()
+
+      if (groupError) throw groupError
+
       for (const opt of group.options) {
-        await prisma.productAddonOption.create({
-          data: {
-            groupId: createdGroup.id,
-            label: opt.label,
-            price: opt.price,
-            image: opt.image ?? null,
-            isDefault: opt.isDefault,
-            sortOrder: opt.sortOrder,
-          },
+        await supabase.from('product_addon_options').insert({
+          groupId: createdGroup.id,
+          label: opt.label,
+          price: opt.price,
+          image: opt.image ?? null,
+          isDefault: opt.isDefault,
+          sortOrder: opt.sortOrder,
         })
       }
     }
 
     // Create upsells
     for (let i = 0; i < data.upsellIds.length; i++) {
-      await prisma.productUpsell.create({
-        data: {
-          productId: product.id,
-          upsellProductId: data.upsellIds[i],
-          sortOrder: i,
-        },
+      await supabase.from('product_upsells').insert({
+        productId: product.id,
+        upsellProductId: data.upsellIds[i],
+        sortOrder: i,
       })
     }
 
     // Fetch the full product with relations
-    const full = await prisma.product.findUnique({
-      where: { id: product.id },
-      include: {
-        category: true,
-        attributes: { include: { options: true }, orderBy: { sortOrder: 'asc' } },
-        variations: { orderBy: { sortOrder: 'asc' } },
-        addonGroups: { include: { options: { orderBy: { sortOrder: 'asc' } } }, orderBy: { sortOrder: 'asc' } },
-        upsells: { include: { upsellProduct: { select: { id: true, name: true, slug: true, images: true, basePrice: true } } } },
-      },
-    })
+    const { data: fullProduct } = await supabase
+      .from('products')
+      .select('*, categories(*)')
+      .eq('id', product.id)
+      .single()
+
+    const { data: attrs } = await supabase
+      .from('product_attributes')
+      .select('*, product_attribute_options(*)')
+      .eq('productId', product.id)
+      .order('sortOrder', { ascending: true })
+
+    const { data: variations } = await supabase
+      .from('product_variations')
+      .select('*')
+      .eq('productId', product.id)
+      .order('sortOrder', { ascending: true })
+
+    const { data: addonGroups } = await supabase
+      .from('product_addon_groups')
+      .select('*, product_addon_options(*)')
+      .eq('productId', product.id)
+      .order('sortOrder', { ascending: true })
+
+    const { data: upsells } = await supabase
+      .from('product_upsells')
+      .select('*, products!product_upsells_upsellProductId_fkey(id, name, slug, images, basePrice)')
+      .eq('productId', product.id)
+
+    const full = {
+      ...fullProduct,
+      category: fullProduct?.categories,
+      attributes: (attrs || []).map((a: Record<string, unknown>) => ({
+        ...a,
+        options: a.product_attribute_options || [],
+      })),
+      variations: variations || [],
+      addonGroups: (addonGroups || []).map((g: Record<string, unknown>) => ({
+        ...g,
+        options: g.product_addon_options || [],
+      })),
+      upsells: (upsells || []).map((u: Record<string, unknown>) => ({
+        ...u,
+        upsellProduct: u.products,
+      })),
+    }
 
     return NextResponse.json({ success: true, data: full }, { status: 201 })
   } catch (error) {

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
-import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.role || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -19,6 +18,8 @@ export async function POST(request: NextRequest) {
       siteName?: string
       faviconUrl?: string
     }
+
+    const supabase = getSupabaseAdmin()
 
     if (siteName !== undefined) {
       if (typeof siteName !== 'string' || siteName.trim().length === 0) {
@@ -33,11 +34,12 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         )
       }
-      await prisma.platformSetting.upsert({
-        where: { key: 'site_name' },
-        update: { value: siteName.trim(), updatedBy: session.user.id },
-        create: { key: 'site_name', value: siteName.trim(), updatedBy: session.user.id },
-      })
+      await supabase
+        .from('platform_settings')
+        .upsert(
+          { key: 'site_name', value: siteName.trim(), updatedBy: session.id, updatedAt: new Date().toISOString() },
+          { onConflict: 'key' }
+        )
     }
 
     if (faviconUrl !== undefined) {
@@ -55,11 +57,12 @@ export async function POST(request: NextRequest) {
           )
         }
       }
-      await prisma.platformSetting.upsert({
-        where: { key: 'favicon_url' },
-        update: { value: faviconUrl || null, updatedBy: session.user.id },
-        create: { key: 'favicon_url', value: faviconUrl || null, updatedBy: session.user.id },
-      })
+      await supabase
+        .from('platform_settings')
+        .upsert(
+          { key: 'favicon_url', value: faviconUrl || null, updatedBy: session.id, updatedAt: new Date().toISOString() },
+          { onConflict: 'key' }
+        )
     }
 
     return NextResponse.json({ success: true })

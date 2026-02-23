@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { verifyRazorpaySignature } from '@/lib/razorpay'
 import { getStripeSession } from '@/lib/stripe'
 import { getPayPalOrder } from '@/lib/paypal'
@@ -18,7 +17,7 @@ const verifyPaymentSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getSessionFromRequest(request)
 
     const body = await request.json()
     const parsed = verifyPaymentSchema.safeParse(body)
@@ -31,23 +30,28 @@ export async function POST(request: NextRequest) {
     }
 
     const { orderId, gateway } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Verify the order exists and belongs to the user (or is a guest order)
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { payment: true },
-    })
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*, payments(*)')
+      .eq('id', orderId)
+      .single()
 
-    if (!order) {
+    if (orderError || !order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
         { status: 404 }
       )
     }
 
+    // The payments relation returns an array; pick the first one
+    const payment = Array.isArray(order.payments) ? order.payments[0] : order.payments
+
     // Verify ownership: logged-in user must own the order, guest orders are allowed
-    if (session?.user?.id) {
-      if (order.userId && order.userId !== session.user.id) {
+    if (session?.id) {
+      if (order.userId && order.userId !== session.id) {
         return NextResponse.json(
           { success: false, error: 'Not authorized' },
           { status: 403 }
@@ -74,17 +78,17 @@ export async function POST(request: NextRequest) {
       const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)
 
       if (!isValid) {
-        if (order.payment) {
-          await prisma.payment.update({
-            where: { id: order.payment.id },
-            data: { status: 'FAILED' },
-          })
+        if (payment) {
+          await supabase
+            .from('payments')
+            .update({ status: 'FAILED', updatedAt: new Date().toISOString() })
+            .eq('id', payment.id)
         }
 
-        await prisma.order.update({
-          where: { id: orderId },
-          data: { paymentStatus: 'FAILED' },
-        })
+        await supabase
+          .from('orders')
+          .update({ paymentStatus: 'FAILED', updatedAt: new Date().toISOString() })
+          .eq('id', orderId)
 
         return NextResponse.json(
           { success: false, error: 'Payment verification failed' },
@@ -93,31 +97,33 @@ export async function POST(request: NextRequest) {
       }
 
       // Sequential queries (no interactive transaction — pgbouncer compatible)
-      await prisma.payment.update({
-        where: { orderId: order.id },
-        data: {
+      await supabase
+        .from('payments')
+        .update({
           razorpayPaymentId,
           razorpaySignature,
           status: 'PAID',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('orderId', order.id)
 
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
+      await supabase
+        .from('orders')
+        .update({
           paymentStatus: 'PAID',
           paymentMethod: 'razorpay',
           status: 'CONFIRMED',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', orderId)
 
-      await prisma.orderStatusHistory.create({
-        data: {
+      await supabase
+        .from('order_status_history')
+        .insert({
           orderId,
           status: 'CONFIRMED',
           note: 'Payment verified via Razorpay',
-        },
-      })
+        })
 
       return NextResponse.json({
         success: true,
@@ -128,34 +134,36 @@ export async function POST(request: NextRequest) {
     // ─── STRIPE VERIFICATION ───
     // (Stripe is primarily verified via webhook, but this route can check status)
     if (gateway === 'stripe') {
-      if (!order.payment?.stripeSessionId) {
+      if (!payment?.stripeSessionId) {
         return NextResponse.json(
           { success: false, error: 'No Stripe session found for this order' },
           { status: 400 }
         )
       }
 
-      const stripeSession = await getStripeSession(order.payment.stripeSessionId)
+      const stripeSession = await getStripeSession(payment.stripeSessionId)
 
       if (stripeSession.payment_status === 'paid') {
         // Sequential queries (no interactive transaction — pgbouncer compatible)
         // Webhook may have already updated, but ensure consistency
-        await prisma.payment.update({
-          where: { orderId: order.id },
-          data: {
+        await supabase
+          .from('payments')
+          .update({
             stripePaymentIntentId: stripeSession.payment_intent as string,
             status: 'PAID',
-          },
-        })
+            updatedAt: new Date().toISOString(),
+          })
+          .eq('orderId', order.id)
 
-        await prisma.order.update({
-          where: { id: orderId },
-          data: {
+        await supabase
+          .from('orders')
+          .update({
             paymentStatus: 'PAID',
             paymentMethod: 'stripe',
             status: 'CONFIRMED',
-          },
-        })
+            updatedAt: new Date().toISOString(),
+          })
+          .eq('id', orderId)
 
         return NextResponse.json({
           success: true,
@@ -172,14 +180,14 @@ export async function POST(request: NextRequest) {
     // ─── PAYPAL VERIFICATION ───
     // (PayPal capture happens in the capture route, but this can check status)
     if (gateway === 'paypal') {
-      if (!order.payment?.paypalOrderId) {
+      if (!payment?.paypalOrderId) {
         return NextResponse.json(
           { success: false, error: 'No PayPal order found' },
           { status: 400 }
         )
       }
 
-      const paypalOrder = await getPayPalOrder(order.payment.paypalOrderId)
+      const paypalOrder = await getPayPalOrder(payment.paypalOrderId)
 
       if (paypalOrder.status === 'COMPLETED') {
         return NextResponse.json({

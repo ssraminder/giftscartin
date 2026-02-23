@@ -1,50 +1,61 @@
-import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { getSessionFromRequest } from '@/lib/auth'
 
-export default withAuth(
-  function middleware(req) {
-    // Referral cookie forwarding: capture ?ref= param into cookie for persistence
-    const ref = req.nextUrl.searchParams.get('ref')
-    const existingRef = req.cookies.get('gci_ref')
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'ACCOUNTANT', 'CITY_MANAGER', 'OPERATIONS']
+const VENDOR_ROLES = ['VENDOR', 'VENDOR_STAFF']
 
-    if (ref && !existingRef) {
-      const sanitized = ref.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50)
-      if (sanitized) {
-        const response = NextResponse.next()
-        response.cookies.set('gci_ref', sanitized, {
-          maxAge: 60 * 60 * 24 * 7,
-          path: '/',
-          sameSite: 'lax',
-        })
-        return response
-      }
-    }
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
 
-    return NextResponse.next()
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        const path = req.nextUrl.pathname
-        // Vendor and admin panels always require auth
-        if (path.startsWith('/vendor') || path.startsWith('/admin')) {
-          return !!token
-        }
-        // Order history list requires auth, but individual order pages
-        // (/orders/[id] and /orders/[id]/confirmation) are accessible
-        // to guests — order IDs are UUIDs so they're unguessable
-        if (path === '/orders') {
-          return !!token
-        }
-        // All other paths are public
-        return true
-      }
-    },
-    pages: {
-      signIn: '/login'
+  // Referral cookie forwarding: capture ?ref= param into cookie for persistence
+  const ref = request.nextUrl.searchParams.get('ref')
+  const existingRef = request.cookies.get('gci_ref')
+
+  const response = NextResponse.next()
+
+  if (ref && !existingRef) {
+    const sanitized = ref.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50)
+    if (sanitized) {
+      response.cookies.set('gci_ref', sanitized, {
+        maxAge: 60 * 60 * 24 * 7,
+        path: '/',
+        sameSite: 'lax',
+      })
     }
   }
-)
+
+  // Check if route requires authentication
+  const isAdminRoute = pathname.startsWith('/admin')
+  const isVendorRoute = pathname.startsWith('/vendor')
+  const isOrdersListRoute = pathname === '/orders'
+
+  const requiresAuth = isAdminRoute || isVendorRoute || isOrdersListRoute
+
+  if (!requiresAuth) {
+    return response
+  }
+
+  // Get session from JWT cookie
+  const session = await getSessionFromRequest(request)
+
+  if (!session) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('callbackUrl', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Role-based access control
+  if (isAdminRoute && !ADMIN_ROLES.includes(session.role)) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  if (isVendorRoute && !VENDOR_ROLES.includes(session.role)) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  return response
+}
 
 export const config = {
   matcher: [

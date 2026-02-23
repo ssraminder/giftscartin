@@ -13,14 +13,14 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A + B + C + D + E + F + Sprint 1 complete. Phase 3 ongoing.|
-|Last Updated   |2026-02-21                                                                        |
+|Current Phase  |Phase A + B + C + D + E + F + Sprint 1 + Edge Migration complete. Phase 3 ongoing.|
+|Last Updated   |2026-02-23                                                                        |
 
 ### What's Done
 
-- Full Prisma schema 31 models deployed to Supabase
-- All 15 API routes with real Prisma queries
-- Auth: email OTP via Brevo (intentional deviation from phone+MSG91 spec)
+- Full schema 31+ models in Supabase PostgreSQL, queried via Supabase JS client
+- All 90+ API routes with real Supabase queries (migrated from Prisma Feb 23)
+- Auth: custom JWT (jose) + email OTP via Brevo (migrated from NextAuth Feb 23)
 - Homepage, order history, order tracking — connected to real API
 - Admin dashboard: orders, vendor management, delivery config (real data)
 - Vendor dashboard: orders, products, earnings, settings (real data — Phase 3 PR #46)
@@ -48,6 +48,8 @@
 - **Sender details step in checkout** — Added Step 2 of 4 in checkout flow (Address > Sender > Delivery > Review). Fields: Your Name*, Your Mobile*, Email (optional), Occasion (19 options dropdown), Gift Card Message (200 chars). Auto-fills from user session. 4 new columns added to orders table (sender_name, sender_phone, sender_email, occasion). Gift details (occasion + message) shown on order confirmation page. Old gift message expandable removed from delivery step — now part of sender step.
 - **Partner resolution via ref param, custom domain, and subdomain** — PartnerProvider detects partner via `?ref=` param, custom domain, or subdomain. Partner stored in sessionStorage for the tab session. Partner default city auto-sets city, skips modal entirely. Resolve API (`GET /api/partners/resolve`) handles ref, customDomain, subdomain in one endpoint with CDN caching (5 min s-maxage). Netlify: wildcard `*.giftscart.in` configured once, partner custom domains added per partner. Header preserves `?ref=` param in category and occasion nav links. New Prisma fields: `default_city_id`, `default_vendor_id` on partners table.
 - **Vendor filtering + Admin partner management** — Partner vendor filter: products filtered to defaultVendorId when partner is active (Products API accepts `vendorId` param, trending products / category page / product detail all pass vendorId from partner context). partnerId + partner_earnings record created on order placement. Header: partner logo replaces platform logo when partner is active. Header: "powered by Gifts Cart India" badge shown if showPoweredBy is true. Primary brand colour applied to CTA buttons (Add to Cart, Place Order) when partner has custom primaryColor. Admin: /admin/partners list, create, edit pages with full form (name, refCode, commission, city, vendor, logo, brand color, toggles). Admin: city → vendor dependency dropdown (vendor list filters when city changes). Admin API: /api/admin/partners (GET list + POST create), /api/admin/partners/[id] (GET + PATCH). Partners link added to admin sidebar.
+
+- **Edge Migration (Feb 23, 2026)** — Replaced Prisma ORM with Supabase JS client for all DB queries (90+ API routes). Replaced NextAuth.js with custom JWT auth using jose library (edge-compatible). Auth flow: OTP via Brevo → JWT signed with HS256 → httpOnly cookie (giftscart_session, 30-day expiry). New routes: /api/auth/me, /api/auth/logout. New client hook: useAuth() replaces useSession(). Middleware rewritten for custom JWT verification. Removed packages: @prisma/client, prisma, next-auth. Added: jose. Environment changes: removed DATABASE_URL, DIRECT_URL, NEXTAUTH_SECRET, NEXTAUTH_URL; added JWT_SECRET, NEXT_PUBLIC_SITE_URL, SUPABASE_SERVICE_ROLE_KEY (now required).
 
 ### What's NOT Done (Priority Order)
 

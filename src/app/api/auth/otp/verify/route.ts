@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { signToken, createSessionCookie, type SessionUser } from '@/lib/auth'
 import { verifyOtpSchema } from '@/lib/validations'
+
+export const runtime = 'edge'
 
 const MAX_ATTEMPTS = 5
 
@@ -17,16 +20,18 @@ export async function POST(request: Request) {
     }
 
     const { email, otp } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Find the most recent unexpired, unverified OTP for this email
-    const otpRecord = await prisma.otpVerification.findFirst({
-      where: {
-        email,
-        verified: false,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const { data: otpRecord } = await supabase
+      .from('otp_verifications')
+      .select('*')
+      .eq('email', email)
+      .eq('verified', false)
+      .gt('expiresAt', new Date().toISOString())
+      .order('createdAt', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (!otpRecord) {
       return NextResponse.json(
@@ -44,10 +49,10 @@ export async function POST(request: Request) {
     }
 
     // Increment attempt count
-    await prisma.otpVerification.update({
-      where: { id: otpRecord.id },
-      data: { attempts: { increment: 1 } },
-    })
+    await supabase
+      .from('otp_verifications')
+      .update({ attempts: otpRecord.attempts + 1 })
+      .eq('id', otpRecord.id)
 
     // Verify OTP
     if (otpRecord.otp !== otp) {
@@ -59,21 +64,58 @@ export async function POST(request: Request) {
     }
 
     // Mark OTP as verified
-    await prisma.otpVerification.update({
-      where: { id: otpRecord.id },
-      data: { verified: true },
-    })
+    await supabase
+      .from('otp_verifications')
+      .update({ verified: true })
+      .eq('id', otpRecord.id)
 
-    // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    })
+    // Find existing user by email
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id, email, name, role, phone')
+      .eq('email', email)
+      .maybeSingle()
 
+    if (existingUser) {
+      // Existing user: sign JWT and set session cookie
+      const sessionUser: SessionUser = {
+        id: existingUser.id,
+        email: existingUser.email,
+        name: existingUser.name,
+        role: existingUser.role,
+        phone: existingUser.phone,
+      }
+
+      const token = await signToken(sessionUser)
+      const cookie = createSessionCookie(token)
+
+      const response = NextResponse.json({
+        success: true,
+        data: {
+          message: 'OTP verified successfully',
+          isNewUser: false,
+          email,
+          user: sessionUser,
+        },
+      })
+
+      response.cookies.set(cookie.name, cookie.value, {
+        httpOnly: cookie.httpOnly,
+        secure: cookie.secure,
+        sameSite: cookie.sameSite,
+        maxAge: cookie.maxAge,
+        path: cookie.path,
+      })
+
+      return response
+    }
+
+    // New user: return isNewUser flag so client can redirect to registration
     return NextResponse.json({
       success: true,
       data: {
         message: 'OTP verified successfully',
-        isNewUser: !existingUser,
+        isNewUser: true,
         email,
       },
     })

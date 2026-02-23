@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { generateOrderNumber } from '@/lib/utils'
 import { z } from 'zod/v4'
@@ -39,300 +38,126 @@ const adminOrderSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
-      return NextResponse.json(
-        { success: false, error: 'Admin access required' },
-        { status: 403 }
-      )
+    const sessionUser = await getSessionFromRequest(request)
+    if (!sessionUser || !isAdminRole(sessionUser.role)) {
+      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 })
     }
 
     const body = await request.json()
     const parsed = adminOrderSchema.safeParse(body)
-
     if (!parsed.success) {
-      return NextResponse.json(
-        { success: false, error: parsed.error.issues[0].message },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: parsed.error.issues[0].message }, { status: 400 })
     }
 
     const data = parsed.data
+    const supabase = getSupabaseAdmin()
 
-    // 1. Find or create user by phone — handle email uniqueness conflicts
-    let user = await prisma.user.findUnique({
-      where: { phone: data.customerPhone },
-    })
-
+    // 1. Find or create user by phone
+    let { data: user } = await supabase.from('users').select('*').eq('phone', data.customerPhone).maybeSingle()
     if (!user) {
-      // If email is provided, check if another user already has it
       if (data.customerEmail) {
-        const existingByEmail = await prisma.user.findUnique({
-          where: { email: data.customerEmail },
-        })
+        const { data: existingByEmail } = await supabase.from('users').select('id').eq('email', data.customerEmail).maybeSingle()
         if (existingByEmail) {
-          // Email belongs to another user — create without email to avoid unique constraint violation
-          user = await prisma.user.create({
-            data: {
-              phone: data.customerPhone,
-              name: data.customerName,
-            },
-          })
+          const { data: created } = await supabase.from('users').insert({ phone: data.customerPhone, name: data.customerName }).select().single()
+          user = created
         } else {
-          user = await prisma.user.create({
-            data: {
-              phone: data.customerPhone,
-              name: data.customerName,
-              email: data.customerEmail,
-            },
-          })
+          const { data: created } = await supabase.from('users').insert({ phone: data.customerPhone, name: data.customerName, email: data.customerEmail }).select().single()
+          user = created
         }
       } else {
-        user = await prisma.user.create({
-          data: {
-            phone: data.customerPhone,
-            name: data.customerName,
-          },
-        })
+        const { data: created } = await supabase.from('users').insert({ phone: data.customerPhone, name: data.customerName }).select().single()
+        user = created
       }
     }
+    if (!user) throw new Error('Failed to create/find user')
 
-    // 2. Validate all product IDs exist before creating the order
+    // 2. Validate products
     const productIds = data.items.map((i) => i.productId)
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, name: true },
-    })
-
-    const foundProductIds = new Set(products.map((p) => p.id))
-    const missingIds = productIds.filter((id) => !foundProductIds.has(id))
+    const { data: products } = await supabase.from('products').select('id, name').in('id', productIds)
+    const foundProductIds = new Set((products || []).map((p) => p.id))
+    const missingIds = productIds.filter((pid) => !foundProductIds.has(pid))
     if (missingIds.length > 0) {
-      return NextResponse.json(
-        { success: false, error: `Products not found: ${missingIds.join(', ')}` },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: `Products not found: ${missingIds.join(', ')}` }, { status: 400 })
     }
 
-    // 3. Create address record
-    const address = await prisma.address.create({
-      data: {
-        userId: user.id,
-        name: data.deliveryAddress.name,
-        phone: data.deliveryAddress.phone,
-        address: data.deliveryAddress.address,
-        city: data.deliveryAddress.city,
-        state: data.deliveryAddress.state,
-        pincode: data.deliveryAddress.pincode,
-      },
-    })
+    // 3. Create address
+    const { data: address, error: addrErr } = await supabase.from('addresses').insert({
+      userId: user.id, name: data.deliveryAddress.name, phone: data.deliveryAddress.phone,
+      address: data.deliveryAddress.address, city: data.deliveryAddress.city,
+      state: data.deliveryAddress.state, pincode: data.deliveryAddress.pincode,
+    }).select().single()
+    if (addrErr) throw addrErr
 
-    // 4. Calculate subtotal from items
+    // 4. Calculate subtotal
     let subtotal = 0
-    const productNameMap = new Map(products.map((p) => [p.id, p.name]))
+    const productNameMap = new Map((products || []).map((p) => [p.id, p.name]))
     const itemsForOrder = data.items.map((item) => {
-      const lineTotal = item.price * item.quantity
-      subtotal += lineTotal
-      return {
-        productId: item.productId,
-        name: productNameMap.get(item.productId) || 'Unknown Product',
-        quantity: item.quantity,
-        price: item.price,
-        variationId: item.variationId || null,
-        variationLabel: item.variationLabel || null,
-        addons: item.addons ?? undefined,
-      }
+      subtotal += item.price * item.quantity
+      return { productId: item.productId, name: productNameMap.get(item.productId) || 'Unknown', quantity: item.quantity, price: item.price, variationId: item.variationId || null, variationLabel: item.variationLabel || null, addons: item.addons ?? null }
     })
 
-    // 5. Apply coupon if provided
+    // 5. Coupon
     let discount = 0
     let appliedCouponId: string | null = null
     if (data.couponCode) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: data.couponCode },
-      })
-
-      if (
-        coupon &&
-        coupon.isActive &&
-        new Date() >= coupon.validFrom &&
-        new Date() <= coupon.validUntil &&
-        subtotal >= Number(coupon.minOrderAmount) &&
-        (coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit)
-      ) {
-        if (coupon.discountType === 'percentage') {
-          discount = (subtotal * Number(coupon.discountValue)) / 100
-          if (coupon.maxDiscount) {
-            discount = Math.min(discount, Number(coupon.maxDiscount))
-          }
-        } else {
-          discount = Number(coupon.discountValue)
-        }
+      const { data: coupon } = await supabase.from('coupons').select('*').eq('code', data.couponCode).maybeSingle()
+      if (coupon?.isActive && new Date() >= new Date(coupon.validFrom) && new Date() <= new Date(coupon.validUntil) && subtotal >= Number(coupon.minOrderAmount) && (coupon.usageLimit === null || coupon.usedCount < coupon.usageLimit)) {
+        discount = coupon.discountType === 'percentage' ? (subtotal * Number(coupon.discountValue)) / 100 : Number(coupon.discountValue)
+        if (coupon.discountType === 'percentage' && coupon.maxDiscount) discount = Math.min(discount, Number(coupon.maxDiscount))
         discount = Math.round(Math.min(discount, subtotal))
         appliedCouponId = coupon.id
       }
     }
 
-    // 6. Find/assign vendor if not specified
+    // 6. Vendor matching
     let vendorId: string | null = data.vendorId || null
-
     if (!vendorId) {
-      // Try variation-level matching first
-      const orderVariationIds = data.items
-        .map((item) => item.variationId)
-        .filter((id): id is string => !!id)
-
-      if (orderVariationIds.length > 0) {
-        const vendorPincodes = await prisma.vendorPincode.findMany({
-          where: {
-            pincode: data.deliveryAddress.pincode,
-            isActive: true,
-            vendor: { status: 'APPROVED' },
-          },
-          include: {
-            vendor: {
-              include: {
-                productVariations: {
-                  where: {
-                    variationId: { in: orderVariationIds },
-                    isAvailable: true,
-                  },
-                },
-              },
-            },
-          },
-          orderBy: { vendor: { rating: 'desc' } },
-        })
-
-        for (const vp of vendorPincodes) {
-          const availableVariationIds = new Set(
-            vp.vendor.productVariations.map((pv) => pv.variationId)
-          )
-          const hasAll = orderVariationIds.every((vid) => availableVariationIds.has(vid))
-          if (hasAll) {
-            vendorId = vp.vendor.id
-            break
-          }
-        }
-      }
-
-      // Fallback: product-level vendor matching
-      if (!vendorId) {
-        const vendorPincode = await prisma.vendorPincode.findFirst({
-          where: {
-            pincode: data.deliveryAddress.pincode,
-            isActive: true,
-            vendor: { status: 'APPROVED' },
-          },
-          include: { vendor: true },
-          orderBy: { vendor: { rating: 'desc' } },
-        })
-        vendorId = vendorPincode?.vendor.id ?? null
+      const { data: vps } = await supabase.from('vendor_pincodes').select('vendorId').eq('pincode', data.deliveryAddress.pincode).eq('isActive', true)
+      for (const vp of (vps || [])) {
+        const { data: v } = await supabase.from('vendors').select('id').eq('id', vp.vendorId).eq('status', 'APPROVED').maybeSingle()
+        if (v) { vendorId = v.id; break }
       }
     }
 
-    // 7. Generate order number with collision retry
-    const zone = await prisma.cityZone.findFirst({
-      where: { pincodes: { has: data.deliveryAddress.pincode }, isActive: true },
-      include: { city: true },
-    })
-    const cityCode = zone?.city.slug.substring(0, 3).toUpperCase() || 'GEN'
-
+    // 7. Order number
+    const { data: zone } = await supabase.from('city_zones').select('*, cities!inner(slug)').contains('pincodes', [data.deliveryAddress.pincode]).eq('isActive', true).limit(1).maybeSingle()
+    const cityCode = zone?.cities?.slug?.substring(0, 3).toUpperCase() || 'GEN'
     let orderNumber = generateOrderNumber(cityCode)
     for (let attempt = 0; attempt < 3; attempt++) {
-      const existing = await prisma.order.findUnique({
-        where: { orderNumber },
-        select: { id: true },
-      })
+      const { data: existing } = await supabase.from('orders').select('id').eq('orderNumber', orderNumber).maybeSingle()
       if (!existing) break
       orderNumber = generateOrderNumber(cityCode)
     }
 
-    // 8. Determine order status
     const orderStatus = vendorId ? 'CONFIRMED' : 'PENDING'
+    const total = subtotal + data.deliveryCharge + data.surcharge - discount
 
-    // Calculate total
-    const deliveryCharge = data.deliveryCharge
-    const surchargeAmount = data.surcharge
-    const total = subtotal + deliveryCharge + surchargeAmount - discount
+    // 8. Create order
+    const { data: order, error: orderErr } = await supabase.from('orders').insert({
+      orderNumber, userId: user.id, vendorId, addressId: address.id,
+      deliveryDate: new Date(data.deliveryDate).toISOString(), deliverySlot: data.deliverySlot,
+      deliveryCharge: data.deliveryCharge, subtotal, discount, surcharge: data.surcharge, total,
+      status: orderStatus, paymentStatus: data.paymentMethod === 'PENDING' ? 'PENDING' : 'PAID',
+      paymentMethod: data.paymentMethod, giftMessage: data.giftMessage || null,
+      specialInstructions: data.specialInstructions || null, couponCode: data.couponCode || null,
+    }).select().single()
+    if (orderErr) throw orderErr
 
-    // 9. Create the order
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        userId: user.id,
-        vendorId,
-        addressId: address.id,
-        deliveryDate: new Date(data.deliveryDate),
-        deliverySlot: data.deliverySlot,
-        deliveryCharge,
-        subtotal,
-        discount,
-        surcharge: surchargeAmount,
-        total,
-        status: orderStatus,
-        paymentStatus: data.paymentMethod === 'PENDING' ? 'PENDING' : 'PAID',
-        paymentMethod: data.paymentMethod,
-        giftMessage: data.giftMessage || null,
-        specialInstructions: data.specialInstructions || null,
-        couponCode: data.couponCode || null,
-        items: {
-          create: itemsForOrder,
-        },
-        statusHistory: {
-          create: {
-            status: orderStatus,
-            note: `Manual order created by admin (${session.user.email || session.user.id})`,
-            changedBy: session.user.id,
-          },
-        },
-      },
-      include: {
-        items: true,
-        address: true,
-        statusHistory: true,
-      },
-    })
+    for (const item of itemsForOrder) { await supabase.from('order_items').insert({ orderId: order.id, ...item }) }
+    await supabase.from('order_status_history').insert({ orderId: order.id, status: orderStatus, note: `Manual order by admin (${sessionUser.email || sessionUser.id})`, changedBy: sessionUser.id })
+    if (data.paymentMethod !== 'PENDING') { await supabase.from('payments').insert({ orderId: order.id, amount: total, currency: 'INR', gateway: data.paymentMethod === 'CASH' ? 'COD' : 'RAZORPAY', method: data.paymentMethod === 'CASH' ? 'cash' : 'online', status: 'PAID' }) }
+    if (appliedCouponId) { const { data: c } = await supabase.from('coupons').select('usedCount').eq('id', appliedCouponId).single(); if (c) await supabase.from('coupons').update({ usedCount: (c.usedCount || 0) + 1 }).eq('id', appliedCouponId) }
 
-    // 10. Create payment record for CASH or PAID_ONLINE
-    if (data.paymentMethod === 'CASH' || data.paymentMethod === 'PAID_ONLINE') {
-      await prisma.payment.create({
-        data: {
-          orderId: order.id,
-          amount: total,
-          currency: 'INR',
-          gateway: data.paymentMethod === 'CASH' ? 'COD' : 'RAZORPAY',
-          method: data.paymentMethod === 'CASH' ? 'cash' : 'online',
-          status: 'PAID',
-        },
-      })
-    }
+    const { data: fullOrder } = await supabase.from('orders').select('*').eq('id', order.id).single()
+    const { data: orderItems } = await supabase.from('order_items').select('*, products(id, name, slug, images)').eq('orderId', order.id)
+    const { data: orderAddr } = await supabase.from('addresses').select('*').eq('id', order.addressId).single()
+    const { data: statusHistory } = await supabase.from('order_status_history').select('*').eq('orderId', order.id)
+    const { data: payment } = await supabase.from('payments').select('*').eq('orderId', order.id).maybeSingle()
 
-    // 11. Increment coupon usage
-    if (appliedCouponId) {
-      await prisma.coupon.update({
-        where: { id: appliedCouponId },
-        data: { usedCount: { increment: 1 } },
-      })
-    }
-
-    // Re-fetch with payment included
-    const fullOrder = await prisma.order.findUnique({
-      where: { id: order.id },
-      include: {
-        items: { include: { product: { select: { id: true, name: true, slug: true, images: true } } } },
-        address: true,
-        statusHistory: true,
-        payment: true,
-      },
-    })
-
-    return NextResponse.json({ success: true, data: fullOrder }, { status: 201 })
+    return NextResponse.json({ success: true, data: { ...fullOrder, items: (orderItems || []).map((i: Record<string, unknown>) => ({ ...i, product: i.products })), address: orderAddr, statusHistory: statusHistory || [], payment } }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('POST /api/admin/orders/create error:', message, error)
-    return NextResponse.json(
-      { success: false, error: `Failed to create order: ${message}` },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: `Failed to create order: ${message}` }, { status: 500 })
   }
 }

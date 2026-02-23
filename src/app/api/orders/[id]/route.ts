@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
-
-async function getSessionUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  return session.user as { id: string; role: string; email: string }
-}
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 // GET: Fetch order details with items, address, payment, and status history
 export async function GET(
@@ -15,41 +8,18 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionFromRequest(request)
     const { id } = await params
+    const supabase = getSupabaseAdmin()
 
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                images: true,
-                category: { select: { name: true, slug: true } },
-              },
-            },
-          },
-        },
-        address: true,
-        payment: true,
-        statusHistory: {
-          orderBy: { createdAt: 'desc' },
-        },
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            phone: true,
-          },
-        },
-      },
-    })
+    // Fetch main order
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .single()
 
-    if (!order) {
+    if (orderError || !order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
         { status: 404 }
@@ -64,9 +34,80 @@ export async function GET(
       )
     }
 
+    // Fetch order items with products and categories
+    const { data: orderItems } = await supabase
+      .from('order_items')
+      .select('*, products(id, name, slug, images, categories(name, slug))')
+      .eq('orderId', id)
+
+    // Reshape items: products -> product
+    const items = (orderItems || []).map((item: Record<string, unknown>) => {
+      const product = item.products as Record<string, unknown> | null
+      return {
+        ...item,
+        product: product
+          ? {
+              id: product.id,
+              name: product.name,
+              slug: product.slug,
+              images: product.images,
+              category: product.categories || null,
+            }
+          : null,
+        products: undefined,
+      }
+    })
+
+    // Fetch address
+    const { data: address } = order.addressId
+      ? await supabase
+          .from('addresses')
+          .select('*')
+          .eq('id', order.addressId)
+          .single()
+      : { data: null }
+
+    // Fetch payment
+    const { data: paymentRecords } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('orderId', id)
+      .limit(1)
+
+    const payment = paymentRecords && paymentRecords.length > 0 ? paymentRecords[0] : null
+
+    // Fetch status history
+    const { data: statusHistory } = await supabase
+      .from('order_status_history')
+      .select('*')
+      .eq('orderId', id)
+      .order('createdAt', { ascending: false })
+
+    // Fetch vendor info
+    let vendor: Record<string, unknown> | null = null
+    if (order.vendorId) {
+      const { data: vendorData } = await supabase
+        .from('vendors')
+        .select('id, businessName, phone')
+        .eq('id', order.vendorId)
+        .single()
+
+      vendor = vendorData
+    }
+
+    // Build response matching the old format
+    const responseData = {
+      ...order,
+      items,
+      address,
+      payment,
+      statusHistory: statusHistory || [],
+      vendor,
+    }
+
     // Guest access: order IDs are UUIDs (unguessable), so allow
     // unauthenticated access for guest checkout confirmation flow
-    return NextResponse.json({ success: true, data: order })
+    return NextResponse.json({ success: true, data: responseData })
   } catch (error) {
     console.error('GET /api/orders/[id] error:', error)
     return NextResponse.json(

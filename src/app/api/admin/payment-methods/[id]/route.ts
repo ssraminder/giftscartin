@@ -1,16 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
-
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
 
 // PATCH: Update a payment method
 export async function PATCH(
@@ -18,8 +9,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const session = await getSessionFromRequest(request)
+    if (!session || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -30,8 +21,15 @@ export async function PATCH(
     const body = await request.json()
     const { name, description, isActive, sortOrder } = body
 
+    const supabase = getSupabaseAdmin()
+
     // Verify it exists
-    const existing = await prisma.paymentMethod.findUnique({ where: { id } })
+    const { data: existing } = await supabase
+      .from('payment_methods')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle()
+
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Payment method not found' },
@@ -39,16 +37,20 @@ export async function PATCH(
       )
     }
 
-    const data: Record<string, unknown> = {}
+    const data: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (name !== undefined) data.name = name
     if (description !== undefined) data.description = description || null
     if (isActive !== undefined) data.isActive = isActive
     if (sortOrder !== undefined) data.sortOrder = sortOrder
 
-    const updated = await prisma.paymentMethod.update({
-      where: { id },
-      data,
-    })
+    const { data: updated, error } = await supabase
+      .from('payment_methods')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: updated })
   } catch (error) {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod/v4'
 
 const validateCouponSchema = z.object({
@@ -23,15 +22,18 @@ export async function POST(request: NextRequest) {
     }
 
     const { code, orderTotal } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Get userId from session if not provided
-    const session = await getServerSession(authOptions)
-    const userId = parsed.data.userId || session?.user?.id
+    const session = await getSessionFromRequest(request)
+    const userId = parsed.data.userId || session?.id
 
     // Find coupon by code
-    const coupon = await prisma.coupon.findUnique({
-      where: { code: code.toUpperCase() },
-    })
+    const { data: coupon } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('code', code.toUpperCase())
+      .maybeSingle()
 
     if (!coupon || !coupon.isActive) {
       return NextResponse.json({
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
 
     // Check date validity
     const now = new Date()
-    if (now < coupon.validFrom || now > coupon.validUntil) {
+    if (now < new Date(coupon.validFrom) || now > new Date(coupon.validUntil)) {
       return NextResponse.json({
         success: true,
         data: { valid: false, message: 'This coupon has expired' },
@@ -63,22 +65,21 @@ export async function POST(request: NextRequest) {
         success: true,
         data: {
           valid: false,
-          message: `Minimum order of ₹${Number(coupon.minOrderAmount)} required for this coupon`,
+          message: `Minimum order of \u20B9${Number(coupon.minOrderAmount)} required for this coupon`,
         },
       })
     }
 
     // Check per-user usage limit
     if (userId && coupon.perUserLimit > 0) {
-      const userUsageCount = await prisma.order.count({
-        where: {
-          userId,
-          couponCode: coupon.code,
-          status: { notIn: ['CANCELLED', 'REFUNDED'] },
-        },
-      })
+      const { count: userUsageCount } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('userId', userId)
+        .eq('couponCode', coupon.code)
+        .not('status', 'in', '("CANCELLED","REFUNDED")')
 
-      if (userUsageCount >= coupon.perUserLimit) {
+      if ((userUsageCount || 0) >= coupon.perUserLimit) {
         return NextResponse.json({
           success: true,
           data: { valid: false, message: 'You have already used this coupon' },
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
         discountType: coupon.discountType,
         discountValue: Number(coupon.discountValue),
         maxDiscount: coupon.maxDiscount ? Number(coupon.maxDiscount) : null,
-        message: `Coupon applied! You save ₹${discount}`,
+        message: `Coupon applied! You save \u20B9${discount}`,
       },
     })
   } catch (error) {

@@ -1,13 +1,11 @@
 import type { Metadata } from 'next'
 import { getProductMeta, buildProductJsonLd } from '@/lib/seo'
 import { JsonLd } from '@/components/seo/json-ld'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import ProductDetailClient from '@/components/product/product-detail-client'
 import ProductNotFound from './product-not-found'
 
 // ISR: generate on first request, cache for 1 hour, then regenerate in background.
-// No generateStaticParams — avoids build-time DB connection pool exhaustion
-// when Next.js tries to prerender all ~25 product pages concurrently.
 export const revalidate = 3600
 
 export async function generateMetadata(
@@ -40,144 +38,133 @@ export default async function ProductPage({
 }: {
   params: { slug: string }
 }) {
-  // Step 1: Fetch product with basic fields (needed for ID to fan out parallel queries)
-  const product = await prisma.product.findFirst({
-    where: {
-      slug: params.slug,
-      isActive: true,
-    },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      description: true,
-      shortDesc: true,
-      basePrice: true,
-      images: true,
-      tags: true,
-      occasion: true,
-      weight: true,
-      isVeg: true,
-      isSameDayEligible: true,
-      productType: true,
-      avgRating: true,
-      totalReviews: true,
-      categoryId: true,
-      category: { select: { id: true, name: true, slug: true } },
-    },
-  })
+  const supabase = getSupabaseAdmin()
+
+  // Step 1: Fetch product with category
+  const { data: product } = await supabase
+    .from('products')
+    .select('id, name, slug, description, shortDesc, basePrice, images, tags, occasion, weight, isVeg, isSameDayEligible, productType, avgRating, totalReviews, categoryId, categories(id, name, slug)')
+    .eq('slug', params.slug)
+    .eq('isActive', true)
+    .single()
 
   if (!product) {
     return <ProductNotFound />
   }
 
-  // Step 2: Fetch ALL related data IN PARALLEL — single round of concurrent queries
-  const [attributes, variations, addonGroups, upsellRows, reviews, vendorProducts, relatedProducts] = await Promise.all([
-    prisma.productAttribute.findMany({
-      where: { productId: product.id },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        options: { orderBy: { sortOrder: 'asc' } },
-      },
-    }),
-    prisma.productVariation.findMany({
-      where: { productId: product.id, isActive: true },
-      orderBy: { sortOrder: 'asc' },
-    }),
-    prisma.productAddonGroup.findMany({
-      where: { productId: product.id, isActive: true },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        options: {
-          where: { isActive: true },
-          orderBy: { sortOrder: 'asc' },
-        },
-      },
-    }),
-    prisma.productUpsell.findMany({
-      where: { productId: product.id },
-      orderBy: { sortOrder: 'asc' },
-      include: {
-        upsellProduct: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            images: true,
-            basePrice: true,
-            isActive: true,
-            category: { select: { name: true } },
-          },
-        },
-      },
-    }),
-    prisma.review.findMany({
-      where: { productId: product.id, isVerified: true },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      include: {
-        user: { select: { name: true } },
-      },
-    }),
-    prisma.vendorProduct.findMany({
-      where: {
-        productId: product.id,
-        isAvailable: true,
-        vendor: { status: 'APPROVED' },
-      },
-      select: {
-        sellingPrice: true,
-        preparationTime: true,
-        vendor: {
-          select: {
-            id: true,
-            businessName: true,
-            rating: true,
-            city: { select: { name: true, slug: true } },
-          },
-        },
-      },
-    }),
-    // Related products from same category
-    product.category
-      ? prisma.product.findMany({
-          where: {
-            categoryId: product.category.id,
-            isActive: true,
-            id: { not: product.id },
-          },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            basePrice: true,
-            images: true,
-            avgRating: true,
-            totalReviews: true,
-            weight: true,
-            tags: true,
-          },
-          orderBy: { avgRating: 'desc' },
-          take: 4,
-        })
-      : Promise.resolve([]),
+  // Step 2: Fetch ALL related data IN PARALLEL
+  const [
+    attributesRes,
+    variationsRes,
+    addonGroupsRes,
+    upsellRowsRes,
+    reviewsRes,
+    vendorProductsRes,
+    relatedProductsRes,
+  ] = await Promise.all([
+    supabase
+      .from('product_attributes')
+      .select('*, product_attribute_options(*)')
+      .eq('productId', product.id)
+      .order('sortOrder', { ascending: true }),
+    supabase
+      .from('product_variations')
+      .select('*')
+      .eq('productId', product.id)
+      .eq('isActive', true)
+      .order('sortOrder', { ascending: true }),
+    supabase
+      .from('product_addon_groups')
+      .select('*, product_addon_options(*)')
+      .eq('productId', product.id)
+      .eq('isActive', true)
+      .order('sortOrder', { ascending: true }),
+    supabase
+      .from('product_upsells')
+      .select('*, products!upsellProductId(id, name, slug, images, basePrice, isActive, categories(name))')
+      .eq('productId', product.id)
+      .order('sortOrder', { ascending: true }),
+    supabase
+      .from('reviews')
+      .select('*, users(name)')
+      .eq('productId', product.id)
+      .eq('isVerified', true)
+      .order('createdAt', { ascending: false })
+      .limit(10),
+    supabase
+      .from('vendor_products')
+      .select('sellingPrice, preparationTime, vendors(id, businessName, rating, cities(name, slug))')
+      .eq('productId', product.id)
+      .eq('isAvailable', true),
+    product.categories
+      ? supabase
+          .from('products')
+          .select('id, name, slug, basePrice, images, avgRating, totalReviews, weight, tags')
+          .eq('categoryId', (product.categories as unknown as { id: string }).id)
+          .eq('isActive', true)
+          .neq('id', product.id)
+          .order('avgRating', { ascending: false })
+          .limit(4)
+      : Promise.resolve({ data: [] }),
   ])
 
+  const attributes = (attributesRes.data || []).map((attr) => ({
+    ...attr,
+    options: attr.product_attribute_options || [],
+  }))
+
+  const variations = variationsRes.data || []
+
+  const addonGroups = (addonGroupsRes.data || []).map((group) => ({
+    ...group,
+    options: (group.product_addon_options || [])
+      .filter((o: { isActive: boolean }) => o.isActive)
+      .sort((a: { sortOrder: number }, b: { sortOrder: number }) => a.sortOrder - b.sortOrder),
+  }))
+
   // Flatten upsells to only active products
+  const upsellRows = upsellRowsRes.data || []
   const upsells = upsellRows
-    .filter((u) => u.upsellProduct.isActive)
-    .map((u) => ({
-      id: u.upsellProduct.id,
-      name: u.upsellProduct.name,
-      slug: u.upsellProduct.slug,
-      images: u.upsellProduct.images,
-      basePrice: u.upsellProduct.basePrice,
-      category: u.upsellProduct.category,
+    .filter((u: { products: { isActive: boolean } | null }) => u.products?.isActive)
+    .map((u: { products: { id: string; name: string; slug: string; images: string[]; basePrice: number; categories: { name: string } | null } }) => ({
+      id: u.products.id,
+      name: u.products.name,
+      slug: u.products.slug,
+      images: u.products.images,
+      basePrice: u.products.basePrice,
+      category: u.products.categories,
     }))
 
-  // Serialize Prisma output for client component (Decimal → string, Date → ISO string)
+  const reviews = (reviewsRes.data || []).map((r) => ({
+    ...r,
+    user: r.users || null,
+  }))
+
+  const vendorProducts = (vendorProductsRes.data || [])
+    .filter((vp: Record<string, unknown>) => vp.vendors)
+    .map((vp: Record<string, unknown>) => {
+      const vendor = vp.vendors as Record<string, unknown>
+      return {
+        sellingPrice: vp.sellingPrice as number,
+        preparationTime: vp.preparationTime as number,
+        vendor: {
+          id: vendor.id as string,
+          businessName: vendor.businessName as string,
+          rating: vendor.rating as number,
+          city: vendor.cities as { name: string; slug: string } | null,
+        },
+      }
+    })
+
+  const relatedProducts = relatedProductsRes.data || []
+
+  // Build the category object in the expected format
+  const category = product.categories as unknown as { id: string; name: string; slug: string } | null
+
+  // Serialize for client component (Decimal → string, Date → ISO string)
   const productData = JSON.parse(JSON.stringify({
     ...product,
+    category,
     attributes,
     variations,
     addonGroups,

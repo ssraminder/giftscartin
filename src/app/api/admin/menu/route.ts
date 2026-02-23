@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -23,16 +22,21 @@ interface MenuTreeNode {
 
 export async function GET() {
   try {
-    const items = await prisma.menuItem.findMany({
-      orderBy: { sortOrder: 'asc' },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: items, error } = await supabase
+      .from('menu_items')
+      .select('*')
+      .order('sortOrder', { ascending: true })
+
+    if (error) throw error
 
     // Build tree in-memory
     const nodeMap = new Map<string, MenuTreeNode>()
     const roots: MenuTreeNode[] = []
 
     // First pass: create all nodes
-    for (const item of items) {
+    for (const item of items || []) {
       nodeMap.set(item.id, {
         id: item.id,
         label: item.label,
@@ -47,7 +51,7 @@ export async function GET() {
     }
 
     // Second pass: build tree
-    for (const item of items) {
+    for (const item of items || []) {
       const node = nodeMap.get(item.id)!
       if (item.parentId && nodeMap.has(item.parentId)) {
         nodeMap.get(item.parentId)!.children.push(node)
@@ -94,8 +98,8 @@ const patchBulkSchema = z.object({
 
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.role || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -131,14 +135,16 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    const supabase = getSupabaseAdmin()
+
     // Run all updates with Promise.all (no transaction — pgBouncer compatible)
     await Promise.all(
       updates.map((update) => {
         const { id, ...data } = update
-        return prisma.menuItem.update({
-          where: { id },
-          data,
-        })
+        return supabase
+          .from('menu_items')
+          .update({ ...data, updatedAt: new Date().toISOString() })
+          .eq('id', id)
       })
     )
 
@@ -167,8 +173,8 @@ const createSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.role || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -186,19 +192,30 @@ export async function POST(request: NextRequest) {
 
     const { parentId, label, slug, href, icon, isVisible, sortOrder, itemType } = parsed.data
 
+    const supabase = getSupabaseAdmin()
+
     // Determine sort order if not provided — append to end
     let finalSortOrder = sortOrder
     if (finalSortOrder === undefined) {
-      const lastSibling = await prisma.menuItem.findFirst({
-        where: { parentId: parentId ?? null },
-        orderBy: { sortOrder: 'desc' },
-        select: { sortOrder: true },
-      })
+      let query = supabase
+        .from('menu_items')
+        .select('sortOrder')
+        .order('sortOrder', { ascending: false })
+        .limit(1)
+
+      if (parentId) {
+        query = query.eq('parentId', parentId)
+      } else {
+        query = query.is('parentId', null)
+      }
+
+      const { data: lastSibling } = await query.maybeSingle()
       finalSortOrder = (lastSibling?.sortOrder ?? 0) + 1
     }
 
-    const newItem = await prisma.menuItem.create({
-      data: {
+    const { data: newItem, error } = await supabase
+      .from('menu_items')
+      .insert({
         parentId: parentId ?? null,
         label,
         slug: slug ?? null,
@@ -207,8 +224,11 @@ export async function POST(request: NextRequest) {
         isVisible: isVisible ?? true,
         sortOrder: finalSortOrder,
         itemType,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: newItem }, { status: 201 })
   } catch (error) {
@@ -224,8 +244,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.role || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -241,7 +261,9 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    await prisma.menuItem.delete({ where: { id } })
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase.from('menu_items').delete().eq('id', id)
+    if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error) {

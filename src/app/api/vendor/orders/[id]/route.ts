@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
-import { OrderStatus } from '@prisma/client'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -13,21 +11,26 @@ const vendorUpdateOrderSchema = z.object({
   note: z.string().max(500).optional(),
 })
 
-async function getVendor() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
-  return prisma.vendor.findUnique({ where: { userId: user.id } })
+async function getVendor(request: NextRequest) {
+  const session = await getSessionFromRequest(request)
+  if (!session?.id) return null
+  if (!isVendorRole(session.role) && !isAdminRole(session.role)) return null
+  const supabase = getSupabaseAdmin()
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('*')
+    .eq('userId', session.id)
+    .single()
+  return vendor
 }
 
 // GET: Single order detail for vendor
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
@@ -36,25 +39,16 @@ export async function GET(
     }
 
     const { id } = await params
+    const supabase = getSupabaseAdmin()
 
-    const order = await prisma.order.findFirst({
-      where: { id, vendorId: vendor.id },
-      include: {
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, slug: true, images: true },
-            },
-          },
-        },
-        address: true,
-        user: { select: { id: true, name: true, phone: true, email: true } },
-        statusHistory: { orderBy: { createdAt: 'desc' } },
-        payment: { select: { status: true, method: true } },
-      },
-    })
+    const { data: order, error } = await supabase
+      .from('orders')
+      .select('*, order_items(*, products(id, name, slug, images)), addresses(*), users(id, name, phone, email), order_status_history(*), payments(status, method)')
+      .eq('id', id)
+      .eq('vendorId', vendor.id)
+      .single()
 
-    if (!order) {
+    if (error || !order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
         { status: 404 }
@@ -72,6 +66,11 @@ export async function GET(
         total: Number(order.total),
         vendorCost: order.vendorCost ? Number(order.vendorCost) : null,
         commissionAmount: order.commissionAmount ? Number(order.commissionAmount) : null,
+        items: order.order_items,
+        address: order.addresses,
+        user: order.users,
+        statusHistory: order.order_status_history,
+        payment: Array.isArray(order.payments) ? order.payments[0] : order.payments,
       },
     })
   } catch (error) {
@@ -89,7 +88,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
@@ -109,13 +108,17 @@ export async function PATCH(
     }
 
     const { action, note } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Verify order belongs to vendor
-    const order = await prisma.order.findFirst({
-      where: { id, vendorId: vendor.id },
-    })
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', id)
+      .eq('vendorId', vendor.id)
+      .single()
 
-    if (!order) {
+    if (orderError || !order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
         { status: 404 }
@@ -149,31 +152,50 @@ export async function PATCH(
     const newStatus = actionToStatus[action]
 
     // Sequential queries (no interactive transaction — pgbouncer compatible)
-    const updated = await prisma.order.update({
-      where: { id },
-      data: {
-        status: newStatus as OrderStatus,
-        ...(action === 'reject' && order.paymentStatus === 'PAID'
-          ? { paymentStatus: 'REFUNDED' as const }
-          : {}),
-      },
-    })
+    const updateData: Record<string, unknown> = {
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+    }
+    if (action === 'reject' && order.paymentStatus === 'PAID') {
+      updateData.paymentStatus = 'REFUNDED'
+    }
 
-    await prisma.orderStatusHistory.create({
-      data: {
+    const { data: updated, error: updateError } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (updateError) throw updateError
+
+    await supabase
+      .from('order_status_history')
+      .insert({
         orderId: id,
-        status: newStatus as OrderStatus,
+        status: newStatus,
         note: note || `Vendor ${action}ed the order`,
         changedBy: vendor.userId,
-      },
-    })
+      })
 
     // Update vendor total orders count on delivery
     if (action === 'delivered') {
-      await prisma.vendor.update({
-        where: { id: vendor.id },
-        data: { totalOrders: { increment: 1 } },
-      })
+      // Supabase doesn't have increment, so fetch + update
+      const { data: currentVendor } = await supabase
+        .from('vendors')
+        .select('totalOrders')
+        .eq('id', vendor.id)
+        .single()
+
+      if (currentVendor) {
+        await supabase
+          .from('vendors')
+          .update({
+            totalOrders: (currentVendor.totalOrders || 0) + 1,
+            updatedAt: new Date().toISOString(),
+          })
+          .eq('id', vendor.id)
+      }
     }
 
     return NextResponse.json({

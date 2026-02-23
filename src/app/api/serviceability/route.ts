@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod/v4'
 
 const serviceabilitySchema = z.object({
@@ -36,29 +36,21 @@ export async function POST(request: NextRequest) {
 
     // Two paths: pincode-based or lat/lng-based
 
-    // ------- Path A: Pincode provided → lookup service_areas -------
+    // ------- Path A: Pincode provided -> lookup service_areas -------
     if (pincode) {
-      const serviceArea = await prisma.serviceArea.findFirst({
-        where: {
-          pincode,
-          isActive: true,
-        },
-        include: {
-          city: {
-            select: {
-              id: true,
-              name: true,
-              slug: true,
-              isActive: true,
-              baseDeliveryCharge: true,
-              freeDeliveryAbove: true,
-            },
-          },
-        },
-      })
+      const supabase = getSupabaseAdmin()
+
+      // Note: service_areas uses @map columns: city_id, city_name, is_active, created_at, updated_at
+      const { data: serviceArea } = await supabase
+        .from('service_areas')
+        .select('*, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
+        .eq('pincode', pincode)
+        .eq('is_active', true)
+        .limit(1)
+        .single()
 
       if (!serviceArea) {
-        // No service_areas row → not serviceable
+        // No service_areas row -> not serviceable
         // But if lat/lng also provided, try coordinate-based matching
         if (lat !== undefined && lng !== undefined) {
           return handleCoordinateSearch(lat, lng, productId)
@@ -82,8 +74,8 @@ export async function POST(request: NextRequest) {
 
       return handleFullServiceability(
         pincode,
-        serviceArea.cityId,
-        serviceArea.city,
+        serviceArea.city_id,
+        serviceArea.cities as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown },
         serviceArea.name,
         areaLat,
         areaLng,
@@ -109,38 +101,27 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** Handle lat/lng only — find nearest service area or do radius vendor match */
+/** Handle lat/lng only -- find nearest service area or do radius vendor match */
 async function handleCoordinateSearch(
   lat: number,
   lng: number,
   productId?: string
 ) {
+  const supabase = getSupabaseAdmin()
+
   // Try to find the nearest service area by coordinates
-  const serviceAreas = await prisma.serviceArea.findMany({
-    where: {
-      isActive: true,
-      lat: { not: null },
-      lng: { not: null },
-    },
-    include: {
-      city: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          isActive: true,
-          baseDeliveryCharge: true,
-          freeDeliveryAbove: true,
-        },
-      },
-    },
-  })
+  const { data: serviceAreas } = await supabase
+    .from('service_areas')
+    .select('*, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
+    .eq('is_active', true)
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
 
   // Find the closest service area within 15km
-  let closestArea: (typeof serviceAreas)[number] | null = null
+  let closestArea: Record<string, unknown> | null = null
   let closestDist = Infinity
 
-  for (const area of serviceAreas) {
+  for (const area of serviceAreas || []) {
     const aLat = Number(area.lat)
     const aLng = Number(area.lng)
     const dist = haversineKm(lat, lng, aLat, aLng)
@@ -151,58 +132,54 @@ async function handleCoordinateSearch(
   }
 
   if (closestArea) {
-    // Found a nearby service area — use its pincode & city for full check
+    // Found a nearby service area -- use its pincode & city for full check
     return handleFullServiceability(
-      closestArea.pincode,
-      closestArea.cityId,
-      closestArea.city,
-      closestArea.name,
+      closestArea.pincode as string,
+      closestArea.city_id as string,
+      closestArea.cities as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown },
+      closestArea.name as string,
       lat, // use the provided coords for radius matching
       lng,
       productId
     )
   }
 
-  // No nearby service area — do pure radius vendor match with provided coords
+  // No nearby service area -- do pure radius vendor match with provided coords
   const radiusVendorIds = await getRadiusVendorIds({ lat, lng })
 
   if (radiusVendorIds.length > 0) {
-    // Vendors found by radius — get the first vendor's city for delivery config
-    const vendorWithCity = await prisma.vendor.findFirst({
-      where: { id: { in: radiusVendorIds } },
-      include: {
-        city: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            isActive: true,
-            baseDeliveryCharge: true,
-            freeDeliveryAbove: true,
-          },
-        },
-      },
-    })
+    // Vendors found by radius -- get the first vendor's city for delivery config
+    const { data: vendorWithCity } = await supabase
+      .from('vendors')
+      .select('id, cityId, cities(id, name, slug, isActive, baseDeliveryCharge, freeDeliveryAbove)')
+      .in('id', radiusVendorIds)
+      .limit(1)
+      .single()
 
     if (vendorWithCity) {
-      const deliveryConfigs = await prisma.cityDeliveryConfig.findMany({
-        where: { cityId: vendorWithCity.cityId, isAvailable: true },
-        include: { slot: true },
-      })
+      const city = vendorWithCity.cities as unknown as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown }
 
-      const availableSlots = buildSlotsList(deliveryConfigs)
-      const deliveryCharge = Number(vendorWithCity.city.baseDeliveryCharge)
-      const freeDeliveryAbove = Number(vendorWithCity.city.freeDeliveryAbove)
+      const { data: deliveryConfigs } = await supabase
+        .from('city_delivery_configs')
+        .select('chargeOverride, delivery_slots(id, name, slug, startTime, endTime, isActive, baseCharge)')
+        .eq('cityId', vendorWithCity.cityId)
+        .eq('isAvailable', true)
+
+      const availableSlots = buildSlotsList(deliveryConfigs || [])
+      const deliveryCharge = Number(city.baseDeliveryCharge)
+      const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
       let productAvailable = true
       if (productId) {
-        const vendorProduct = await prisma.vendorProduct.findFirst({
-          where: {
-            productId,
-            isAvailable: true,
-            vendor: { status: 'APPROVED', id: { in: radiusVendorIds } },
-          },
-        })
+        const { data: vendorProduct } = await supabase
+          .from('vendor_products')
+          .select('id')
+          .eq('productId', productId)
+          .eq('isAvailable', true)
+          .in('vendorId', radiusVendorIds)
+          .limit(1)
+          .maybeSingle()
+
         productAvailable = !!vendorProduct
       }
 
@@ -211,7 +188,7 @@ async function handleCoordinateSearch(
         data: {
           isServiceable: true,
           serviceable: true,
-          city: vendorWithCity.city,
+          city,
           areaName: null,
           vendorCount: radiusVendorIds.length,
           productAvailable,
@@ -256,34 +233,45 @@ async function handleFullServiceability(
   lng: number | null,
   productId?: string
 ) {
+  const supabase = getSupabaseAdmin()
+
   // Method 1: Pincode match
-  const pincodeVendorIds = await prisma.vendorPincode.findMany({
-    where: {
-      pincode,
-      isActive: true,
-      vendor: { status: 'APPROVED' },
-    },
-    select: { vendorId: true },
-  })
+  const { data: pincodeVendors } = await supabase
+    .from('vendor_pincodes')
+    .select('vendorId, vendors(status)')
+    .eq('pincode', pincode)
+    .eq('isActive', true)
+
+  const pincodeVendorIds = (pincodeVendors || [])
+    .filter((vp: Record<string, unknown>) => {
+      const vendor = vp.vendors as { status: string } | null
+      return vendor?.status === 'APPROVED'
+    })
+    .map((vp: { vendorId: string }) => vp.vendorId)
 
   // Method 2: Zone match
-  const zones = await prisma.cityZone.findMany({
-    where: {
-      pincodes: { has: pincode },
-      isActive: true,
-      cityId,
-    },
-  })
-  const zoneIds = zones.map((z) => z.id)
-  const zoneVendorIds = zoneIds.length > 0
-    ? await prisma.vendorZone.findMany({
-        where: {
-          zoneId: { in: zoneIds },
-          vendor: { status: 'APPROVED' },
-        },
-        select: { vendorId: true },
+  const { data: zones } = await supabase
+    .from('city_zones')
+    .select('id')
+    .contains('pincodes', [pincode])
+    .eq('isActive', true)
+    .eq('cityId', cityId)
+
+  const zoneIds = (zones || []).map((z: { id: string }) => z.id)
+  let zoneVendorIds: string[] = []
+  if (zoneIds.length > 0) {
+    const { data: vendorZones } = await supabase
+      .from('vendor_zones')
+      .select('vendorId, vendors(status)')
+      .in('zoneId', zoneIds)
+
+    zoneVendorIds = (vendorZones || [])
+      .filter((vz: Record<string, unknown>) => {
+        const vendor = vz.vendors as { status: string } | null
+        return vendor?.status === 'APPROVED'
       })
-    : []
+      .map((vz: { vendorId: string }) => vz.vendorId)
+  }
 
   // Method 3: Radius match
   const radiusVendorIds = await getRadiusVendorIds(
@@ -292,13 +280,13 @@ async function handleFullServiceability(
 
   // Merge all vendor IDs (deduplicate)
   const allVendorIdSet = new Set<string>()
-  for (const v of pincodeVendorIds) allVendorIdSet.add(v.vendorId)
-  for (const v of zoneVendorIds) allVendorIdSet.add(v.vendorId)
+  for (const id of pincodeVendorIds) allVendorIdSet.add(id)
+  for (const id of zoneVendorIds) allVendorIdSet.add(id)
   for (const id of radiusVendorIds) allVendorIdSet.add(id)
 
   const vendorCount = allVendorIdSet.size
 
-  // No vendors but service_areas row exists → coming soon
+  // No vendors but service_areas row exists -> coming soon
   if (vendorCount === 0) {
     return NextResponse.json({
       success: true,
@@ -318,28 +306,29 @@ async function handleFullServiceability(
     })
   }
 
-  // Vendors found → full serviceable response
+  // Vendors found -> full serviceable response
   let productAvailable = true
   if (productId) {
-    const vendorProduct = await prisma.vendorProduct.findFirst({
-      where: {
-        productId,
-        isAvailable: true,
-        vendor: {
-          status: 'APPROVED',
-          id: { in: Array.from(allVendorIdSet) },
-        },
-      },
-    })
+    const allVendorIds = Array.from(allVendorIdSet)
+    const { data: vendorProduct } = await supabase
+      .from('vendor_products')
+      .select('id')
+      .eq('productId', productId)
+      .eq('isAvailable', true)
+      .in('vendorId', allVendorIds)
+      .limit(1)
+      .maybeSingle()
+
     productAvailable = !!vendorProduct
   }
 
-  const deliveryConfigs = await prisma.cityDeliveryConfig.findMany({
-    where: { cityId, isAvailable: true },
-    include: { slot: true },
-  })
+  const { data: deliveryConfigs } = await supabase
+    .from('city_delivery_configs')
+    .select('chargeOverride, delivery_slots(id, name, slug, startTime, endTime, isActive, baseCharge)')
+    .eq('cityId', cityId)
+    .eq('isAvailable', true)
 
-  const availableSlots = buildSlotsList(deliveryConfigs)
+  const availableSlots = await buildSlotsListWithFallback(deliveryConfigs || [])
   const deliveryCharge = Number(city.baseDeliveryCharge)
   const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
@@ -360,38 +349,57 @@ async function handleFullServiceability(
   })
 }
 
-/** Build delivery slots list from city configs, falling back to all active slots */
-async function buildSlotsList(
-  deliveryConfigs: Array<{
-    slot: {
-      id: string
-      name: string
-      slug: string
-      startTime: string
-      endTime: string
-      isActive: boolean
-      baseCharge: unknown
-    }
-    chargeOverride: unknown
-  }>
+/** Build delivery slots list from city configs */
+function buildSlotsList(
+  deliveryConfigs: Array<Record<string, unknown>>
+) {
+  return deliveryConfigs
+    .filter((dc) => {
+      const slot = dc.delivery_slots as { isActive: boolean } | null
+      return slot?.isActive
+    })
+    .map((dc) => {
+      const slot = dc.delivery_slots as {
+        id: string
+        name: string
+        slug: string
+        startTime: string
+        endTime: string
+        baseCharge: unknown
+      }
+      return {
+        id: slot.id,
+        name: slot.name,
+        slug: slot.slug,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        charge: Number(dc.chargeOverride ?? slot.baseCharge),
+      }
+    })
+}
+
+/** Build delivery slots list with fallback to all active slots */
+async function buildSlotsListWithFallback(
+  deliveryConfigs: Array<Record<string, unknown>>
 ) {
   if (deliveryConfigs.length > 0) {
-    return deliveryConfigs
-      .filter((dc) => dc.slot.isActive)
-      .map((dc) => ({
-        id: dc.slot.id,
-        name: dc.slot.name,
-        slug: dc.slot.slug,
-        startTime: dc.slot.startTime,
-        endTime: dc.slot.endTime,
-        charge: Number(dc.chargeOverride ?? dc.slot.baseCharge),
-      }))
+    return buildSlotsList(deliveryConfigs)
   }
 
-  const allSlots = await prisma.deliverySlot.findMany({
-    where: { isActive: true },
-  })
-  return allSlots.map((slot) => ({
+  const supabase = getSupabaseAdmin()
+  const { data: allSlots } = await supabase
+    .from('delivery_slots')
+    .select('*')
+    .eq('isActive', true)
+
+  return (allSlots || []).map((slot: {
+    id: string
+    name: string
+    slug: string
+    startTime: string
+    endTime: string
+    baseCharge: unknown
+  }) => ({
     id: slot.id,
     name: slot.name,
     slug: slot.slug,
@@ -408,26 +416,21 @@ async function getRadiusVendorIds(
   if (!coords) return []
 
   const { lat, lng } = coords
+  const supabase = getSupabaseAdmin()
 
-  const vendors = await prisma.vendor.findMany({
-    where: {
-      status: 'APPROVED',
-      lat: { not: null },
-      lng: { not: null },
-    },
-    select: {
-      id: true,
-      lat: true,
-      lng: true,
-      deliveryRadiusKm: true,
-    },
-  })
+  // Note: vendors table uses @map columns: delivery_radius_km
+  const { data: vendors } = await supabase
+    .from('vendors')
+    .select('id, lat, lng, delivery_radius_km')
+    .eq('status', 'APPROVED')
+    .not('lat', 'is', null)
+    .not('lng', 'is', null)
 
   const matchedIds: string[] = []
-  for (const vendor of vendors) {
+  for (const vendor of vendors || []) {
     const vLat = Number(vendor.lat)
     const vLng = Number(vendor.lng)
-    const radius = Number(vendor.deliveryRadiusKm)
+    const radius = Number(vendor.delivery_radius_km)
     const distance = haversineKm(lat, lng, vLat, vLng)
     if (distance <= radius) {
       matchedIds.push(vendor.id)

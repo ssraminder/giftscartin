@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { PartnerForm } from '@/components/admin/partner-form'
 import { notFound } from 'next/navigation'
 
@@ -9,9 +9,12 @@ export default async function EditPartnerPage({
 }: {
   params: { id: string }
 }) {
-  const partner = await prisma.partner.findUnique({
-    where: { id: params.id },
-  })
+  const supabase = getSupabaseAdmin()
+  const { data: partner } = await supabase
+    .from('partners')
+    .select('*')
+    .eq('id', params.id)
+    .single()
 
   if (!partner) notFound()
 
@@ -26,8 +29,8 @@ export default async function EditPartnerPage({
           name: partner.name,
           refCode: partner.refCode,
           commissionPercent: String(Number(partner.commissionPercent)),
-          defaultCityId: partner.defaultCityId || '',
-          defaultVendorId: partner.defaultVendorId || '',
+          defaultCityId: partner.default_city_id || '',
+          defaultVendorId: partner.default_vendor_id || '',
           logoUrl: partner.logoUrl || '',
           primaryColor: partner.primaryColor,
           showPoweredBy: partner.showPoweredBy,

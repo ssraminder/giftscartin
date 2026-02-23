@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
-import { prisma } from '@/lib/prisma'
 import { createClient } from '@supabase/supabase-js'
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml']
@@ -10,16 +9,21 @@ const MAX_SIZE_BYTES = 2 * 1024 * 1024 // 2MB
 
 export async function GET() {
   try {
-    const settings = await prisma.platformSetting.findMany({
-      select: { key: true, value: true, updatedAt: true },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: settings, error } = await supabase
+      .from('platform_settings')
+      .select('key, value, updatedAt')
+
+    if (error) throw error
+
     // Always return safe defaults for expected keys
     const result: Record<string, string | null> = {
       logo_url: null,
       site_name: null,
       favicon_url: null,
     }
-    for (const s of settings) {
+    for (const s of settings || []) {
       result[s.key] = s.value
     }
     return NextResponse.json({ success: true, data: result }, {
@@ -38,8 +42,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.role || !isAdminRole(session.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest) {
       const filePath = `branding/logo-${timestamp}.${ext}`
 
       // Use service role key for storage uploads (falls back to anon key)
-      const supabase = createClient(
+      const supabaseStorage = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       )
@@ -91,7 +95,7 @@ export async function POST(request: NextRequest) {
       let uploadBucket = 'platform-assets'
       let uploadError = null
 
-      const { error: primaryError } = await supabase.storage
+      const { error: primaryError } = await supabaseStorage.storage
         .from('platform-assets')
         .upload(filePath, buffer, {
           contentType: file.type,
@@ -101,7 +105,7 @@ export async function POST(request: NextRequest) {
       if (primaryError) {
         console.warn('platform-assets bucket upload failed, trying products bucket:', primaryError.message)
         uploadBucket = 'products'
-        const { error: fallbackError } = await supabase.storage
+        const { error: fallbackError } = await supabaseStorage.storage
           .from('products')
           .upload(filePath, buffer, {
             contentType: file.type,
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const { data: publicUrlData } = supabase.storage
+      const { data: publicUrlData } = supabaseStorage.storage
         .from(uploadBucket)
         .getPublicUrl(filePath)
 
@@ -152,12 +156,16 @@ export async function POST(request: NextRequest) {
       logoUrl = url
     }
 
-    // Upsert into platform_settings (updatedAt is auto-set by @updatedAt)
-    await prisma.platformSetting.upsert({
-      where: { key: 'logo_url' },
-      update: { value: logoUrl, updatedBy: session.user.id, updatedAt: new Date() },
-      create: { key: 'logo_url', value: logoUrl, updatedBy: session.user.id, updatedAt: new Date() },
-    })
+    // Upsert into platform_settings
+    const supabase = getSupabaseAdmin()
+    const { error } = await supabase
+      .from('platform_settings')
+      .upsert(
+        { key: 'logo_url', value: logoUrl, updatedBy: session.id, updatedAt: new Date().toISOString() },
+        { onConflict: 'key' }
+      )
+
+    if (error) throw error
 
     return NextResponse.json({
       success: true,

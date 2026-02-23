@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
-import { signIn, useSession } from 'next-auth/react'
+import { useAuth } from '@/hooks/use-auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Gift, Loader2, ArrowLeft, Sparkles, Heart, Package } from 'lucide-react'
@@ -13,7 +13,7 @@ type Step = 'email' | 'otp'
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { status } = useSession()
+  const { status, refreshUser } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [step, setStep] = useState<Step>('email')
   const [email, setEmail] = useState('')
@@ -102,17 +102,20 @@ function LoginForm() {
     setLoading(true)
 
     try {
-      const result = await signIn('credentials', {
-        email,
-        otp,
-        redirect: false,
+      const res = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp }),
       })
 
-      if (result?.error) {
-        setError('Invalid OTP. Please try again.')
+      const data = await res.json()
+
+      if (!data.success) {
+        setError(data.error || 'Invalid OTP. Please try again.')
         return
       }
 
+      await refreshUser()
       router.push(callbackUrl)
       router.refresh()
     } catch {

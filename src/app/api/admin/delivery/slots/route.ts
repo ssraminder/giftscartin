@@ -1,35 +1,29 @@
-import { NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as { id?: string; role?: string } | undefined
-  if (!user?.id || !user?.role || !isAdminRole(user.role)) return null
-  return user
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const admin = await requireAdmin()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const slots = await prisma.deliverySlot.findMany({
-      include: {
-        cityConfigs: {
-          include: {
-            city: { select: { name: true } },
-          },
-        },
-      },
-      orderBy: { name: 'asc' },
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: slots, error } = await supabase
+      .from('delivery_slots')
+      .select('*, city_delivery_configs(*, cities(name))')
+      .order('name', { ascending: true })
 
-    return NextResponse.json({ success: true, data: slots })
+    if (error) throw error
+
+    const result = (slots || []).map((s: Record<string, unknown>) => ({
+      ...s,
+      cityConfigs: ((s.city_delivery_configs as Record<string, unknown>[]) || []).map((c: Record<string, unknown>) => ({ ...c, city: c.cities })),
+    }))
+
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('GET /api/admin/delivery/slots error:', error)
     return NextResponse.json({ success: false, error: 'Failed to fetch delivery slots' }, { status: 500 })

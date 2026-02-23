@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { sendOtpEmail } from '@/lib/brevo'
 import { sendOtpSchema } from '@/lib/validations'
+
+export const runtime = 'edge'
 
 const OTP_EXPIRY_MINUTES = 10
 const OTP_COOLDOWN_SECONDS = 60
@@ -23,15 +25,18 @@ export async function POST(request: Request) {
     }
 
     const { email } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Rate limit: check if an OTP was sent recently for this email
-    const recentOtp = await prisma.otpVerification.findFirst({
-      where: {
-        email,
-        createdAt: { gt: new Date(Date.now() - OTP_COOLDOWN_SECONDS * 1000) },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const cooldownThreshold = new Date(Date.now() - OTP_COOLDOWN_SECONDS * 1000).toISOString()
+    const { data: recentOtp } = await supabase
+      .from('otp_verifications')
+      .select('id')
+      .eq('email', email)
+      .gt('createdAt', cooldownThreshold)
+      .order('createdAt', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (recentOtp) {
       return NextResponse.json(
@@ -44,13 +49,23 @@ export async function POST(request: Request) {
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000)
 
     // Store OTP in database
-    await prisma.otpVerification.create({
-      data: {
+    const { error: insertError } = await supabase
+      .from('otp_verifications')
+      .insert({
         email,
         otp,
-        expiresAt,
-      },
-    })
+        expiresAt: expiresAt.toISOString(),
+        verified: false,
+        attempts: 0,
+      })
+
+    if (insertError) {
+      console.error('Failed to insert OTP record:', insertError)
+      return NextResponse.json(
+        { success: false, error: 'Internal server error' },
+        { status: 500 }
+      )
+    }
 
     // Send OTP via Brevo email
     const result = await sendOtpEmail(email, otp)

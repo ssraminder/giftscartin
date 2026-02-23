@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
 export const dynamic = 'force-dynamic'
-
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
 
 // GET: All master products NOT yet assigned to this vendor
 export async function GET(
@@ -20,8 +11,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -33,12 +24,10 @@ export async function GET(
     const search = searchParams.get('search') || ''
     const categorySlug = searchParams.get('categorySlug') || ''
 
-    // Verify vendor exists
-    const vendor = await prisma.vendor.findUnique({
-      where: { id },
-      select: { id: true },
-    })
+    const supabase = getSupabaseAdmin()
 
+    // Verify vendor exists
+    const { data: vendor } = await supabase.from('vendors').select('id').eq('id', id).maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -47,50 +36,46 @@ export async function GET(
     }
 
     // Get IDs of products already assigned to this vendor
-    const assignedProductIds = await prisma.vendorProduct.findMany({
-      where: { vendorId: id },
-      select: { productId: true },
-    })
+    const { data: assignedProducts } = await supabase
+      .from('vendor_products')
+      .select('productId')
+      .eq('vendorId', id)
 
-    const excludeIds = assignedProductIds.map((vp) => vp.productId)
+    const excludeIds = (assignedProducts || []).map((vp: Record<string, unknown>) => vp.productId)
 
-    // Build filter
-    const where: Record<string, unknown> = {
-      isActive: true,
-    }
+    // Build query for available products
+    let query = supabase
+      .from('products')
+      .select('id, name, basePrice, categories(id, name, slug)')
+      .eq('isActive', true)
+      .order('name', { ascending: true })
+      .limit(200)
 
     if (excludeIds.length > 0) {
-      where.id = { notIn: excludeIds }
+      query = query.not('id', 'in', `(${excludeIds.join(',')})`)
     }
 
     if (search) {
-      where.name = { contains: search, mode: 'insensitive' }
+      query = query.ilike('name', `%${search}%`)
     }
 
+    const { data: products, error } = await query
+    if (error) throw error
+
+    // Filter by category slug in JS if needed (supabase doesn't easily do nested filters)
+    let filtered = products || []
     if (categorySlug) {
-      where.category = { slug: categorySlug }
+      filtered = filtered.filter((p: Record<string, unknown>) => (p.categories as Record<string, unknown> | null)?.slug === categorySlug)
     }
-
-    const products = await prisma.product.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        basePrice: true,
-        category: { select: { id: true, name: true, slug: true } },
-      },
-      orderBy: { name: 'asc' },
-      take: 200,
-    })
 
     return NextResponse.json({
       success: true,
       data: {
-        items: products.map((p) => ({
+        items: filtered.map((p: Record<string, unknown>) => ({
           id: p.id,
           name: p.name,
           basePrice: Number(p.basePrice),
-          category: p.category,
+          category: p.categories,
         })),
       },
     })

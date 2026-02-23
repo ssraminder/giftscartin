@@ -1,53 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest, type SessionUser } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as { id?: string; role?: string } | undefined
-  if (!user?.id || !user?.role || !isAdminRole(user.role)) return null
+async function requireAdmin(request: NextRequest): Promise<SessionUser | null> {
+  const user = await getSessionFromRequest(request)
+  if (!user || !isAdminRole(user.role)) return null
   return user
 }
 
 // GET: single partner
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const admin = await requireAdmin()
+    const admin = await requireAdmin(request)
     if (!admin) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const partner = await prisma.partner.findUnique({
-      where: { id: params.id },
-      include: {
-        defaultCity: { select: { name: true } },
-        defaultVendor: { select: { businessName: true } },
-        _count: { select: { orders: true, earnings: true } },
-      },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: partner } = await supabase
+      .from('partners')
+      .select('*')
+      .eq('id', params.id)
+      .maybeSingle()
 
     if (!partner) {
-      return NextResponse.json(
-        { success: false, error: 'Partner not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ success: false, error: 'Partner not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, data: partner })
+    // Get related data
+    let defaultCity = null
+    if (partner.default_city_id) {
+      const { data: city } = await supabase.from('cities').select('name').eq('id', partner.default_city_id).maybeSingle()
+      defaultCity = city ? { name: city.name } : null
+    }
+
+    let defaultVendor = null
+    if (partner.default_vendor_id) {
+      const { data: vendor } = await supabase.from('vendors').select('businessName').eq('id', partner.default_vendor_id).maybeSingle()
+      defaultVendor = vendor ? { businessName: vendor.businessName } : null
+    }
+
+    const { count: orderCount } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('partnerId', params.id)
+    const { count: earningCount } = await supabase.from('partner_earnings').select('*', { count: 'exact', head: true }).eq('partnerId', params.id)
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...partner,
+        defaultCity,
+        defaultVendor,
+        _count: { orders: orderCount ?? 0, earnings: earningCount ?? 0 },
+      },
+    })
   } catch (error) {
     console.error('GET /api/admin/partners/[id] error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch partner' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Failed to fetch partner' }, { status: 500 })
   }
 }
 
@@ -57,67 +69,56 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const admin = await requireAdmin()
+    const admin = await requireAdmin(request)
     if (!admin) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
     const {
-      name,
-      refCode,
-      commissionPercent,
-      defaultCityId,
-      defaultVendorId,
-      logoUrl,
-      primaryColor,
-      showPoweredBy,
-      isActive,
+      name, refCode, commissionPercent, defaultCityId, defaultVendorId,
+      logoUrl, primaryColor, showPoweredBy, isActive,
     } = body
+
+    const supabase = getSupabaseAdmin()
 
     // Check refCode uniqueness if changing
     if (refCode) {
-      const existing = await prisma.partner.findFirst({
-        where: { refCode, NOT: { id: params.id } },
-      })
+      const { data: existing } = await supabase
+        .from('partners')
+        .select('id')
+        .eq('refCode', refCode.trim().toLowerCase())
+        .neq('id', params.id)
+        .maybeSingle()
+
       if (existing) {
-        return NextResponse.json(
-          { success: false, error: 'Ref code already in use' },
-          { status: 409 }
-        )
+        return NextResponse.json({ success: false, error: 'Ref code already in use' }, { status: 409 })
       }
     }
 
-    const partner = await prisma.partner.update({
-      where: { id: params.id },
-      data: {
-        ...(name !== undefined && { name: name.trim() }),
-        ...(refCode !== undefined && {
-          refCode: refCode.trim().toLowerCase(),
-        }),
-        ...(commissionPercent !== undefined && { commissionPercent }),
-        ...(defaultCityId !== undefined && {
-          defaultCityId: defaultCityId || null,
-        }),
-        ...(defaultVendorId !== undefined && {
-          defaultVendorId: defaultVendorId || null,
-        }),
-        ...(logoUrl !== undefined && { logoUrl: logoUrl || null }),
-        ...(primaryColor !== undefined && { primaryColor }),
-        ...(showPoweredBy !== undefined && { showPoweredBy }),
-        ...(isActive !== undefined && { isActive }),
-      },
-    })
+    const updateData: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+    if (name !== undefined) updateData.name = name.trim()
+    if (refCode !== undefined) updateData.refCode = refCode.trim().toLowerCase()
+    if (commissionPercent !== undefined) updateData.commissionPercent = commissionPercent
+    if (defaultCityId !== undefined) updateData.default_city_id = defaultCityId || null
+    if (defaultVendorId !== undefined) updateData.default_vendor_id = defaultVendorId || null
+    if (logoUrl !== undefined) updateData.logoUrl = logoUrl || null
+    if (primaryColor !== undefined) updateData.primaryColor = primaryColor
+    if (showPoweredBy !== undefined) updateData.showPoweredBy = showPoweredBy
+    if (isActive !== undefined) updateData.isActive = isActive
+
+    const { data: partner, error } = await supabase
+      .from('partners')
+      .update(updateData)
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: partner })
   } catch (error) {
     console.error('PATCH /api/admin/partners/[id] error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to update partner' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Failed to update partner' }, { status: 500 })
   }
 }

@@ -1,24 +1,24 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const cities = await prisma.city.findMany({
-      where: { isActive: true },
-      orderBy: { name: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        state: true,
-        baseDeliveryCharge: true,
-        freeDeliveryAbove: true,
-      },
-    })
+    const supabase = getSupabaseAdmin()
 
-    return NextResponse.json({ success: true, data: { cities } })
+    const { data: cities, error } = await supabase
+      .from('cities')
+      .select('id, name, slug, state, baseDeliveryCharge, freeDeliveryAbove')
+      .eq('isActive', true)
+      .order('name', { ascending: true })
+
+    if (error) {
+      console.error('Cities query error:', error)
+      throw error
+    }
+
+    return NextResponse.json({ success: true, data: { cities: cities || [] } })
   } catch (error) {
     console.error('GET /api/cities error:', error)
     return NextResponse.json(

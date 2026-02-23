@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { recalculateCitySlotCutoff } from '@/lib/recalculate-city-slots'
 import { z } from 'zod/v4'
@@ -42,22 +41,14 @@ const fullUpdateVendorSchema = z.object({
   })).optional(),
 })
 
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
-
 // GET: Single vendor detail
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -65,19 +56,13 @@ export async function GET(
     }
 
     const { id } = await params
+    const supabase = getSupabaseAdmin()
 
-    const vendor = await prisma.vendor.findUnique({
-      where: { id },
-      include: {
-        city: true,
-        workingHours: { orderBy: { dayOfWeek: 'asc' } },
-        slots: { include: { slot: true } },
-        pincodes: { where: { isActive: true } },
-        _count: {
-          select: { orders: true, products: true },
-        },
-      },
-    })
+    const { data: vendor } = await supabase
+      .from('vendors')
+      .select('*, cities(*)')
+      .eq('id', id)
+      .maybeSingle()
 
     if (!vendor) {
       return NextResponse.json(
@@ -86,16 +71,34 @@ export async function GET(
       )
     }
 
+    const [
+      { data: workingHours },
+      { data: slots },
+      { data: pincodes },
+      { count: orderCount },
+      { count: productCount },
+    ] = await Promise.all([
+      supabase.from('vendor_working_hours').select('*').eq('vendorId', id).order('dayOfWeek', { ascending: true }),
+      supabase.from('vendor_slots').select('*, delivery_slots(*)').eq('vendorId', id),
+      supabase.from('vendor_pincodes').select('*').eq('vendorId', id).eq('isActive', true),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('vendorId', id),
+      supabase.from('vendor_products').select('*', { count: 'exact', head: true }).eq('vendorId', id),
+    ])
+
     return NextResponse.json({
       success: true,
       data: {
         ...vendor,
-        commissionRate: Number(vendor.commissionRate),
-        rating: Number(vendor.rating),
-        pincodes: vendor.pincodes.map((p) => ({
+        city: vendor.cities,
+        workingHours: workingHours || [],
+        slots: (slots || []).map((s: Record<string, unknown>) => ({ ...s, slot: s.delivery_slots })),
+        pincodes: (pincodes || []).map((p: Record<string, unknown>) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),
         })),
+        commissionRate: Number(vendor.commissionRate),
+        rating: Number(vendor.rating),
+        _count: { orders: orderCount ?? 0, products: productCount ?? 0 },
       },
     })
   } catch (error) {
@@ -113,8 +116,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -132,7 +135,9 @@ export async function PATCH(
       )
     }
 
-    const vendor = await prisma.vendor.findUnique({ where: { id } })
+    const supabase = getSupabaseAdmin()
+
+    const { data: vendor } = await supabase.from('vendors').select('*').eq('id', id).maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -143,7 +148,7 @@ export async function PATCH(
     const data = parsed.data
 
     // If suspending, also go offline
-    const updateData: Record<string, unknown> = {}
+    const updateData: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (data.status !== undefined) {
       updateData.status = data.status
       if (data.status === 'SUSPENDED' || data.status === 'TERMINATED') {
@@ -154,41 +159,45 @@ export async function PATCH(
     if (data.categories !== undefined) updateData.categories = data.categories
     if (data.isOnline !== undefined) updateData.isOnline = data.isOnline
 
-    const updated = await prisma.vendor.update({
-      where: { id },
-      data: updateData,
-      include: {
-        city: { select: { id: true, name: true, slug: true } },
-        _count: { select: { orders: true, products: true } },
-      },
-    })
+    const { data: updated, error } = await supabase
+      .from('vendors')
+      .update(updateData)
+      .eq('id', id)
+      .select('*, cities!inner(id, name, slug)')
+      .single()
+
+    if (error) throw error
 
     // Recalculate city slot cutoffs when vendor status changes
     if (data.status) {
       await recalculateCitySlotCutoff(updated.cityId)
     }
 
+    // Get counts
+    const { count: orderCount } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('vendorId', id)
+    const { count: productCount } = await supabase.from('vendor_products').select('*', { count: 'exact', head: true }).eq('vendorId', id)
+
     // Log the action
-    await prisma.auditLog.create({
-      data: {
-        adminId: admin.id,
-        adminRole: admin.role,
-        actionType: data.status ? `vendor_${data.status.toLowerCase()}` : 'vendor_update',
-        entityType: 'vendor',
-        entityId: id,
-        fieldChanged: Object.keys(data).join(', '),
-        oldValue: { status: vendor.status, commissionRate: Number(vendor.commissionRate), isOnline: vendor.isOnline },
-        newValue: data,
-        reason: `Admin ${data.status ? data.status.toLowerCase() : 'updated'} vendor`,
-      },
+    await supabase.from('audit_logs').insert({
+      adminId: user.id,
+      adminRole: user.role,
+      actionType: data.status ? `vendor_${data.status.toLowerCase()}` : 'vendor_update',
+      entityType: 'vendor',
+      entityId: id,
+      fieldChanged: Object.keys(data).join(', '),
+      oldValue: { status: vendor.status, commissionRate: Number(vendor.commissionRate), isOnline: vendor.isOnline },
+      newValue: data,
+      reason: `Admin ${data.status ? data.status.toLowerCase() : 'updated'} vendor`,
     })
 
     return NextResponse.json({
       success: true,
       data: {
         ...updated,
+        city: updated.cities,
         commissionRate: Number(updated.commissionRate),
         rating: Number(updated.rating),
+        _count: { orders: orderCount ?? 0, products: productCount ?? 0 },
       },
     })
   } catch (error) {
@@ -206,8 +215,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -225,7 +234,9 @@ export async function PUT(
       )
     }
 
-    const vendor = await prisma.vendor.findUnique({ where: { id } })
+    const supabase = getSupabaseAdmin()
+
+    const { data: vendor } = await supabase.from('vendors').select('*').eq('id', id).maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -239,7 +250,7 @@ export async function PUT(
     const cleanPhone = data.phone ? data.phone.replace(/^\+91/, '') : data.phone
 
     // Build vendor update data (exclude working hours and pincodes)
-    const vendorUpdate: Record<string, unknown> = {}
+    const vendorUpdate: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (data.businessName !== undefined) vendorUpdate.businessName = data.businessName
     if (data.ownerName !== undefined) vendorUpdate.ownerName = data.ownerName
     if (cleanPhone !== undefined) vendorUpdate.phone = cleanPhone
@@ -260,38 +271,31 @@ export async function PUT(
     if (data.lng !== undefined) vendorUpdate.lng = data.lng
 
     // Update vendor
-    await prisma.vendor.update({
-      where: { id },
-      data: vendorUpdate,
-    })
+    await supabase.from('vendors').update(vendorUpdate).eq('id', id)
 
     // Update working hours (delete all then recreate)
     if (data.workingHours && data.workingHours.length > 0) {
-      await prisma.vendorWorkingHours.deleteMany({ where: { vendorId: id } })
+      await supabase.from('vendor_working_hours').delete().eq('vendorId', id)
       for (const wh of data.workingHours) {
-        await prisma.vendorWorkingHours.create({
-          data: {
-            vendorId: id,
-            dayOfWeek: wh.dayOfWeek,
-            openTime: wh.openTime,
-            closeTime: wh.closeTime,
-            isClosed: wh.isClosed,
-          },
+        await supabase.from('vendor_working_hours').insert({
+          vendorId: id,
+          dayOfWeek: wh.dayOfWeek,
+          openTime: wh.openTime,
+          closeTime: wh.closeTime,
+          isClosed: wh.isClosed,
         })
       }
     }
 
     // Update pincodes (delete all then recreate)
     if (data.pincodes !== undefined) {
-      await prisma.vendorPincode.deleteMany({ where: { vendorId: id } })
+      await supabase.from('vendor_pincodes').delete().eq('vendorId', id)
       if (data.pincodes.length > 0) {
         for (const pc of data.pincodes) {
-          await prisma.vendorPincode.create({
-            data: {
-              vendorId: id,
-              pincode: pc.pincode,
-              deliveryCharge: pc.deliveryCharge,
-            },
+          await supabase.from('vendor_pincodes').insert({
+            vendorId: id,
+            pincode: pc.pincode,
+            deliveryCharge: pc.deliveryCharge,
           })
         }
       }
@@ -309,41 +313,50 @@ export async function PUT(
     }
 
     // Log the action
-    await prisma.auditLog.create({
-      data: {
-        adminId: admin.id,
-        adminRole: admin.role,
-        actionType: 'vendor_update',
-        entityType: 'vendor',
-        entityId: id,
-        fieldChanged: Object.keys(data).join(', '),
-        oldValue: { businessName: vendor.businessName, status: vendor.status },
-        newValue: data,
-        reason: 'Admin updated vendor',
-      },
+    await supabase.from('audit_logs').insert({
+      adminId: user.id,
+      adminRole: user.role,
+      actionType: 'vendor_update',
+      entityType: 'vendor',
+      entityId: id,
+      fieldChanged: Object.keys(data).join(', '),
+      oldValue: { businessName: vendor.businessName, status: vendor.status },
+      newValue: data,
+      reason: 'Admin updated vendor',
     })
 
     // Fetch the updated vendor
-    const updated = await prisma.vendor.findUnique({
-      where: { id },
-      include: {
-        city: true,
-        workingHours: { orderBy: { dayOfWeek: 'asc' } },
-        pincodes: { where: { isActive: true } },
-        _count: { select: { orders: true, products: true } },
-      },
-    })
+    const { data: updated } = await supabase
+      .from('vendors')
+      .select('*, cities(*)')
+      .eq('id', id)
+      .single()
+
+    const [
+      { data: workingHours },
+      { data: pincodes },
+      { count: orderCount },
+      { count: productCount },
+    ] = await Promise.all([
+      supabase.from('vendor_working_hours').select('*').eq('vendorId', id).order('dayOfWeek', { ascending: true }),
+      supabase.from('vendor_pincodes').select('*').eq('vendorId', id).eq('isActive', true),
+      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('vendorId', id),
+      supabase.from('vendor_products').select('*', { count: 'exact', head: true }).eq('vendorId', id),
+    ])
 
     return NextResponse.json({
       success: true,
       data: updated ? {
         ...updated,
+        city: updated.cities,
+        workingHours: workingHours || [],
         commissionRate: Number(updated.commissionRate),
         rating: Number(updated.rating),
-        pincodes: updated.pincodes.map((p) => ({
+        pincodes: (pincodes || []).map((p: Record<string, unknown>) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),
         })),
+        _count: { orders: orderCount ?? 0, products: productCount ?? 0 },
       } : null,
     })
   } catch (error) {
@@ -357,20 +370,12 @@ export async function PUT(
 
 // DELETE: Soft delete — set status to TERMINATED (SUPER_ADMIN only)
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    const user = session.user as { id: string; role: string }
-    if (user.role !== 'SUPER_ADMIN') {
+    const user = await getSessionFromRequest(request)
+    if (!user || user.role !== 'SUPER_ADMIN') {
       return NextResponse.json(
         { success: false, error: 'Only Super Admins can terminate vendors' },
         { status: 403 }
@@ -378,8 +383,9 @@ export async function DELETE(
     }
 
     const { id } = await params
+    const supabase = getSupabaseAdmin()
 
-    const vendor = await prisma.vendor.findUnique({ where: { id } })
+    const { data: vendor } = await supabase.from('vendors').select('*').eq('id', id).maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -387,26 +393,22 @@ export async function DELETE(
       )
     }
 
-    await prisma.vendor.update({
-      where: { id },
-      data: {
-        status: 'TERMINATED',
-        isOnline: false,
-      },
-    })
+    await supabase.from('vendors').update({
+      status: 'TERMINATED',
+      isOnline: false,
+      updatedAt: new Date().toISOString(),
+    }).eq('id', id)
 
-    await prisma.auditLog.create({
-      data: {
-        adminId: user.id,
-        adminRole: user.role,
-        actionType: 'vendor_terminated',
-        entityType: 'vendor',
-        entityId: id,
-        fieldChanged: 'status, isOnline',
-        oldValue: { status: vendor.status, isOnline: vendor.isOnline },
-        newValue: { status: 'TERMINATED', isOnline: false },
-        reason: 'Super Admin terminated vendor',
-      },
+    await supabase.from('audit_logs').insert({
+      adminId: user.id,
+      adminRole: user.role,
+      actionType: 'vendor_terminated',
+      entityType: 'vendor',
+      entityId: id,
+      fieldChanged: 'status, isOnline',
+      oldValue: { status: vendor.status, isOnline: vendor.isOnline },
+      newValue: { status: 'TERMINATED', isOnline: false },
+      reason: 'Super Admin terminated vendor',
     })
 
     return NextResponse.json({ success: true })

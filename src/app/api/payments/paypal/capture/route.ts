@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { capturePayPalOrder } from '@/lib/paypal'
 
 /**
@@ -9,17 +9,21 @@ import { capturePayPalOrder } from '@/lib/paypal'
  */
 export async function GET(request: NextRequest) {
   const orderId = request.nextUrl.searchParams.get('orderId')
-  const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://giftscart.netlify.app'
 
   if (!orderId) {
     return NextResponse.redirect(`${baseUrl}/?error=missing_order`)
   }
 
   try {
+    const supabase = getSupabaseAdmin()
+
     // Find the payment record
-    const payment = await prisma.payment.findUnique({
-      where: { orderId },
-    })
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('orderId', orderId)
+      .single()
 
     if (!payment || !payment.paypalOrderId) {
       return NextResponse.redirect(`${baseUrl}/orders/${orderId}?payment=error`)
@@ -30,38 +34,40 @@ export async function GET(request: NextRequest) {
 
     if (capture.status === 'COMPLETED') {
       // Sequential queries (no interactive transaction — pgbouncer compatible)
-      await prisma.payment.update({
-        where: { orderId },
-        data: {
+      await supabase
+        .from('payments')
+        .update({
           paypalCaptureId: capture.captureId,
           status: 'PAID',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('orderId', orderId)
 
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
+      await supabase
+        .from('orders')
+        .update({
           paymentStatus: 'PAID',
           paymentMethod: 'paypal',
           status: 'CONFIRMED',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', orderId)
 
-      await prisma.orderStatusHistory.create({
-        data: {
+      await supabase
+        .from('order_status_history')
+        .insert({
           orderId,
           status: 'CONFIRMED',
           note: 'Payment verified via PayPal',
-        },
-      })
+        })
 
       return NextResponse.redirect(`${baseUrl}/orders/${orderId}?payment=success&gateway=paypal`)
     } else {
       // Payment not completed
-      await prisma.payment.update({
-        where: { orderId },
-        data: { status: 'FAILED' },
-      })
+      await supabase
+        .from('payments')
+        .update({ status: 'FAILED', updatedAt: new Date().toISOString() })
+        .eq('orderId', orderId)
 
       return NextResponse.redirect(`${baseUrl}/orders/${orderId}?payment=failed`)
     }

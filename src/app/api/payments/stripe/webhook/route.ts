@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { constructStripeEvent } from '@/lib/stripe'
 
 /**
@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const event = constructStripeEvent(body, signature)
+    const supabase = getSupabaseAdmin()
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as unknown as {
@@ -35,30 +36,32 @@ export async function POST(request: NextRequest) {
       }
 
       // Sequential queries (no interactive transaction — pgbouncer compatible)
-      await prisma.payment.update({
-        where: { orderId },
-        data: {
+      await supabase
+        .from('payments')
+        .update({
           stripePaymentIntentId: (session.payment_intent as string) || undefined,
           status: 'PAID',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('orderId', orderId)
 
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
+      await supabase
+        .from('orders')
+        .update({
           paymentStatus: 'PAID',
           paymentMethod: 'stripe',
           status: 'CONFIRMED',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', orderId)
 
-      await prisma.orderStatusHistory.create({
-        data: {
+      await supabase
+        .from('order_status_history')
+        .insert({
           orderId,
           status: 'CONFIRMED',
           note: 'Payment verified via Stripe',
-        },
-      })
+        })
     }
 
     if (event.type === 'payment_intent.payment_failed') {
@@ -69,15 +72,15 @@ export async function POST(request: NextRequest) {
 
       const orderId = paymentIntent.metadata?.orderId
       if (orderId) {
-        await prisma.payment.update({
-          where: { orderId },
-          data: { status: 'FAILED' },
-        })
+        await supabase
+          .from('payments')
+          .update({ status: 'FAILED', updatedAt: new Date().toISOString() })
+          .eq('orderId', orderId)
 
-        await prisma.order.update({
-          where: { id: orderId },
-          data: { paymentStatus: 'FAILED' },
-        })
+        await supabase
+          .from('orders')
+          .update({ paymentStatus: 'FAILED', updatedAt: new Date().toISOString() })
+          .eq('id', orderId)
       }
     }
 

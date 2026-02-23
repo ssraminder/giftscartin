@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { lookupPincode } from '@/lib/nominatim'
 
 export const dynamic = 'force-dynamic'
@@ -9,8 +8,8 @@ export const dynamic = 'force-dynamic'
 // GET: list areas with filters
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !['ADMIN', 'SUPER_ADMIN', 'CITY_MANAGER', 'OPERATIONS'].includes(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user?.role || !['ADMIN', 'SUPER_ADMIN', 'CITY_MANAGER', 'OPERATIONS'].includes(user.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -20,46 +19,51 @@ export async function GET(request: NextRequest) {
     const page = parseInt(request.nextUrl.searchParams.get('page') || '1')
     const pageSize = parseInt(request.nextUrl.searchParams.get('pageSize') || '50')
 
-    const where: Record<string, unknown> = {}
-    if (city) where.cityId = city
-    if (status === 'active') where.isActive = true
-    if (status === 'inactive') where.isActive = false
+    const supabase = getSupabaseAdmin()
+
+    // Build filtered query
+    let query = supabase.from('service_areas').select('*', { count: 'exact' })
+
+    if (city) query = query.eq('city_id', city)
+    if (status === 'active') query = query.eq('is_active', true)
+    if (status === 'inactive') query = query.eq('is_active', false)
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { pincode: { contains: search } },
-      ]
+      query = query.or(`name.ilike.%${search}%,pincode.ilike.%${search}%`)
     }
 
-    const [areas, total] = await Promise.all([
-      prisma.serviceArea.findMany({
-        where,
-        orderBy: [{ isActive: 'asc' }, { cityName: 'asc' }, { name: 'asc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.serviceArea.count({ where }),
-    ])
+    const offset = (page - 1) * pageSize
+    query = query
+      .order('is_active', { ascending: true })
+      .order('city_name', { ascending: true })
+      .order('name', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+
+    const { data: areas, count: total, error } = await query
+    if (error) throw error
 
     // Stats
-    const [totalAreas, activeAreas, inactiveAreas, cityCount] = await Promise.all([
-      prisma.serviceArea.count(),
-      prisma.serviceArea.count({ where: { isActive: true } }),
-      prisma.serviceArea.count({ where: { isActive: false } }),
-      prisma.serviceArea.groupBy({ by: ['cityName'], _count: true }).then(r => r.length),
+    const [totalRes, activeRes, inactiveRes, cityCountRes] = await Promise.all([
+      supabase.from('service_areas').select('*', { count: 'exact', head: true }),
+      supabase.from('service_areas').select('*', { count: 'exact', head: true }).eq('is_active', true),
+      supabase.from('service_areas').select('*', { count: 'exact', head: true }).eq('is_active', false),
+      supabase.from('service_areas').select('city_name'),
     ])
+
+    const cityCount = cityCountRes.data
+      ? new Set(cityCountRes.data.map((r: { city_name: string }) => r.city_name)).size
+      : 0
 
     return NextResponse.json({
       success: true,
       data: {
         areas,
-        total,
+        total: total || 0,
         page,
         pageSize,
         stats: {
-          totalAreas,
-          activeAreas,
-          inactiveAreas,
+          totalAreas: totalRes.count || 0,
+          activeAreas: activeRes.count || 0,
+          inactiveAreas: inactiveRes.count || 0,
           cityCount,
         },
       },
@@ -76,8 +80,8 @@ export async function GET(request: NextRequest) {
 // POST: add new area manually
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !['ADMIN', 'SUPER_ADMIN'].includes(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user?.role || !['ADMIN', 'SUPER_ADMIN'].includes(user.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -98,9 +102,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const supabase = getSupabaseAdmin()
+
     // Get city details
-    const city = await prisma.city.findUnique({ where: { id: cityId } })
-    if (!city) {
+    const { data: cityData, error: cityError } = await supabase
+      .from('cities')
+      .select('*')
+      .eq('id', cityId)
+      .single()
+
+    if (cityError || !cityData) {
       return NextResponse.json(
         { success: false, error: 'City not found' },
         { status: 400 }
@@ -116,23 +127,27 @@ export async function POST(request: NextRequest) {
         lat = nominatim.lat
         lng = nominatim.lng
       } else {
-        lat = Number(city.lat)
-        lng = Number(city.lng)
+        lat = Number(cityData.lat)
+        lng = Number(cityData.lng)
       }
     }
 
-    const area = await prisma.serviceArea.create({
-      data: {
+    const { data: area, error: createError } = await supabase
+      .from('service_areas')
+      .insert({
         name,
         pincode,
-        cityId,
-        cityName: city.name,
-        state: city.state,
+        city_id: cityId,
+        city_name: cityData.name,
+        state: cityData.state,
         lat,
         lng,
-        isActive,
-      },
-    })
+        is_active: isActive,
+      })
+      .select()
+      .single()
+
+    if (createError) throw createError
 
     return NextResponse.json({ success: true, data: area })
   } catch (error) {

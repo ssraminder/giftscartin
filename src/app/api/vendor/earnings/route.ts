@@ -1,22 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
 
 export const dynamic = 'force-dynamic'
 
-async function getVendor() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isVendorRole(user.role) && !isAdminRole(user.role)) return null
-  return prisma.vendor.findUnique({ where: { userId: user.id } })
+async function getVendor(request: NextRequest) {
+  const session = await getSessionFromRequest(request)
+  if (!session?.id) return null
+  if (!isVendorRole(session.role) && !isAdminRole(session.role)) return null
+  const supabase = getSupabaseAdmin()
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('*')
+    .eq('userId', session.id)
+    .single()
+  return vendor
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const vendor = await getVendor()
+    const vendor = await getVendor(request)
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor access required' },
@@ -37,34 +41,28 @@ export async function GET(request: NextRequest) {
       startDate.setMonth(startDate.getMonth() - 1)
     }
 
+    const supabase = getSupabaseAdmin()
+
     // Calculate earnings from delivered/paid orders
-    const earningsWhere: Record<string, unknown> = {
-      vendorId: vendor.id,
-      status: 'DELIVERED',
-      paymentStatus: 'PAID',
-    }
+    let ordersQuery = supabase
+      .from('orders')
+      .select('id, orderNumber, total, vendorCost, commissionAmount, createdAt')
+      .eq('vendorId', vendor.id)
+      .eq('status', 'DELIVERED')
+      .eq('paymentStatus', 'PAID')
+      .order('createdAt', { ascending: false })
+
     if (startDate) {
-      earningsWhere.createdAt = { gte: startDate }
+      ordersQuery = ordersQuery.gte('createdAt', startDate.toISOString())
     }
 
-    const orders = await prisma.order.findMany({
-      where: earningsWhere,
-      select: {
-        id: true,
-        orderNumber: true,
-        total: true,
-        vendorCost: true,
-        commissionAmount: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const { data: orders } = await ordersQuery
 
     const commissionRate = Number(vendor.commissionRate)
     let totalRevenue = 0
     let totalCommission = 0
 
-    const orderEarnings = orders.map((o) => {
+    const orderEarnings = (orders || []).map((o: Record<string, unknown>) => {
       const orderTotal = Number(o.total)
       const commission = o.commissionAmount
         ? Number(o.commissionAmount)
@@ -80,40 +78,38 @@ export async function GET(request: NextRequest) {
         orderTotal,
         commission,
         netEarning,
-        date: o.createdAt.toISOString(),
+        date: (o.createdAt as string),
       }
     })
 
     // Get payouts
-    const payouts = await prisma.vendorPayout.findMany({
-      where: { vendorId: vendor.id },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    })
+    const { data: payouts } = await supabase
+      .from('vendor_payouts')
+      .select('*')
+      .eq('vendorId', vendor.id)
+      .order('createdAt', { ascending: false })
+      .limit(10)
 
     // Pending payout (delivered orders not yet in a payout)
-    const allDeliveredTotal = await prisma.order.aggregate({
-      _sum: { total: true },
-      _count: true,
-      where: {
-        vendorId: vendor.id,
-        status: 'DELIVERED',
-        paymentStatus: 'PAID',
-      },
-    })
+    const { data: allDeliveredOrders } = await supabase
+      .from('orders')
+      .select('total')
+      .eq('vendorId', vendor.id)
+      .eq('status', 'DELIVERED')
+      .eq('paymentStatus', 'PAID')
 
-    const totalPaidOut = await prisma.vendorPayout.aggregate({
-      _sum: { netAmount: true },
-      where: {
-        vendorId: vendor.id,
-        status: 'PAID',
-      },
-    })
+    const lifetimeRevenue = (allDeliveredOrders || []).reduce((sum, o) => sum + Number(o.total), 0)
 
-    const lifetimeRevenue = Number(allDeliveredTotal._sum.total ?? 0)
+    const { data: paidPayouts } = await supabase
+      .from('vendor_payouts')
+      .select('netAmount')
+      .eq('vendorId', vendor.id)
+      .eq('status', 'PAID')
+
+    const alreadyPaid = (paidPayouts || []).reduce((sum, p) => sum + Number(p.netAmount), 0)
+
     const lifetimeCommission = (lifetimeRevenue * commissionRate) / 100
     const lifetimeNet = lifetimeRevenue - lifetimeCommission
-    const alreadyPaid = Number(totalPaidOut._sum.netAmount ?? 0)
     const pendingPayout = lifetimeNet - alreadyPaid
 
     return NextResponse.json({
@@ -124,12 +120,12 @@ export async function GET(request: NextRequest) {
         totalRevenue,
         totalCommission,
         netEarnings: totalRevenue - totalCommission,
-        orderCount: orders.length,
+        orderCount: (orders || []).length,
         pendingPayout: Math.max(0, pendingPayout),
         lifetimeRevenue,
         lifetimeNet,
         orders: orderEarnings,
-        payouts: payouts.map((p) => ({
+        payouts: (payouts || []).map((p: Record<string, unknown>) => ({
           ...p,
           amount: Number(p.amount),
           deductions: Number(p.deductions),

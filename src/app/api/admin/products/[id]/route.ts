@@ -1,49 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
-import { createClient } from '@supabase/supabase-js'
 
 // ==================== GET — Single product with all relations ====================
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const product = await prisma.product.findUnique({
-      where: { id: params.id },
-      include: {
-        category: true,
-        variations: { orderBy: { sortOrder: 'asc' } },
-        addonGroups: {
-          include: { options: { orderBy: { sortOrder: 'asc' } } },
-          orderBy: { sortOrder: 'asc' },
-        },
-        upsells: {
-          include: {
-            upsellProduct: {
-              select: { id: true, name: true, slug: true, images: true, basePrice: true },
-            },
-          },
-          orderBy: { sortOrder: 'asc' },
-        },
-        vendorProducts: {
-          include: { vendor: { select: { id: true, businessName: true } } },
-        },
-      },
-    })
+    const supabase = getSupabaseAdmin()
 
+    const { data: product, error } = await supabase
+      .from('products')
+      .select('*, categories(*)')
+      .eq('id', params.id)
+      .maybeSingle()
+
+    if (error) throw error
     if (!product) {
       return NextResponse.json(
         { success: false, error: 'Product not found' },
@@ -51,7 +35,43 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({ success: true, data: product })
+    const [
+      { data: variations },
+      { data: addonGroups },
+      { data: upsells },
+      { data: vendorProducts },
+      { data: attributes },
+    ] = await Promise.all([
+      supabase.from('product_variations').select('*').eq('productId', params.id).order('sortOrder', { ascending: true }),
+      supabase.from('product_addon_groups').select('*, product_addon_options(*)').eq('productId', params.id).order('sortOrder', { ascending: true }),
+      supabase.from('product_upsells').select('*, products!product_upsells_upsellProductId_fkey(id, name, slug, images, basePrice)').eq('productId', params.id).order('sortOrder', { ascending: true }),
+      supabase.from('vendor_products').select('*, vendors!inner(id, businessName)').eq('productId', params.id),
+      supabase.from('product_attributes').select('*, product_attribute_options(*)').eq('productId', params.id).order('sortOrder', { ascending: true }),
+    ])
+
+    const result = {
+      ...product,
+      category: product.categories,
+      attributes: (attributes || []).map((a: Record<string, unknown>) => ({
+        ...a,
+        options: a.product_attribute_options || [],
+      })),
+      variations: variations || [],
+      addonGroups: (addonGroups || []).map((g: Record<string, unknown>) => ({
+        ...g,
+        options: ((g.product_addon_options || []) as Record<string, unknown>[]).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+      })),
+      upsells: (upsells || []).map((u: Record<string, unknown>) => ({
+        ...u,
+        upsellProduct: u.products,
+      })),
+      vendorProducts: (vendorProducts || []).map((vp: Record<string, unknown>) => ({
+        ...vp,
+        vendor: vp.vendors,
+      })),
+    }
+
+    return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('GET /api/admin/products/[id] error:', error)
     return NextResponse.json(
@@ -152,15 +172,22 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const existing = await prisma.product.findUnique({ where: { id: params.id } })
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', params.id)
+      .maybeSingle()
+
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Product not found' },
@@ -185,13 +212,10 @@ export async function PUT(
       try {
         const base64 = data.pendingImageDataUrl.split(',')[1]
         const imageBuffer = Buffer.from(base64, 'base64')
-        const supabaseAdmin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-        )
+        const supabaseStorage = getSupabaseAdmin()
         const storagePath = `ai-generated/${Date.now()}-${(data.name || 'product').toLowerCase().replace(/[^a-z0-9]/g, '-')}.png`
-        await supabaseAdmin.storage.from('products').upload(storagePath, imageBuffer, { contentType: 'image/png' })
-        const { data: urlData } = supabaseAdmin.storage.from('products').getPublicUrl(storagePath)
+        await supabaseStorage.storage.from('products').upload(storagePath, imageBuffer, { contentType: 'image/png' })
+        const { data: urlData } = supabaseStorage.storage.from('products').getPublicUrl(storagePath)
         uploadedImageUrl = urlData.publicUrl
       } catch (err) {
         console.error('Pending image upload failed (non-fatal):', err)
@@ -205,10 +229,8 @@ export async function PUT(
       data.images = data.images.filter((img: string) => !img.startsWith('data:'))
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-
     // Update product fields
-    const productUpdate: Record<string, unknown> = {}
+    const productUpdate: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (data.name !== undefined) productUpdate.name = data.name
     if (data.slug !== undefined) productUpdate.slug = data.slug
     if (data.description !== undefined) productUpdate.description = data.description
@@ -229,79 +251,88 @@ export async function PUT(
     if (data.ogImage !== undefined) productUpdate.ogImage = data.ogImage
     if (data.canonicalUrl !== undefined) productUpdate.canonicalUrl = data.canonicalUrl
 
-    if (Object.keys(productUpdate).length > 0) {
-      await prisma.product.update({
-        where: { id: params.id },
-        data: productUpdate,
-      })
+    if (Object.keys(productUpdate).length > 1) {
+      await supabase.from('products').update(productUpdate).eq('id', params.id)
     }
 
     // Handle attributes — delete removed, upsert existing
     if (data.attributes !== undefined) {
       const incomingIds = data.attributes.filter((a) => a.id).map((a) => a.id!)
+
       // Delete removed attributes
-      await prisma.productAttribute.deleteMany({
-        where: {
-          productId: params.id,
-          ...(incomingIds.length > 0 ? { id: { notIn: incomingIds } } : {}),
-        },
-      })
+      if (incomingIds.length > 0) {
+        // Get all attribute IDs for this product, then delete those not in incomingIds
+        const { data: existingAttrs } = await supabase
+          .from('product_attributes')
+          .select('id')
+          .eq('productId', params.id)
+          .not('id', 'in', `(${incomingIds.join(',')})`)
+        if (existingAttrs && existingAttrs.length > 0) {
+          await supabase.from('product_attributes').delete().in('id', existingAttrs.map(a => a.id))
+        }
+      } else {
+        await supabase.from('product_attributes').delete().eq('productId', params.id)
+      }
 
       for (const attr of data.attributes) {
         if (attr.id) {
-          // Update existing
-          await prisma.productAttribute.update({
-            where: { id: attr.id },
-            data: {
-              name: attr.name,
-              slug: attr.slug,
-              isForVariations: attr.isForVariations,
-              sortOrder: attr.sortOrder,
-            },
-          })
+          await supabase.from('product_attributes').update({
+            name: attr.name,
+            slug: attr.slug,
+            isForVariations: attr.isForVariations,
+            sortOrder: attr.sortOrder,
+          }).eq('id', attr.id)
+
           // Handle options
           const optIds = attr.options.filter((o) => o.id).map((o) => o.id!)
-          await prisma.productAttributeOption.deleteMany({
-            where: {
-              attributeId: attr.id,
-              ...(optIds.length > 0 ? { id: { notIn: optIds } } : {}),
-            },
-          })
+          if (optIds.length > 0) {
+            const { data: existingOpts } = await supabase
+              .from('product_attribute_options')
+              .select('id')
+              .eq('attributeId', attr.id)
+              .not('id', 'in', `(${optIds.join(',')})`)
+            if (existingOpts && existingOpts.length > 0) {
+              await supabase.from('product_attribute_options').delete().in('id', existingOpts.map(o => o.id))
+            }
+          } else {
+            await supabase.from('product_attribute_options').delete().eq('attributeId', attr.id)
+          }
+
           for (const opt of attr.options) {
             if (opt.id) {
-              await prisma.productAttributeOption.update({
-                where: { id: opt.id },
-                data: { value: opt.value, sortOrder: opt.sortOrder },
-              })
+              await supabase.from('product_attribute_options').update({
+                value: opt.value,
+                sortOrder: opt.sortOrder,
+              }).eq('id', opt.id)
             } else {
-              await prisma.productAttributeOption.create({
-                data: {
-                  attributeId: attr.id,
-                  value: opt.value,
-                  sortOrder: opt.sortOrder,
-                },
+              await supabase.from('product_attribute_options').insert({
+                attributeId: attr.id,
+                value: opt.value,
+                sortOrder: opt.sortOrder,
               })
             }
           }
         } else {
-          // Create new
-          const created = await prisma.productAttribute.create({
-            data: {
+          const { data: created } = await supabase
+            .from('product_attributes')
+            .insert({
               productId: params.id,
               name: attr.name,
               slug: attr.slug,
               isForVariations: attr.isForVariations,
               sortOrder: attr.sortOrder,
-            },
-          })
-          for (const opt of attr.options) {
-            await prisma.productAttributeOption.create({
-              data: {
+            })
+            .select()
+            .single()
+
+          if (created) {
+            for (const opt of attr.options) {
+              await supabase.from('product_attribute_options').insert({
                 attributeId: created.id,
                 value: opt.value,
                 sortOrder: opt.sortOrder,
-              },
-            })
+              })
+            }
           }
         }
       }
@@ -310,45 +341,40 @@ export async function PUT(
     // Handle variations — delete removed, upsert existing
     if (data.variations !== undefined) {
       const incomingVarIds = data.variations.filter((v) => v.id).map((v) => v.id!)
-      await prisma.productVariation.deleteMany({
-        where: {
-          productId: params.id,
-          ...(incomingVarIds.length > 0 ? { id: { notIn: incomingVarIds } } : {}),
-        },
-      })
+
+      if (incomingVarIds.length > 0) {
+        const { data: existingVars } = await supabase
+          .from('product_variations')
+          .select('id')
+          .eq('productId', params.id)
+          .not('id', 'in', `(${incomingVarIds.join(',')})`)
+        if (existingVars && existingVars.length > 0) {
+          await supabase.from('product_variations').delete().in('id', existingVars.map(v => v.id))
+        }
+      } else {
+        await supabase.from('product_variations').delete().eq('productId', params.id)
+      }
 
       for (const v of data.variations) {
+        const varData = {
+          attributes: v.attributes,
+          price: v.price,
+          salePrice: v.salePrice ?? null,
+          saleFrom: v.saleFrom ? new Date(v.saleFrom).toISOString() : null,
+          saleTo: v.saleTo ? new Date(v.saleTo).toISOString() : null,
+          sku: v.sku ?? null,
+          stockQty: v.stockQty ?? null,
+          image: v.image ?? null,
+          isActive: v.isActive,
+          sortOrder: v.sortOrder,
+          updatedAt: new Date().toISOString(),
+        }
         if (v.id) {
-          await prisma.productVariation.update({
-            where: { id: v.id },
-            data: {
-              attributes: v.attributes,
-              price: v.price,
-              salePrice: v.salePrice ?? null,
-              saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
-              saleTo: v.saleTo ? new Date(v.saleTo) : null,
-              sku: v.sku ?? null,
-              stockQty: v.stockQty ?? null,
-              image: v.image ?? null,
-              isActive: v.isActive,
-              sortOrder: v.sortOrder,
-            },
-          })
+          await supabase.from('product_variations').update(varData).eq('id', v.id)
         } else {
-          await prisma.productVariation.create({
-            data: {
-              productId: params.id,
-              attributes: v.attributes,
-              price: v.price,
-              salePrice: v.salePrice ?? null,
-              saleFrom: v.saleFrom ? new Date(v.saleFrom) : null,
-              saleTo: v.saleTo ? new Date(v.saleTo) : null,
-              sku: v.sku ?? null,
-              stockQty: v.stockQty ?? null,
-              image: v.image ?? null,
-              isActive: v.isActive,
-              sortOrder: v.sortOrder,
-            },
+          await supabase.from('product_variations').insert({
+            productId: params.id,
+            ...varData,
           })
         }
       }
@@ -357,93 +383,95 @@ export async function PUT(
     // Handle addon groups — delete removed, upsert existing
     if (data.addonGroups !== undefined) {
       const incomingGroupIds = data.addonGroups.filter((g) => g.id).map((g) => g.id!)
-      await prisma.productAddonGroup.deleteMany({
-        where: {
-          productId: params.id,
-          ...(incomingGroupIds.length > 0 ? { id: { notIn: incomingGroupIds } } : {}),
-        },
-      })
+
+      if (incomingGroupIds.length > 0) {
+        const { data: existingGroups } = await supabase
+          .from('product_addon_groups')
+          .select('id')
+          .eq('productId', params.id)
+          .not('id', 'in', `(${incomingGroupIds.join(',')})`)
+        if (existingGroups && existingGroups.length > 0) {
+          await supabase.from('product_addon_groups').delete().in('id', existingGroups.map(g => g.id))
+        }
+      } else {
+        await supabase.from('product_addon_groups').delete().eq('productId', params.id)
+      }
 
       for (const group of data.addonGroups) {
+        const groupData = {
+          name: group.name,
+          description: group.description ?? null,
+          type: group.type,
+          required: group.required,
+          maxLength: group.maxLength ?? null,
+          placeholder: group.placeholder ?? null,
+          acceptedFileTypes: group.acceptedFileTypes,
+          maxFileSizeMb: group.maxFileSizeMb ?? 5,
+          templateGroupId: group.templateGroupId ?? null,
+          isOverridden: group.isOverridden,
+          sortOrder: group.sortOrder,
+          updatedAt: new Date().toISOString(),
+        }
+
         if (group.id) {
-          await prisma.productAddonGroup.update({
-            where: { id: group.id },
-            data: {
-              name: group.name,
-              description: group.description ?? null,
-              type: group.type,
-              required: group.required,
-              maxLength: group.maxLength ?? null,
-              placeholder: group.placeholder ?? null,
-              acceptedFileTypes: group.acceptedFileTypes,
-              maxFileSizeMb: group.maxFileSizeMb ?? 5,
-              templateGroupId: group.templateGroupId ?? null,
-              isOverridden: group.isOverridden,
-              sortOrder: group.sortOrder,
-            },
-          })
+          await supabase.from('product_addon_groups').update(groupData).eq('id', group.id)
+
           // Handle options
           const optIds = group.options.filter((o) => o.id).map((o) => o.id!)
-          await prisma.productAddonOption.deleteMany({
-            where: {
-              groupId: group.id,
-              ...(optIds.length > 0 ? { id: { notIn: optIds } } : {}),
-            },
-          })
+          if (optIds.length > 0) {
+            const { data: existingOpts } = await supabase
+              .from('product_addon_options')
+              .select('id')
+              .eq('groupId', group.id)
+              .not('id', 'in', `(${optIds.join(',')})`)
+            if (existingOpts && existingOpts.length > 0) {
+              await supabase.from('product_addon_options').delete().in('id', existingOpts.map(o => o.id))
+            }
+          } else {
+            await supabase.from('product_addon_options').delete().eq('groupId', group.id)
+          }
+
           for (const opt of group.options) {
             if (opt.id) {
-              await prisma.productAddonOption.update({
-                where: { id: opt.id },
-                data: {
-                  label: opt.label,
-                  price: opt.price,
-                  image: opt.image ?? null,
-                  isDefault: opt.isDefault,
-                  sortOrder: opt.sortOrder,
-                },
-              })
+              await supabase.from('product_addon_options').update({
+                label: opt.label,
+                price: opt.price,
+                image: opt.image ?? null,
+                isDefault: opt.isDefault,
+                sortOrder: opt.sortOrder,
+              }).eq('id', opt.id)
             } else {
-              await prisma.productAddonOption.create({
-                data: {
-                  groupId: group.id,
-                  label: opt.label,
-                  price: opt.price,
-                  image: opt.image ?? null,
-                  isDefault: opt.isDefault,
-                  sortOrder: opt.sortOrder,
-                },
+              await supabase.from('product_addon_options').insert({
+                groupId: group.id,
+                label: opt.label,
+                price: opt.price,
+                image: opt.image ?? null,
+                isDefault: opt.isDefault,
+                sortOrder: opt.sortOrder,
               })
             }
           }
         } else {
-          // Create new group
-          const created = await prisma.productAddonGroup.create({
-            data: {
+          const { data: created } = await supabase
+            .from('product_addon_groups')
+            .insert({
               productId: params.id,
-              name: group.name,
-              description: group.description ?? null,
-              type: group.type,
-              required: group.required,
-              maxLength: group.maxLength ?? null,
-              placeholder: group.placeholder ?? null,
-              acceptedFileTypes: group.acceptedFileTypes,
-              maxFileSizeMb: group.maxFileSizeMb ?? 5,
-              templateGroupId: group.templateGroupId ?? null,
-              isOverridden: group.isOverridden,
-              sortOrder: group.sortOrder,
-            },
-          })
-          for (const opt of group.options) {
-            await prisma.productAddonOption.create({
-              data: {
+              ...groupData,
+            })
+            .select()
+            .single()
+
+          if (created) {
+            for (const opt of group.options) {
+              await supabase.from('product_addon_options').insert({
                 groupId: created.id,
                 label: opt.label,
                 price: opt.price,
                 image: opt.image ?? null,
                 isDefault: opt.isDefault,
                 sortOrder: opt.sortOrder,
-              },
-            })
+              })
+            }
           }
         }
       }
@@ -451,33 +479,46 @@ export async function PUT(
 
     // Handle upsells — replace entire list
     if (data.upsellIds !== undefined) {
-      await prisma.productUpsell.deleteMany({ where: { productId: params.id } })
+      await supabase.from('product_upsells').delete().eq('productId', params.id)
       for (let i = 0; i < data.upsellIds.length; i++) {
-        await prisma.productUpsell.create({
-          data: {
-            productId: params.id,
-            upsellProductId: data.upsellIds[i],
-            sortOrder: i,
-          },
+        await supabase.from('product_upsells').insert({
+          productId: params.id,
+          upsellProductId: data.upsellIds[i],
+          sortOrder: i,
         })
       }
     }
 
     // Fetch updated product
-    const updated = await prisma.product.findUnique({
-      where: { id: params.id },
-      include: {
-        category: true,
-        attributes: { include: { options: true }, orderBy: { sortOrder: 'asc' } },
-        variations: { orderBy: { sortOrder: 'asc' } },
-        addonGroups: { include: { options: { orderBy: { sortOrder: 'asc' } } }, orderBy: { sortOrder: 'asc' } },
-        upsells: {
-          include: {
-            upsellProduct: { select: { id: true, name: true, slug: true, images: true, basePrice: true } },
-          },
-        },
-      },
-    })
+    const { data: updatedProduct } = await supabase
+      .from('products')
+      .select('*, categories(*)')
+      .eq('id', params.id)
+      .single()
+
+    const [
+      { data: attrs },
+      { data: vars },
+      { data: groups },
+      { data: ups },
+    ] = await Promise.all([
+      supabase.from('product_attributes').select('*, product_attribute_options(*)').eq('productId', params.id).order('sortOrder', { ascending: true }),
+      supabase.from('product_variations').select('*').eq('productId', params.id).order('sortOrder', { ascending: true }),
+      supabase.from('product_addon_groups').select('*, product_addon_options(*)').eq('productId', params.id).order('sortOrder', { ascending: true }),
+      supabase.from('product_upsells').select('*, products!product_upsells_upsellProductId_fkey(id, name, slug, images, basePrice)').eq('productId', params.id),
+    ])
+
+    const updated = {
+      ...updatedProduct,
+      category: updatedProduct?.categories,
+      attributes: (attrs || []).map((a: Record<string, unknown>) => ({ ...a, options: a.product_attribute_options || [] })),
+      variations: vars || [],
+      addonGroups: (groups || []).map((g: Record<string, unknown>) => ({
+        ...g,
+        options: ((g.product_addon_options || []) as Record<string, unknown>[]).sort((a: Record<string, unknown>, b: Record<string, unknown>) => (a.sortOrder as number) - (b.sortOrder as number)),
+      })),
+      upsells: (ups || []).map((u: Record<string, unknown>) => ({ ...u, upsellProduct: u.products })),
+    }
 
     return NextResponse.json({ success: true, data: updated })
   } catch (error) {
@@ -513,15 +554,22 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const existing = await prisma.product.findUnique({ where: { id: params.id } })
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', params.id)
+      .maybeSingle()
+
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Product not found' },
@@ -539,7 +587,7 @@ export async function PATCH(
     }
 
     const data = parsed.data
-    const productUpdate: Record<string, unknown> = {}
+    const productUpdate: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (data.name !== undefined) productUpdate.name = data.name
     if (data.slug !== undefined) productUpdate.slug = data.slug
     if (data.description !== undefined) productUpdate.description = data.description
@@ -554,23 +602,36 @@ export async function PATCH(
     if (data.isActive !== undefined) productUpdate.isActive = data.isActive
     if (data.isSameDayEligible !== undefined) productUpdate.isSameDayEligible = data.isSameDayEligible
 
-    if (Object.keys(productUpdate).length === 0) {
+    if (Object.keys(productUpdate).length <= 1) {
       return NextResponse.json(
         { success: false, error: 'No fields to update' },
         { status: 400 }
       )
     }
 
-    const updated = await prisma.product.update({
-      where: { id: params.id },
-      data: productUpdate,
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        _count: { select: { vendorProducts: true } },
+    const { data: updated, error } = await supabase
+      .from('products')
+      .update(productUpdate)
+      .eq('id', params.id)
+      .select('*, categories!inner(id, name, slug)')
+      .single()
+
+    if (error) throw error
+
+    // Get vendor product count
+    const { count: vpCount } = await supabase
+      .from('vendor_products')
+      .select('*', { count: 'exact', head: true })
+      .eq('productId', params.id)
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updated,
+        category: updated.categories,
+        _count: { vendorProducts: vpCount ?? 0 },
       },
     })
-
-    return NextResponse.json({ success: true, data: updated })
   } catch (error) {
     console.error('PATCH /api/admin/products/[id] error:', error)
     const message = error instanceof Error ? error.message : 'Failed to update product'
@@ -584,22 +645,26 @@ export async function PATCH(
 // ==================== DELETE — Smart delete ====================
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.role || !isAdminRole(session.user.role)) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const existing = await prisma.product.findUnique({
-      where: { id: params.id },
-      include: { _count: { select: { vendorProducts: true } } },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: existing } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', params.id)
+      .maybeSingle()
+
     if (!existing) {
       return NextResponse.json(
         { success: false, error: 'Product not found' },
@@ -607,22 +672,24 @@ export async function DELETE(
       )
     }
 
-    if (existing._count.vendorProducts > 0) {
+    const { count: vpCount } = await supabase
+      .from('vendor_products')
+      .select('*', { count: 'exact', head: true })
+      .eq('productId', params.id)
+
+    if ((vpCount ?? 0) > 0) {
       // Soft delete — vendors are linked
-      await prisma.product.update({
-        where: { id: params.id },
-        data: { isActive: false },
-      })
+      await supabase.from('products').update({ isActive: false, updatedAt: new Date().toISOString() }).eq('id', params.id)
       return NextResponse.json({
         success: true,
         data: {
           deleted: false,
-          reason: `Product deactivated (soft delete). ${existing._count.vendorProducts} vendor(s) are linked to this product.`,
+          reason: `Product deactivated (soft delete). ${vpCount} vendor(s) are linked to this product.`,
         },
       })
     } else {
       // Hard delete — no vendors linked
-      await prisma.product.delete({ where: { id: params.id } })
+      await supabase.from('products').delete().eq('id', params.id)
       return NextResponse.json({
         success: true,
         data: { deleted: true },

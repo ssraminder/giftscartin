@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/hooks/use-auth"
 import { Check, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Calendar as CalendarIcon } from "lucide-react"
 
 import { SenderDetailsStep } from "@/components/checkout/sender-details-step"
@@ -161,7 +161,7 @@ function useIsMobile() {
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { user, status } = useAuth()
   const { formatPrice } = useCurrency()
   const { cityName, cityId, pincode: contextPincode, areaName } = useCity()
   const { clearReferral } = useReferral()
@@ -297,7 +297,7 @@ export default function CheckoutPage() {
   // ─── Fetch Saved Addresses ───
 
   useEffect(() => {
-    if (!session?.user?.id) return
+    if (!user?.id) return
 
     setAddressesLoading(true)
     fetch("/api/addresses")
@@ -318,7 +318,7 @@ export default function CheckoutPage() {
       })
       .catch(() => {})
       .finally(() => setAddressesLoading(false))
-  }, [session?.user?.id])
+  }, [user?.id])
 
   // ─── Pre-fill city + pincode + area from context ───
 
@@ -772,7 +772,7 @@ export default function CheckoutPage() {
       const t0 = Date.now()
 
       const isNewAddress = !formData.selectedAddressId
-      const isGuestCheckout = !session?.user
+      const isGuestCheckout = !user
 
       const orderBody: Record<string, unknown> = {
         items: items.map((item) => ({
@@ -829,7 +829,7 @@ export default function CheckoutPage() {
       setOrderError("Something went wrong creating your order. Please try again.")
       setCreatingOrder(false)
     }
-  }, [formData, items, isSlotComplete, createdOrderId, goToStep, session?.user])
+  }, [formData, items, isSlotComplete, createdOrderId, goToStep, user])
 
   // Formatted date for display
   const deliveryDateDisplay = useMemo(() => {
@@ -1250,7 +1250,7 @@ export default function CheckoutPage() {
                 </h2>
 
                 {/* ── Saved Addresses Section ── */}
-                {session?.user && (
+                {user && (
                   <div className="mb-6">
                     {addressesLoading ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1519,7 +1519,7 @@ export default function CheckoutPage() {
                     </div>
 
                     {/* Save address checkbox */}
-                    {session?.user && (
+                    {user && (
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { z } from 'zod/v4'
 
@@ -9,36 +8,40 @@ export const dynamic = 'force-dynamic'
 
 // ==================== GET — List all cities with zone and vendor counts ====================
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (
-      !session?.user ||
-      !isAdminRole(
-        (session.user as { role?: string }).role || ''
-      )
-    ) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
       )
     }
 
-    const cities = await prisma.city.findMany({
-      include: {
-        _count: { select: { zones: true, vendors: true } },
-      },
-      orderBy: { name: 'asc' },
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: cities, error } = await supabase
+      .from('cities')
+      .select('*, city_zones(id), vendors(id)')
+      .order('name', { ascending: true })
+
+    if (error) throw error
 
     return NextResponse.json({
       success: true,
-      data: cities.map((c) => ({
+      data: (cities || []).map((c) => ({
         ...c,
         baseDeliveryCharge: Number(c.baseDeliveryCharge),
         freeDeliveryAbove: Number(c.freeDeliveryAbove),
         lat: Number(c.lat),
         lng: Number(c.lng),
+        _count: {
+          zones: c.city_zones?.length || 0,
+          vendors: c.vendors?.length || 0,
+        },
+        // Clean up embedded arrays from select
+        city_zones: undefined,
+        vendors: undefined,
       })),
     })
   } catch (error) {
@@ -72,13 +75,8 @@ const createCitySchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (
-      !session?.user ||
-      !isAdminRole(
-        (session.user as { role?: string }).role || ''
-      )
-    ) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
@@ -95,9 +93,15 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Check slug uniqueness
-    const existingSlug = await prisma.city.findUnique({ where: { slug: data.slug } })
+    const { data: existingSlug } = await supabase
+      .from('cities')
+      .select('id')
+      .eq('slug', data.slug)
+      .single()
+
     if (existingSlug) {
       return NextResponse.json(
         { success: false, error: `Slug "${data.slug}" is already in use` },
@@ -105,9 +109,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Sequential queries (no $transaction — pgbouncer incompatible)
-    const city = await prisma.city.create({
-      data: {
+    // Sequential queries (no transaction — pgbouncer incompatible)
+    const { data: city, error: createError } = await supabase
+      .from('cities')
+      .insert({
         name: data.name,
         slug: data.slug,
         state: data.state,
@@ -116,30 +121,49 @@ export async function POST(request: NextRequest) {
         baseDeliveryCharge: data.baseDeliveryCharge,
         freeDeliveryAbove: data.freeDeliveryAbove,
         isActive: data.isActive,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (createError || !city) throw createError
 
     for (const zone of data.zones) {
-      await prisma.cityZone.create({
-        data: {
+      const { error: zoneError } = await supabase
+        .from('city_zones')
+        .insert({
           cityId: city.id,
           name: zone.name,
           pincodes: zone.pincodes,
           extraCharge: zone.extraCharge,
-        },
-      })
+        })
+
+      if (zoneError) throw zoneError
     }
 
     // Fetch full city with relations
-    const full = await prisma.city.findUnique({
-      where: { id: city.id },
-      include: {
-        zones: { orderBy: { name: 'asc' } },
-        _count: { select: { vendors: true } },
-      },
-    })
+    const { data: full, error: fetchError } = await supabase
+      .from('cities')
+      .select('*, city_zones(*), vendors(id)')
+      .eq('id', city.id)
+      .single()
 
-    return NextResponse.json({ success: true, data: full }, { status: 201 })
+    if (fetchError) throw fetchError
+
+    // Sort zones by name
+    const zones = (full.city_zones || []).sort((a: { name: string }, b: { name: string }) =>
+      a.name.localeCompare(b.name)
+    )
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...full,
+        zones,
+        _count: { vendors: full.vendors?.length || 0 },
+        city_zones: undefined,
+        vendors: undefined,
+      },
+    }, { status: 201 })
   } catch (error) {
     console.error('POST /api/admin/cities error:', error)
     const message = error instanceof Error ? error.message : 'Failed to create city'

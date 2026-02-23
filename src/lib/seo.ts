@@ -1,7 +1,7 @@
-import { prisma } from './prisma'
+import { getSupabaseAdmin } from './supabase'
 
 const SITE_NAME = 'Gifts Cart India'
-const SITE_URL = process.env.NEXTAUTH_URL || 'https://giftscart.netlify.app'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://giftscart.netlify.app'
 const DEFAULT_DESCRIPTION =
   'Fresh cakes, flowers and gifts delivered same day across India'
 const DEFAULT_OG_IMAGE = `${SITE_URL}/og-default.jpg`
@@ -19,34 +19,35 @@ export function buildTitle(pageTitle: string) {
 }
 
 export async function getSeoSettings() {
-  return prisma.seoSettings.findFirst()
+  const supabase = getSupabaseAdmin()
+  const { data } = await supabase.from('seo_settings').select('*').limit(1).single()
+  return data
 }
 
 // -- Product ---------------------------------------------------------------
 
 export async function getProductMeta(slug: string): Promise<SeoMeta | null> {
-  const product = await prisma.product.findUnique({
-    where: { slug },
-    select: {
-      name: true, shortDesc: true, basePrice: true,
-      metaTitle: true, metaDescription: true, metaKeywords: true,
-      ogImage: true, canonicalUrl: true, images: true,
-      category: { select: { name: true } },
-    },
-  })
+  const supabase = getSupabaseAdmin()
+  const { data: product } = await supabase
+    .from('products')
+    .select('name, shortDesc, basePrice, metaTitle, metaDescription, metaKeywords, ogImage, canonicalUrl, images, categoryId, categories(name)')
+    .eq('slug', slug)
+    .single()
+
   if (!product) return null
 
+  const categoryName = (product.categories as unknown as { name: string } | null)?.name || 'Gifts'
   const price = Number(product.basePrice)
   return {
     title: product.metaTitle ||
       `${product.name} - Order Online | ${SITE_NAME}`,
     description: product.metaDescription || product.shortDesc ||
-      `Order ${product.name} online. Fresh ${product.category.name.toLowerCase()} ` +
+      `Order ${product.name} online. Fresh ${categoryName.toLowerCase()} ` +
       `delivered same day in Chandigarh and Tricity. Starting ₹${price}.`,
-    keywords: product.metaKeywords.length
+    keywords: product.metaKeywords?.length
       ? product.metaKeywords
-      : [product.name, product.category.name, 'order online', 'same day delivery', 'Chandigarh'],
-    ogImage: product.ogImage || product.images[0] || DEFAULT_OG_IMAGE,
+      : [product.name, categoryName, 'order online', 'same day delivery', 'Chandigarh'],
+    ogImage: product.ogImage || product.images?.[0] || DEFAULT_OG_IMAGE,
     canonical: product.canonicalUrl || `${SITE_URL}/product/${slug}`,
   }
 }
@@ -54,21 +55,20 @@ export async function getProductMeta(slug: string): Promise<SeoMeta | null> {
 // -- Category --------------------------------------------------------------
 
 export async function getCategoryMeta(slug: string): Promise<SeoMeta | null> {
-  const cat = await prisma.category.findUnique({
-    where: { slug },
-    select: {
-      name: true, description: true,
-      metaTitle: true, metaDescription: true,
-      metaKeywords: true, ogImage: true,
-    },
-  })
+  const supabase = getSupabaseAdmin()
+  const { data: cat } = await supabase
+    .from('categories')
+    .select('name, description, metaTitle, metaDescription, metaKeywords, ogImage')
+    .eq('slug', slug)
+    .single()
+
   if (!cat) return null
 
   return {
     title: cat.metaTitle || `${cat.name} - Order Online | ${SITE_NAME}`,
     description: cat.metaDescription || cat.description ||
       `Order fresh ${cat.name.toLowerCase()} online. Same day delivery in Chandigarh, Mohali and Panchkula.`,
-    keywords: cat.metaKeywords.length
+    keywords: cat.metaKeywords?.length
       ? cat.metaKeywords
       : [cat.name, 'order online', 'same day delivery', 'Chandigarh'],
     ogImage: cat.ogImage || DEFAULT_OG_IMAGE,

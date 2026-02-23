@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { getCategoryMeta } from '@/lib/seo'
 import { Breadcrumb } from '@/components/seo/breadcrumb'
 import { CategoryProductGrid } from '@/components/category/category-product-grid'
@@ -13,11 +13,12 @@ export const revalidate = 3600
 // Pre-build all active category pages at deploy time
 export async function generateStaticParams() {
   try {
-    const categories = await prisma.category.findMany({
-      where: { isActive: true },
-      select: { slug: true },
-    })
-    return categories.map((c) => ({ slug: c.slug }))
+    const supabase = getSupabaseAdmin()
+    const { data: categories } = await supabase
+      .from('categories')
+      .select('slug')
+      .eq('isActive', true)
+    return (categories || []).map((c) => ({ slug: c.slug }))
   } catch {
     return []
   }
@@ -42,22 +43,42 @@ export async function generateMetadata(
 }
 
 async function getCategoryBySlug(slug: string) {
-  // First try to find as a parent category
-  const parent = await prisma.category.findUnique({
-    where: { slug, isActive: true },
-    include: {
-      children: {
-        where: { isActive: true },
-        orderBy: { sortOrder: 'asc' },
-      },
-      parent: true,
-    },
-  })
+  const supabase = getSupabaseAdmin()
 
-  if (parent) return parent
+  // Fetch the category
+  const { data: category } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('slug', slug)
+    .eq('isActive', true)
+    .single()
 
-  // If not found, could be that slug doesn't exist or is inactive
-  return null
+  if (!category) return null
+
+  // Fetch children
+  const { data: children } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('parentId', category.id)
+    .eq('isActive', true)
+    .order('sortOrder', { ascending: true })
+
+  // Fetch parent if this is a subcategory
+  let parent = null
+  if (category.parentId) {
+    const { data: parentData } = await supabase
+      .from('categories')
+      .select('*')
+      .eq('id', category.parentId)
+      .single()
+    parent = parentData
+  }
+
+  return {
+    ...category,
+    children: children || [],
+    parent,
+  }
 }
 
 export default async function CategoryPage({
@@ -120,7 +141,7 @@ export default async function CategoryPage({
           categoryName={category.name}
           parentSlug={parentCategory?.slug}
           parentName={parentCategory?.name}
-          subcategories={(category.children || []).map((c) => ({
+          subcategories={(category.children || []).map((c: { id: string; name: string; slug: string }) => ({
             id: c.id,
             name: c.name,
             slug: c.slug,

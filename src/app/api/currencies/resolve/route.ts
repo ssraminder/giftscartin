@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 // Hardcoded INR fallback so the site never breaks even if the DB is unreachable
 const INR_FALLBACK = {
@@ -33,41 +33,46 @@ export async function GET(request: NextRequest) {
     let matched: typeof INR_FALLBACK | null = null
 
     try {
-      // Find a currency config that includes this country
-      const allCurrencies = await prisma.currencyConfig.findMany({
-        where: { isActive: true },
-      })
+      const supabase = getSupabaseAdmin()
 
-      const countryMatch = allCurrencies.find((c) =>
-        c.countries.includes(country)
+      // Find a currency config that includes this country
+      const { data: allCurrencies } = await supabase
+        .from('currency_configs')
+        .select('*')
+        .eq('isActive', true)
+
+      const currencies = allCurrencies || []
+
+      const countryMatch = currencies.find((c: Record<string, unknown>) =>
+        (c.countries as string[]).includes(country)
       )
 
       if (countryMatch) {
         matched = {
-          code: countryMatch.code,
-          name: countryMatch.name,
-          symbol: countryMatch.symbol,
-          symbolPosition: countryMatch.symbolPosition,
+          code: countryMatch.code as string,
+          name: countryMatch.name as string,
+          symbol: countryMatch.symbol as string,
+          symbolPosition: countryMatch.symbolPosition as string,
           exchangeRate: Number(countryMatch.exchangeRate),
           markup: Number(countryMatch.markup),
-          rounding: countryMatch.rounding,
+          rounding: countryMatch.rounding as string,
           roundTo: Number(countryMatch.roundTo),
-          locale: countryMatch.locale,
+          locale: countryMatch.locale as string,
         }
       } else {
         // Use the default currency
-        const defaultCurrency = allCurrencies.find((c) => c.isDefault) || allCurrencies[0]
+        const defaultCurrency = currencies.find((c: Record<string, unknown>) => c.isDefault) || currencies[0]
         if (defaultCurrency) {
           matched = {
-            code: defaultCurrency.code,
-            name: defaultCurrency.name,
-            symbol: defaultCurrency.symbol,
-            symbolPosition: defaultCurrency.symbolPosition,
+            code: defaultCurrency.code as string,
+            name: defaultCurrency.name as string,
+            symbol: defaultCurrency.symbol as string,
+            symbolPosition: defaultCurrency.symbolPosition as string,
             exchangeRate: Number(defaultCurrency.exchangeRate),
             markup: Number(defaultCurrency.markup),
-            rounding: defaultCurrency.rounding,
+            rounding: defaultCurrency.rounding as string,
             roundTo: Number(defaultCurrency.roundTo),
-            locale: defaultCurrency.locale,
+            locale: defaultCurrency.locale as string,
           }
         }
       }

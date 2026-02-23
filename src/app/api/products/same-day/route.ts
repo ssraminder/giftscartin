@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const supabase = getSupabaseAdmin()
+
     // Current IST time
     const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
     const currentHourIST = nowIST.getUTCHours()
@@ -25,15 +27,16 @@ export async function GET(req: NextRequest) {
     const todayDate = new Date(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate())
 
     // Check for full-day delivery holiday today
-    const holidays = await prisma.deliveryHoliday.findMany({
-      where: {
-        date: todayDate,
-        OR: [{ cityId }, { cityId: null }],
-        mode: 'FULL_BLOCK',
-      },
-    })
+    const { data: holidays } = await supabase
+      .from('delivery_holidays')
+      .select('*')
+      .eq('date', todayDate.toISOString())
+      .eq('mode', 'FULL_BLOCK')
+      .or(`cityId.eq.${cityId},cityId.is.null`)
+
     // City-specific holiday takes priority
-    const fullBlock = holidays.find(h => h.cityId === cityId) || holidays.find(h => !h.cityId)
+    const fullBlock = (holidays || []).find((h: Record<string, unknown>) => h.cityId === cityId) ||
+                      (holidays || []).find((h: Record<string, unknown>) => !h.cityId)
 
     if (fullBlock) {
       return NextResponse.json({
@@ -45,50 +48,57 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Find products where at least one vendor_product has isSameDayEligible = true
-    const whereClause: Record<string, unknown> = {
-      isActive: true,
-      vendorProducts: {
-        some: {
-          isSameDayEligible: true,
-          isAvailable: true,
-          vendor: {
-            cityId,
-            status: 'APPROVED',
-          },
-        },
-      },
-    }
+    // Find vendor_products that are same-day eligible in this city
+    const { data: vendorProducts } = await supabase
+      .from('vendor_products')
+      .select('*, products(*, categories(id, name, slug)), vendors(*, vendor_working_hours(*))')
+      .eq('isSameDayEligible', true)
+      .eq('isAvailable', true)
 
-    if (categorySlug) {
-      whereClause.category = { slug: categorySlug }
-    }
-
-    const products = await prisma.product.findMany({
-      where: whereClause,
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-        vendorProducts: {
-          where: {
-            isSameDayEligible: true,
-            isAvailable: true,
-            vendor: {
-              cityId,
-              status: 'APPROVED',
-            },
-          },
-          include: {
-            vendor: {
-              include: {
-                workingHours: {
-                  where: { dayOfWeek: todayDayOfWeek },
-                },
-              },
-            },
-          },
-        },
-      },
+    // Filter by vendor city, status, and product active status
+    const filteredVPs = (vendorProducts || []).filter((vp: Record<string, unknown>) => {
+      const vendor = vp.vendors as Record<string, unknown> | null
+      const product = vp.products as Record<string, unknown> | null
+      if (!vendor || !product) return false
+      if (vendor.cityId !== cityId) return false
+      if (vendor.status !== 'APPROVED') return false
+      if (!product.isActive) return false
+      if (categorySlug) {
+        const cat = product.categories as Record<string, unknown> | null
+        if (cat?.slug !== categorySlug) return false
+      }
+      return true
     })
+
+    // Group by product
+    const productMap = new Map<string, {
+      product: Record<string, unknown>
+      vendorProducts: Array<{
+        preparationTime: number
+        vendor: Record<string, unknown>
+      }>
+    }>()
+
+    for (const vp of filteredVPs) {
+      const product = vp.products as Record<string, unknown>
+      const vendor = vp.vendors as Record<string, unknown>
+      const productId = product.id as string
+
+      if (!productMap.has(productId)) {
+        productMap.set(productId, {
+          product,
+          vendorProducts: [],
+        })
+      }
+
+      productMap.get(productId)!.vendorProducts.push({
+        preparationTime: vp.preparationTime as number,
+        vendor: {
+          ...vendor,
+          workingHours: (vendor.vendor_working_hours as Record<string, unknown>[]) || [],
+        },
+      })
+    }
 
     // Filter products with at least one qualifying vendor
     const qualifyingProducts: Array<{
@@ -105,22 +115,22 @@ export async function GET(req: NextRequest) {
       cutoffTime: string
     }> = []
 
-    for (const product of products) {
+    for (const [, entry] of Array.from(productMap)) {
+      const { product, vendorProducts: vps } = entry
       let latestCutoff = 0 // in minutes from midnight
 
-      for (const vp of product.vendorProducts) {
-        const vendor = vp.vendor
-        const wh = vendor.workingHours[0]
+      for (const vp of vps) {
+        const wh = (vp.vendor.workingHours as Record<string, unknown>[])
+          .find((w: Record<string, unknown>) => w.dayOfWeek === todayDayOfWeek)
 
-        if (!wh || wh.isClosed) continue
+        if (!wh || (wh as Record<string, unknown>).isClosed) continue
 
-        const [closeH, closeM] = wh.closeTime.split(':').map(Number)
+        const [closeH, closeM] = ((wh as Record<string, unknown>).closeTime as string).split(':').map(Number)
         const closeMinutes = closeH * 60 + closeM
         const prepMinutes = vp.preparationTime
 
         // currentTimeIST + preparationTime < vendorCloseTime
         if ((currentMinutesIST + prepMinutes) < closeMinutes) {
-          // This vendor can still accept orders
           const vendorCutoff = closeMinutes - prepMinutes
           if (vendorCutoff > latestCutoff) {
             latestCutoff = vendorCutoff
@@ -139,16 +149,16 @@ export async function GET(req: NextRequest) {
           : `${displayHour} ${period}`
 
         qualifyingProducts.push({
-          id: product.id,
-          name: product.name,
-          slug: product.slug,
+          id: product.id as string,
+          name: product.name as string,
+          slug: product.slug as string,
           basePrice: Number(product.basePrice),
-          images: product.images,
+          images: product.images as string[],
           avgRating: Number(product.avgRating),
-          totalReviews: product.totalReviews,
-          weight: product.weight,
-          tags: product.tags,
-          category: product.category,
+          totalReviews: product.totalReviews as number,
+          weight: product.weight as string | null,
+          tags: product.tags as string[],
+          category: product.categories as { id: string; name: string; slug: string } | null,
           cutoffTime,
         })
       }
@@ -156,7 +166,6 @@ export async function GET(req: NextRequest) {
 
     // Sort by cutoff time ascending (most urgent first)
     qualifyingProducts.sort((a, b) => {
-      // Parse cutoff times back to minutes for sorting
       const parseTime = (t: string) => {
         const match = t.match(/^(\d+):?(\d*)?\s*(AM|PM)$/)
         if (!match) return 0

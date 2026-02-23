@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
+import { getSessionFromRequest } from '@/lib/auth'
 import { getSupabase } from '@/lib/supabase'
 import { uploadSchema } from '@/lib/validations'
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    const session = await getSessionFromRequest(request)
+    if (!session?.id) {
       return NextResponse.json(
         { success: false, error: 'Authentication required' },
         { status: 401 }
@@ -29,7 +28,7 @@ export async function POST(request: NextRequest) {
     // Generate a unique file path
     const timestamp = Date.now()
     const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const filePath = `${folder}/${session.user.id}/${timestamp}-${sanitizedName}`
+    const filePath = `${folder}/${session.id}/${timestamp}-${sanitizedName}`
 
     // Create a signed upload URL using Supabase Storage
     const { data, error } = await getSupabase().storage

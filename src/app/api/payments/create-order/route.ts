@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSessionFromRequest } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { createRazorpayOrder } from '@/lib/razorpay'
 import { createStripeCheckoutSession } from '@/lib/stripe'
 import { createPayPalOrder } from '@/lib/paypal'
@@ -19,7 +18,7 @@ export async function POST(request: NextRequest) {
 
     // Parallelize session auth + body parsing for faster startup
     const [session, body] = await Promise.all([
-      getServerSession(authOptions),
+      getSessionFromRequest(request),
       request.json(),
     ])
     console.log(`[payments] auth+parse: ${Date.now() - t0}ms`)
@@ -37,13 +36,15 @@ export async function POST(request: NextRequest) {
 
     // Fetch the order and verify ownership
     const t1 = Date.now()
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: { payment: true },
-    })
+    const supabase = getSupabaseAdmin()
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .select('*, payments(*)')
+      .eq('id', orderId)
+      .single()
     console.log(`[payments] order_fetch: ${Date.now() - t1}ms`)
 
-    if (!order) {
+    if (orderError || !order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
         { status: 404 }
@@ -52,8 +53,8 @@ export async function POST(request: NextRequest) {
 
     // Verify ownership: logged-in user must own the order, guest orders are allowed
     // (guest orders were just created moments ago in the same checkout flow)
-    if (session?.user?.id) {
-      if (order.userId && order.userId !== session.user.id) {
+    if (session?.id) {
+      if (order.userId && order.userId !== session.id) {
         return NextResponse.json(
           { success: false, error: 'Not authorized' },
           { status: 403 }
@@ -78,44 +79,39 @@ export async function POST(request: NextRequest) {
     const region = getPaymentRegionFromRequest(request)
     const gateway = requestedGateway || (region === 'india' ? 'razorpay' : 'stripe')
     const amount = Number(order.total)
-    const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://giftscart.netlify.app'
 
     // ─── COD ───
     if (gateway === 'cod') {
       const tCod = Date.now()
-      await prisma.payment.upsert({
-        where: { orderId: order.id },
-        update: {
-          amount: order.total,
-          currency: 'INR',
-          gateway: 'COD',
-          status: 'PENDING',
-        },
-        create: {
+      await supabase
+        .from('payments')
+        .upsert({
           orderId: order.id,
           amount: order.total,
           currency: 'INR',
           gateway: 'COD',
           status: 'PENDING',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        }, { onConflict: 'orderId' })
 
       // Confirm order directly for COD
-      await prisma.order.update({
-        where: { id: orderId },
-        data: {
+      await supabase
+        .from('orders')
+        .update({
           paymentMethod: 'cod',
           status: 'CONFIRMED',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('id', orderId)
 
-      await prisma.orderStatusHistory.create({
-        data: {
+      await supabase
+        .from('order_status_history')
+        .insert({
           orderId,
           status: 'CONFIRMED',
           note: 'Cash on delivery order confirmed',
-        },
-      })
+        })
 
       console.log(`[payments] cod_total: ${Date.now() - tCod}ms`)
 
@@ -171,28 +167,25 @@ export async function POST(request: NextRequest) {
 
       // Fire DB upsert without awaiting — we already have razorpayOrder.id for the response
       const t3 = Date.now()
-      prisma.payment.upsert({
-        where: { orderId: order.id },
-        update: {
-          amount: order.total,
-          currency: 'INR',
-          gateway: 'RAZORPAY',
-          razorpayOrderId: razorpayOrder.id,
-          status: 'PENDING',
-        },
-        create: {
-          orderId: order.id,
-          amount: order.total,
-          currency: 'INR',
-          gateway: 'RAZORPAY',
-          razorpayOrderId: razorpayOrder.id,
-          status: 'PENDING',
-        },
-      }).then(() => {
-        console.log(`[payments] payment_upsert: ${Date.now() - t3}ms`)
-      }).catch((err) => {
-        console.error('[payments] payment_upsert failed:', err)
-      })
+      Promise.resolve(
+        supabase
+          .from('payments')
+          .upsert({
+            orderId: order.id,
+            amount: order.total,
+            currency: 'INR',
+            gateway: 'RAZORPAY',
+            razorpayOrderId: razorpayOrder.id,
+            status: 'PENDING',
+            updatedAt: new Date().toISOString(),
+          }, { onConflict: 'orderId' })
+      )
+        .then(() => {
+          console.log(`[payments] payment_upsert: ${Date.now() - t3}ms`)
+        })
+        .catch((err: unknown) => {
+          console.error('[payments] payment_upsert failed:', err)
+        })
 
       console.log(`[payments] total: ${Date.now() - t0}ms`)
 
@@ -217,29 +210,22 @@ export async function POST(request: NextRequest) {
         orderId: order.id,
         orderNumber: order.orderNumber,
         amountInr: amount,
-        customerEmail: (session?.user as { email?: string } | undefined)?.email || undefined,
+        customerEmail: session?.email || undefined,
         successUrl: `${baseUrl}/orders/${order.id}?payment=success&gateway=stripe`,
         cancelUrl: `${baseUrl}/orders/${order.id}?payment=cancelled`,
       })
 
-      await prisma.payment.upsert({
-        where: { orderId: order.id },
-        update: {
-          amount: usdAmount,
-          currency: 'USD',
-          gateway: 'STRIPE',
-          stripeSessionId: stripeSession.sessionId,
-          status: 'PENDING',
-        },
-        create: {
+      await supabase
+        .from('payments')
+        .upsert({
           orderId: order.id,
           amount: usdAmount,
           currency: 'USD',
           gateway: 'STRIPE',
           stripeSessionId: stripeSession.sessionId,
           status: 'PENDING',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        }, { onConflict: 'orderId' })
 
       console.log(`[payments] stripe_total: ${Date.now() - tStripe}ms`)
 
@@ -266,24 +252,17 @@ export async function POST(request: NextRequest) {
         cancelUrl: `${baseUrl}/orders/${order.id}?payment=cancelled`,
       })
 
-      await prisma.payment.upsert({
-        where: { orderId: order.id },
-        update: {
-          amount: usdAmount,
-          currency: 'USD',
-          gateway: 'PAYPAL',
-          paypalOrderId: paypalOrder.paypalOrderId,
-          status: 'PENDING',
-        },
-        create: {
+      await supabase
+        .from('payments')
+        .upsert({
           orderId: order.id,
           amount: usdAmount,
           currency: 'USD',
           gateway: 'PAYPAL',
           paypalOrderId: paypalOrder.paypalOrderId,
           status: 'PENDING',
-        },
-      })
+          updatedAt: new Date().toISOString(),
+        }, { onConflict: 'orderId' })
 
       console.log(`[payments] paypal_total: ${Date.now() - tPaypal}ms`)
 

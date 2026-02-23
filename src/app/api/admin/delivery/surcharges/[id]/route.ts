@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 
-async function requireAdmin() {
-  const session = await getServerSession(authOptions)
-  const user = session?.user as { id?: string; role?: string } | undefined
-  if (!user?.id || !user?.role || !isAdminRole(user.role)) return null
+async function requireAdmin(request: NextRequest) {
+  const user = await getSessionFromRequest(request)
+  if (!user || !isAdminRole(user.role)) return null
   return user
 }
 
@@ -16,7 +14,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin()
+    const admin = await requireAdmin(request)
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
@@ -27,16 +25,23 @@ export async function PATCH(
 
     const data: Record<string, unknown> = {}
     if (name !== undefined) data.name = name
-    if (startDate !== undefined) data.startDate = new Date(startDate)
-    if (endDate !== undefined) data.endDate = new Date(endDate)
+    if (startDate !== undefined) data.startDate = new Date(startDate).toISOString()
+    if (endDate !== undefined) data.endDate = new Date(endDate).toISOString()
     if (amount !== undefined) data.amount = amount
     if (appliesTo !== undefined) data.appliesTo = appliesTo
     if (isActive !== undefined) data.isActive = isActive
+    data.updatedAt = new Date().toISOString()
 
-    const surcharge = await prisma.deliverySurcharge.update({
-      where: { id },
-      data,
-    })
+    const supabase = getSupabaseAdmin()
+
+    const { data: surcharge, error } = await supabase
+      .from('delivery_surcharges')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json({ success: true, data: surcharge })
   } catch (error) {
@@ -46,20 +51,24 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await requireAdmin()
+    const admin = await requireAdmin(request)
     if (!admin) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
     const { id } = await params
+    const supabase = getSupabaseAdmin()
 
-    await prisma.deliverySurcharge.delete({
-      where: { id },
-    })
+    const { error } = await supabase
+      .from('delivery_surcharges')
+      .delete()
+      .eq('id', id)
+
+    if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error) {

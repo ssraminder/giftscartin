@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/hooks/use-auth"
 import {
   ArrowLeft,
   CheckCircle2,
@@ -85,13 +85,13 @@ export default function OrderDetailPage() {
   const { formatPrice } = useCurrency()
   const isNewOrder = searchParams.get("new") === "true"
   const orderId = params.id as string
-  const { status: authStatus } = useSession()
+  const { loading: authLoading } = useAuth()
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (authStatus === "loading") return
+    if (authLoading) return
 
     async function fetchOrder() {
       try {
@@ -110,9 +110,9 @@ export default function OrderDetailPage() {
     }
 
     fetchOrder()
-  }, [authStatus, orderId])
+  }, [authLoading, orderId])
 
-  if (authStatus === "loading" || loading) {
+  if (authLoading || loading) {
     return <OrderDetailSkeleton />
   }
 

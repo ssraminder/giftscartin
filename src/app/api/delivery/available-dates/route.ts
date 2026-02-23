@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { getTodayIST } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
@@ -18,69 +18,54 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Compute date range up front (pure JS, needed by Q3)
+    const supabase = getSupabaseAdmin()
+
+    // Compute date range up front
     const today = getTodayIST()
     const endDate = new Date(today)
     endDate.setDate(endDate.getDate() + days)
 
-    // Q1: Vendors that carry this product in the city.
-    //     select instead of include → Prisma fetches only the columns we read.
-    const vendorProducts = await prisma.vendorProduct.findMany({
-      where: {
-        productId,
-        isAvailable: true,
-        vendor: {
-          cityId,
-          status: 'APPROVED',
-          OR: [
-            { vacationEnd: null },
-            { vacationEnd: { lt: new Date() } },
-          ],
-        },
-      },
-      select: {
-        vendor: {
-          select: {
-            workingHours: {
-              select: {
-                dayOfWeek: true,
-                isClosed: true,
-              },
-            },
-          },
-        },
-      },
+    // Q1: Vendors that carry this product in the city
+    const { data: vendorProductsFull } = await supabase
+      .from('vendor_products')
+      .select('vendors(cityId, status, vacationEnd, vendor_working_hours(dayOfWeek, isClosed))')
+      .eq('productId', productId)
+      .eq('isAvailable', true)
+
+    // Filter: vendor must be in cityId, approved, and not on vacation
+    const qualifiedVPs = (vendorProductsFull || []).filter((vp: Record<string, unknown>) => {
+      const vendor = vp.vendors as Record<string, unknown> | null
+      if (!vendor) return false
+      if (vendor.cityId !== cityId) return false
+      if (vendor.status !== 'APPROVED') return false
+      if (vendor.vacationEnd && new Date(vendor.vacationEnd as string) >= new Date()) return false
+      return true
     })
 
-    if (vendorProducts.length === 0) {
+    if (qualifiedVPs.length === 0) {
       return NextResponse.json({
         success: true,
         data: { availableDates: [] },
       })
     }
 
-    // Q2 + Q3: City slot configs and delivery holidays — independent, run in parallel.
-    const [cityConfigs, holidays] = await Promise.all([
-      prisma.cityDeliveryConfig.findMany({
-        where: { cityId, isAvailable: true },
-        select: {
-          slot: {
-            select: { slotGroup: true },
-          },
-        },
-      }),
-      prisma.deliveryHoliday.findMany({
-        where: {
-          date: { gte: today, lte: endDate },
-          OR: [{ cityId }, { cityId: null }],
-        },
-        select: {
-          date: true,
-          mode: true,
-          cityId: true,
-        },
-      }),
+    // Q2 + Q3: City slot configs and delivery holidays -- independent, run in parallel
+    const [cityConfigsResult, holidaysResult] = await Promise.all([
+      supabase
+        .from('city_delivery_configs')
+        .select('delivery_slots(slotGroup)')
+        .eq('cityId', cityId)
+        .eq('isAvailable', true),
+      supabase
+        .from('delivery_holidays')
+        .select('date, mode, cityId')
+        .gte('date', today.toISOString())
+        .lte('date', endDate.toISOString())
+        .or(`cityId.eq.${cityId},cityId.is.null`),
     ])
+
+    const cityConfigs = cityConfigsResult.data || []
+    const holidays = holidaysResult.data || []
 
     if (cityConfigs.length === 0) {
       return NextResponse.json({
@@ -92,7 +77,7 @@ export async function GET(req: NextRequest) {
     // Build a map of date -> holiday (city-specific takes priority)
     const holidayMap = new Map<string, { mode: string; cityId: string | null }>()
     for (const h of holidays) {
-      const dateKey = h.date.toISOString().split('T')[0]
+      const dateKey = new Date(h.date).toISOString().split('T')[0]
       const existing = holidayMap.get(dateKey)
       if (!existing || (h.cityId && !existing.cityId)) {
         holidayMap.set(dateKey, { mode: h.mode as string, cityId: h.cityId })
@@ -118,16 +103,20 @@ export async function GET(req: NextRequest) {
 
       // STANDARD_ONLY: only if city has standard slots
       if (holiday?.mode === 'STANDARD_ONLY') {
-        const hasStandard = cityConfigs.some(c => c.slot.slotGroup === 'standard')
+        const hasStandard = cityConfigs.some((c: Record<string, unknown>) => {
+          const slot = c.delivery_slots as Record<string, unknown> | null
+          return slot?.slotGroup === 'standard'
+        })
         if (!hasStandard) continue
       }
 
-      // Check vendor working hours for this day of week.
-      // If vendor has no working hours records, assume they're open.
+      // Check vendor working hours for this day of week
       const dayOfWeek = date.getDay() // 0=Sunday
-      const anyVendorOpen = vendorProducts.some(vp => {
-        if (vp.vendor.workingHours.length === 0) return true // No schedule configured = open
-        const hours = vp.vendor.workingHours.find(wh => wh.dayOfWeek === dayOfWeek)
+      const anyVendorOpen = qualifiedVPs.some((vp: Record<string, unknown>) => {
+        const vendor = vp.vendors as Record<string, unknown>
+        const workingHours = (vendor.vendor_working_hours as Record<string, unknown>[]) || []
+        if (workingHours.length === 0) return true // No schedule configured = open
+        const hours = workingHours.find((wh: Record<string, unknown>) => wh.dayOfWeek === dayOfWeek)
         return hours && !hours.isClosed
       })
 

@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth-options'
-import { prisma } from '@/lib/prisma'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { updateOrderStatusSchema } from '@/lib/validations'
-
-async function getAdminUser() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) return null
-  const user = session.user as { id: string; role: string }
-  if (!isAdminRole(user.role)) return null
-  return user
-}
 
 // PATCH: Update order status (admin only)
 export async function PATCH(
@@ -19,8 +10,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const admin = await getAdminUser()
-    if (!admin) {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
       return NextResponse.json(
         { success: false, error: 'Admin access required' },
         { status: 403 }
@@ -39,9 +30,10 @@ export async function PATCH(
     }
 
     const { status, note } = parsed.data
+    const supabase = getSupabaseAdmin()
 
     // Verify order exists
-    const order = await prisma.order.findUnique({ where: { id } })
+    const { data: order } = await supabase.from('orders').select('*').eq('id', id).maybeSingle()
     if (!order) {
       return NextResponse.json(
         { success: false, error: 'Order not found' },
@@ -57,22 +49,26 @@ export async function PATCH(
       )
     }
 
-    // Sequential queries (no interactive transaction — pgbouncer compatible)
-    const updated = await prisma.order.update({
-      where: { id },
-      data: {
-        status,
-        ...(status === 'CANCELLED' ? { paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : 'FAILED' } : {}),
-      },
-    })
+    // Update order
+    const updateData: Record<string, unknown> = { status, updatedAt: new Date().toISOString() }
+    if (status === 'CANCELLED') {
+      updateData.paymentStatus = order.paymentStatus === 'PAID' ? 'REFUNDED' : 'FAILED'
+    }
 
-    await prisma.orderStatusHistory.create({
-      data: {
-        orderId: id,
-        status,
-        note: note || null,
-        changedBy: admin.id,
-      },
+    const { data: updated, error } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    await supabase.from('order_status_history').insert({
+      orderId: id,
+      status,
+      note: note || null,
+      changedBy: user.id,
     })
 
     return NextResponse.json({ success: true, data: updated })

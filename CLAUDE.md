@@ -2,7 +2,7 @@
 **Business Entity:** Cital Enterprises
 **Live Staging:** https://giftscart.netlify.app
 **Supabase:** https://saeditdtacprxcnlgips.supabase.co
-**Last Updated:** 2026-02-19
+**Last Updated:** 2026-02-23
 
 ---
 
@@ -20,8 +20,8 @@ or "[Partner Name] managed by Cital Enterprises" for referral partners.
 |-------|-----------|-------|
 | Framework | Next.js 14 (App Router) + TypeScript | SSR, SEO-friendly |
 | Styling | Tailwind CSS + shadcn/ui | Mobile-first |
-| Database | Supabase PostgreSQL via Prisma ORM | Prisma for ALL queries |
-| Auth | NextAuth.js v4 + Email OTP | Via Brevo — NOT phone/MSG91 |
+| Database | Supabase PostgreSQL via Supabase JS client | Service role key for server-side (bypasses RLS) |
+| Auth | Custom JWT (jose) + Email OTP | httpOnly cookie, edge-compatible — NOT NextAuth |
 | Email/OTP | Brevo API | Transactional email + OTP delivery |
 | Email (legacy) | SendGrid | src/lib/email.ts — not primary |
 | Payments | Razorpay | INR only, always |
@@ -37,9 +37,9 @@ or "[Partner Name] managed by Cital Enterprises" for referral partners.
 ## Architecture Decisions
 
 ### Core Rules — Never Violate
-1. NEVER use Supabase Auth — all auth goes through NextAuth.js + Brevo email OTP
-2. NEVER use Supabase client for data queries — always use Prisma
-3. Supabase client is ONLY used for: Storage uploads, Realtime subscriptions
+1. NEVER use Supabase Auth — all auth goes through custom JWT + Brevo email OTP
+2. All DB queries use Supabase JS client (getSupabaseAdmin from src/lib/supabase.ts)
+3. Supabase service role key is used server-side (bypasses RLS) — NEVER expose to client
 4. All API inputs validated with Zod schemas (src/lib/validations.ts)
 5. All API routes return: `{ success: boolean, data?: any, error?: string }`
 6. Prices stored as Decimal in DB, converted to number only for display
@@ -48,16 +48,20 @@ or "[Partner Name] managed by Cital Enterprises" for referral partners.
 9. Guest checkout is supported — do not add auth guards to order creation flow
 10. Mobile-first design — design for mobile, enhance for desktop
 11. Indian locale — prices in ₹, phone numbers 10 digits, pincodes 6 digits
+12. NEVER use Prisma or NextAuth — they have been removed from the project
 
 ### Database Connection
-- DATABASE_URL: Supabase Shared Pooler, port 6543, must end with ?pgbouncer=true
-- DIRECT_URL: Supabase direct connection, port 5432, for migrations only
-- Netlify requires Shared Pooler (IPv4) — never use IPv6 connection strings
+- Supabase JS client connects via NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+- No direct PostgreSQL connection needed for queries
+- For schema migrations: write explicit SQL in Supabase SQL Editor (no Prisma)
+- Column names in DB are camelCase (matching old Prisma field names) unless @map was used
 
 ### Auth Flow
 Email → POST /api/auth/otp/send (creates OTP record, sends via Brevo)
-→ POST /api/auth/otp/verify (verifies, creates/finds user)
-→ NextAuth session via JWT strategy
+→ POST /api/auth/otp/verify (verifies, creates/finds user, signs JWT)
+→ JWT set as httpOnly cookie (giftscart_session), 30-day expiry
+→ GET /api/auth/me returns current user from JWT
+→ POST /api/auth/logout clears session cookie
 
 ### Storage Buckets
 - `products` — Public read. Product images, AI-generated images, category images.
@@ -80,17 +84,16 @@ Email → POST /api/auth/otp/send (creates OTP record, sends via Brevo)
 ## Environment Variables
 
 ```env
-# Database
-DATABASE_URL=              # Pooler (port 6543, ?pgbouncer=true)
-DIRECT_URL=                # Direct (port 5432, migrations only)
-
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=   # Supabase dashboard → Settings → API → service_role
 
-# Auth
-NEXTAUTH_SECRET=
-NEXTAUTH_URL=https://giftscart.netlify.app
+# Custom JWT Auth
+JWT_SECRET=                  # generate: openssl rand -hex 32
+
+# Site URL
+NEXT_PUBLIC_SITE_URL=https://giftscart.netlify.app
 
 # Email/OTP
 BREVO_API_KEY=
@@ -104,9 +107,6 @@ RAZORPAY_KEY_SECRET=
 # AI
 ANTHROPIC_API_KEY=         # Claude API — product content generation
 OPENAI_API_KEY=            # GPT-image-1 — product image generation
-
-# Supabase (server-side)
-SUPABASE_SERVICE_ROLE_KEY= # Server-side storage uploads (optional — falls back to anon key)
 ```
 
 -----
@@ -310,6 +310,19 @@ category management) are all complete as of 2026-02-19.
 
 Next focus: complete Phase 3 items (checkout flow, Razorpay integration).
 
+### Edge Migration (Complete as of Feb 23, 2026)
+
+- Removed Prisma ORM — all DB queries now use Supabase JS client (getSupabaseAdmin)
+- Removed NextAuth.js — replaced with custom JWT auth (jose library)
+- Auth: JWT in httpOnly cookie (giftscart_session), 30-day expiry, HS256
+- New auth routes: /api/auth/me (GET session), /api/auth/logout (POST clear)
+- New client hook: useAuth() replaces useSession() from next-auth
+- Middleware: custom JWT verification, role-based access control
+- Environment: removed DATABASE_URL, DIRECT_URL, NEXTAUTH_SECRET, NEXTAUTH_URL
+- Environment: added JWT_SECRET, NEXT_PUBLIC_SITE_URL, SUPABASE_SERVICE_ROLE_KEY
+- All 90+ API routes converted from Prisma to Supabase JS client
+- Edge runtime added to auth routes
+
 -----
 
 ## Key File Reference
@@ -320,9 +333,10 @@ Next focus: complete Phase 3 items (checkout flow, Razorpay integration).
 |PROGRESS.md                             |Current build status, file audit, what's next      |
 |SQL_REFERENCE.md                        |All table DDL, admin queries, schema change process|
 |prisma/schema.prisma                    |Prisma schema (source of truth for types)          |
-|src/lib/prisma.ts                       |Prisma client singleton                            |
+|src/lib/supabase.ts                     |Supabase client (getSupabaseAdmin for server-side) |
 |src/lib/brevo.ts                        |Email OTP via Brevo                                |
-|src/lib/auth-options.ts                 |NextAuth config (email OTP credentials)            |
+|src/lib/auth.ts                         |Custom JWT auth (signToken, verifyToken, getSession)|
+|src/hooks/use-auth.ts                   |Client-side auth hook (useAuth)                    |
 |src/lib/razorpay.ts                     |Razorpay helpers                                   |
 |src/lib/utils.ts                        |cn(), formatPrice(), generateOrderNumber()         |
 |src/lib/validations.ts                  |All Zod schemas                                    |
@@ -353,12 +367,11 @@ Next focus: complete Phase 3 items (checkout flow, Razorpay integration).
 
 ## Schema Change Process
 
-1. Edit prisma/schema.prisma
-1. Run: npx prisma generate
 1. Write ALTER TABLE / CREATE TABLE SQL
-1. Run SQL in Supabase SQL Editor
-1. Verify with test query
-1. Update SQL_REFERENCE.md (section 2A and 2B)
-1. Commit all changes
+2. Run SQL in Supabase SQL Editor
+3. Verify with test query
+4. Update SQL_REFERENCE.md (section 2A and 2B)
+5. Commit all changes
 
-Never use npx prisma db push in production — write explicit SQL instead.
+No Prisma — write explicit SQL for all schema changes.
+Column naming convention: camelCase (matching existing schema).
