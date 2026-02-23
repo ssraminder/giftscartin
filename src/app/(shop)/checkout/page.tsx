@@ -225,6 +225,7 @@ export default function CheckoutPage() {
   const [razorpayLoaded, setRazorpayLoaded] = useState(false)
   const [couponError, setCouponError] = useState("")
   const [placingOrder, setPlacingOrder] = useState(false)
+  const [paymentStep, setPaymentStep] = useState<string | null>(null)
   const [orderError, setOrderError] = useState("")
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
@@ -744,6 +745,7 @@ export default function CheckoutPage() {
 
     setPlacingOrder(true)
     setOrderError("")
+    setPaymentStep("Creating your order...")
 
     try {
       const t0 = Date.now()
@@ -796,12 +798,14 @@ export default function CheckoutPage() {
       if (!orderData.success || !orderData.data?.id) {
         setOrderError(orderData.error || "Failed to place order. Please try again.")
         setPlacingOrder(false)
+        setPaymentStep(null)
         return
       }
 
       const orderId = orderData.data.id
 
       // ─── Step 2: Initiate payment ───
+      setPaymentStep("Initializing payment...")
       const t1 = Date.now()
       const gateway = formData.paymentMethod === "cod" ? "cod" : "razorpay"
 
@@ -818,8 +822,11 @@ export default function CheckoutPage() {
       if (!paymentData.success) {
         setOrderError(paymentData.error || "Failed to initiate payment. Please try again.")
         setPlacingOrder(false)
+        setPaymentStep(null)
         return
       }
+
+      setPaymentStep(null)
 
       // ─── Step 3: Handle gateway response ───
       if (gateway === "cod") {
@@ -837,6 +844,7 @@ export default function CheckoutPage() {
     } catch {
       setOrderError("Something went wrong. Please try again.")
       setPlacingOrder(false)
+      setPaymentStep(null)
     }
   }, [formData, items, clearReferral, clearCart, router, session?.user, razorpayLoaded, openRazorpayCheckout])
 
@@ -1928,6 +1936,14 @@ export default function CheckoutPage() {
                     "Place Order \u2192"
                   )}
                 </button>
+
+                {/* Payment progress step message */}
+                {paymentStep && (
+                  <div className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-pink-500" />
+                    <span>{paymentStep}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

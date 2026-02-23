@@ -18,12 +18,25 @@ export async function createRazorpayOrder(
   currency: string = 'INR',
   receipt: string
 ) {
-  const order = await getRazorpay().orders.create({
-    amount: Math.round(amount * 100), // Razorpay expects amount in paise
-    currency,
-    receipt,
-  })
-  return order
+  const amountInPaise = Math.round(Number(amount) * 100)
+  if (!Number.isInteger(amountInPaise) || amountInPaise <= 0) {
+    throw new Error(`Invalid Razorpay amount: ${amount} (paise: ${amountInPaise})`)
+  }
+
+  try {
+    const order = await getRazorpay().orders.create({
+      amount: amountInPaise,
+      currency: currency.toUpperCase(),
+      receipt: receipt.substring(0, 40), // Razorpay max receipt length is 40
+      notes: {
+        source: 'giftscart',
+      },
+    })
+    return order
+  } catch (error: unknown) {
+    console.error('[razorpay] order create failed:', JSON.stringify(error))
+    throw error
+  }
 }
 
 export function verifyRazorpaySignature(
