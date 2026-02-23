@@ -18,7 +18,7 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json({ success: true, data: cities })
+    return NextResponse.json({ success: true, data: { cities } })
   } catch (error) {
     console.error('GET /api/cities error:', error)
     return NextResponse.json(

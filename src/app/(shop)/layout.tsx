@@ -1,7 +1,6 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { BottomNav } from "@/components/layout/bottom-nav"
-import { CityGate } from "@/components/location/city-gate"
 import { AnnouncementBar } from "@/components/layout/announcement-bar"
 import { ReferralProvider } from "@/components/providers/referral-provider"
 import { prisma } from "@/lib/prisma"
@@ -114,7 +113,6 @@ export default async function ShopLayout({
         <main className="flex-1">{children}</main>
         <Footer />
         <BottomNav />
-        <CityGate />
       </div>
     </ReferralProvider>
   )
