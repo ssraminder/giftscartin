@@ -27,13 +27,26 @@ export async function GET() {
         product: {
           include: {
             category: { select: { id: true, name: true, slug: true } },
+            vendorProducts: {
+              where: { isAvailable: true },
+              take: 1,
+              select: { preparationTime: true },
+            },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json({ success: true, data: items })
+    const maxPreparationTime = items.length > 0
+      ? Math.max(
+          ...items.map(item =>
+            item.product.vendorProducts[0]?.preparationTime ?? 120
+          )
+        )
+      : 120
+
+    return NextResponse.json({ success: true, data: { items, maxPreparationTime } })
   } catch (error) {
     console.error('GET /api/cart error:', error)
     return NextResponse.json(

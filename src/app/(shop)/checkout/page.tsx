@@ -82,6 +82,7 @@ interface SlotsApiData {
   surcharge: { name: string; amount: number } | null
   fullyBlocked: boolean
   holidayReason: string | null
+  maxPreparationTime?: number
 }
 
 type SlotType = 'standard' | 'fixed' | 'early-morning' | 'express' | 'midnight'
@@ -223,6 +224,7 @@ export default function CheckoutPage() {
   const [slotsApiData, setSlotsApiData] = useState<SlotsApiData | null>(null)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [fixedExpanded, setFixedExpanded] = useState(false)
+  const [slotAdvanceNotice, setSlotAdvanceNotice] = useState<string | null>(null)
 
   // Step 2 — date change calendar state
   const [changeDateOpen, setChangeDateOpen] = useState(false)
@@ -358,6 +360,11 @@ export default function CheckoutPage() {
     setSlotsLoading(true)
     try {
       const params = new URLSearchParams({ cityId, date: dateStr })
+      // Include product IDs so the API can compute max preparation time
+      const productIds = items.map(i => i.productId).filter(Boolean)
+      if (productIds.length > 0) {
+        params.set('productIds', productIds.join(','))
+      }
       const res = await fetch(`/api/delivery/slots?${params}`)
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
@@ -367,7 +374,7 @@ export default function CheckoutPage() {
     } finally {
       setSlotsLoading(false)
     }
-  }, [cityId])
+  }, [cityId, items])
 
   // Fetch available dates when "Change Date" is opened — uses fast city-slots + client-side computation
   const fetchAvailableDates = useCallback(async () => {
@@ -405,6 +412,126 @@ export default function CheckoutPage() {
       setLoadingDates(false)
     }
   }, [cityId])
+
+  // ─── Prep-time slot filtering ───
+
+  // Compute filtered slots data based on product preparation time
+  const filteredSlotsData = useMemo((): SlotsApiData | null => {
+    if (!slotsApiData || slotsApiData.fullyBlocked) return slotsApiData
+
+    const selectedDate = formData.deliveryDate
+    if (!selectedDate) return slotsApiData
+
+    // Check if the selected date is today (IST)
+    const nowMs = Date.now() + 5.5 * 60 * 60 * 1000
+    const nowIST = new Date(nowMs)
+    const todayStr = `${nowIST.getUTCFullYear()}-${String(nowIST.getUTCMonth() + 1).padStart(2, '0')}-${String(nowIST.getUTCDate()).padStart(2, '0')}`
+    const isToday = selectedDate === todayStr
+    if (!isToday) return slotsApiData
+
+    const prepMinutes = slotsApiData.maxPreparationTime ?? 120
+    const earliestDeliveryMs = nowMs + prepMinutes * 60 * 1000
+    const earliestDelivery = new Date(earliestDeliveryMs)
+    const earliestHour = earliestDelivery.getUTCHours()
+    const earliestMinute = earliestDelivery.getUTCMinutes()
+    const earliestDecimal = earliestHour + earliestMinute / 60
+
+    // Standard Delivery (9 AM – 9 PM): cutoff is 19:00 (7 PM) for reasonable delivery
+    const standardAvailable = slotsApiData.standard.available && earliestDecimal < 19
+
+    // Fixed windows: filter out windows whose start time <= earliestDelivery
+    const filteredWindows = slotsApiData.fixedWindows.filter(w => {
+      const [h, m] = w.start.split(':').map(Number)
+      const windowStart = h + (m || 0) / 60
+      return windowStart > earliestDecimal
+    })
+
+    // Midnight (23:00 – 23:59): hide if now + prepTime >= 23:00
+    const midnightAvailable = slotsApiData.midnight.available && !slotsApiData.midnight.cutoffPassed && earliestDecimal < 23
+    const midnightResult = midnightAvailable
+      ? slotsApiData.midnight
+      : { ...slotsApiData.midnight, available: false, cutoffPassed: true }
+
+    return {
+      ...slotsApiData,
+      standard: { ...slotsApiData.standard, available: standardAvailable },
+      fixedWindows: filteredWindows,
+      midnight: midnightResult,
+    }
+  }, [slotsApiData, formData.deliveryDate])
+
+  // Auto-advance to tomorrow if no slots remain for today
+  useEffect(() => {
+    if (!filteredSlotsData || filteredSlotsData.fullyBlocked) return
+    if (!formData.deliveryDate) return
+
+    // Check if selected date is today
+    const nowMs = Date.now() + 5.5 * 60 * 60 * 1000
+    const nowIST = new Date(nowMs)
+    const todayStr = `${nowIST.getUTCFullYear()}-${String(nowIST.getUTCMonth() + 1).padStart(2, '0')}-${String(nowIST.getUTCDate()).padStart(2, '0')}`
+    if (formData.deliveryDate !== todayStr) return
+
+    const hasAnySlot =
+      filteredSlotsData.standard.available ||
+      filteredSlotsData.fixedWindows.length > 0 ||
+      (filteredSlotsData.earlyMorning.available && !filteredSlotsData.earlyMorning.cutoffPassed) ||
+      filteredSlotsData.express.available ||
+      (filteredSlotsData.midnight.available && !filteredSlotsData.midnight.cutoffPassed)
+
+    if (!hasAnySlot) {
+      const tomorrow = new Date(nowMs)
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+      const tomorrowStr = `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, '0')}-${String(tomorrow.getUTCDate()).padStart(2, '0')}`
+      setFormData(prev => ({
+        ...prev,
+        deliveryDate: tomorrowStr,
+        deliverySlot: null,
+        deliverySlotName: null,
+        deliverySlotSlug: null,
+        deliveryWindow: null,
+        slotCharge: 0,
+      }))
+      setFixedExpanded(false)
+      setDeliveryDateForAll(tomorrowStr)
+      setSlotAdvanceNotice("No slots available today. Showing tomorrow's availability.")
+    }
+  }, [filteredSlotsData, formData.deliveryDate, setDeliveryDateForAll])
+
+  // Auto-select first available slot if current selection became unavailable
+  useEffect(() => {
+    if (!filteredSlotsData || filteredSlotsData.fullyBlocked) return
+    if (!formData.deliverySlot) return
+
+    // Check if the currently selected slot is still available
+    let currentStillAvailable = false
+    if (formData.deliverySlot === 'standard') {
+      currentStillAvailable = filteredSlotsData.standard.available
+    } else if (formData.deliverySlot === 'fixed') {
+      currentStillAvailable = filteredSlotsData.fixedWindows.length > 0
+      if (currentStillAvailable && formData.deliveryWindow) {
+        currentStillAvailable = filteredSlotsData.fixedWindows.some(w => w.label === formData.deliveryWindow)
+      }
+    } else if (formData.deliverySlot === 'early-morning') {
+      currentStillAvailable = filteredSlotsData.earlyMorning.available && !filteredSlotsData.earlyMorning.cutoffPassed
+    } else if (formData.deliverySlot === 'express') {
+      currentStillAvailable = filteredSlotsData.express.available
+    } else if (formData.deliverySlot === 'midnight') {
+      currentStillAvailable = filteredSlotsData.midnight.available && !filteredSlotsData.midnight.cutoffPassed
+    }
+
+    if (!currentStillAvailable) {
+      // Reset slot selection
+      setFormData(prev => ({
+        ...prev,
+        deliverySlot: null,
+        deliverySlotName: null,
+        deliverySlotSlug: null,
+        deliveryWindow: null,
+        slotCharge: 0,
+      }))
+      setFixedExpanded(false)
+    }
+  }, [filteredSlotsData, formData.deliverySlot, formData.deliveryWindow])
 
   // Load slots when entering Step 2
   useEffect(() => {
@@ -615,6 +742,7 @@ export default function CheckoutPage() {
       slotCharge: 0,
     }))
     setFixedExpanded(false)
+    setSlotAdvanceNotice(null)
     setDeliveryDateForAll(dateStr)
     setChangeDateOpen(false)
     fetchSlots(dateStr)
@@ -1512,12 +1640,19 @@ export default function CheckoutPage() {
                   Select Time Slot <span className="text-red-500">*</span>
                 </h2>
 
+                {/* Slot advance notice */}
+                {slotAdvanceNotice && (
+                  <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 mb-3 text-sm text-blue-800">
+                    <span>{slotAdvanceNotice}</span>
+                  </div>
+                )}
+
                 {/* Surcharge banner */}
-                {slotsApiData?.surcharge && (
+                {filteredSlotsData?.surcharge && (
                   <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 mb-3 text-sm text-amber-800">
                     <span>&#x1F389;</span>
                     <span>
-                      Festival surcharge: &#x20B9;{slotsApiData.surcharge.amount} added to all orders on this date
+                      Festival surcharge: &#x20B9;{filteredSlotsData.surcharge.amount} added to all orders on this date
                     </span>
                   </div>
                 )}
@@ -1528,19 +1663,19 @@ export default function CheckoutPage() {
                       <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
                     ))}
                   </div>
-                ) : slotsApiData?.fullyBlocked ? (
+                ) : filteredSlotsData?.fullyBlocked ? (
                   <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
-                    Delivery not available on this date.{slotsApiData.holidayReason ? ` ${slotsApiData.holidayReason}.` : ''} Please select another date.
+                    Delivery not available on this date.{filteredSlotsData.holidayReason ? ` ${filteredSlotsData.holidayReason}.` : ''} Please select another date.
                   </div>
-                ) : slotsApiData ? (
+                ) : filteredSlotsData ? (
                   <div className="space-y-5">
 
                     {/* ─── SECTION 1: Standard Delivery ─── */}
-                    {slotsApiData.standard.available && (
+                    {filteredSlotsData.standard.available && (
                       <div>
                         <div
                           onClick={() => {
-                            const charge = subtotal >= 499 ? 0 : slotsApiData.standard.charge || 39
+                            const charge = subtotal >= 499 ? 0 : filteredSlotsData.standard.charge || 39
                             handleSlotSelect('standard', charge, 'Standard Delivery')
                           }}
                           className={`rounded-xl border transition-all cursor-pointer ${
@@ -1563,7 +1698,7 @@ export default function CheckoutPage() {
                             <span className={`text-sm font-semibold shrink-0 ${
                               subtotal >= 499 ? 'text-green-600' : 'text-gray-700'
                             }`}>
-                              {subtotal >= 499 ? 'Free' : `\u20B9${slotsApiData.standard.charge || 39}`}
+                              {subtotal >= 499 ? 'Free' : `\u20B9${filteredSlotsData.standard.charge || 39}`}
                             </span>
                           </div>
                         </div>
@@ -1571,7 +1706,7 @@ export default function CheckoutPage() {
                     )}
 
                     {/* ─── SECTION 2: Fixed Time Slots ─── */}
-                    {slotsApiData.fixedWindows.length > 0 && (
+                    {filteredSlotsData.fixedWindows.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Fixed Time Slots</p>
                         <div
@@ -1594,7 +1729,7 @@ export default function CheckoutPage() {
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                               <span className="text-sm font-semibold text-gray-700">
-                                From &#x20B9;{Math.min(...slotsApiData.fixedWindows.map(w => w.charge))}
+                                From &#x20B9;{Math.min(...filteredSlotsData.fixedWindows.map(w => w.charge))}
                               </span>
                               {formData.deliverySlot === 'fixed' ? (
                                 <ChevronUp className="h-4 w-4 text-pink-500" />
@@ -1607,7 +1742,7 @@ export default function CheckoutPage() {
                           {/* Expanded sub-windows */}
                           {formData.deliverySlot === 'fixed' && fixedExpanded && (
                             <div className="border-t border-pink-200 px-4 py-3 ml-4 border-l-2 border-l-pink-200 space-y-1.5">
-                              {slotsApiData.fixedWindows.map((w) => {
+                              {filteredSlotsData.fixedWindows.map((w) => {
                                 const wSelected = formData.deliveryWindow === w.label
                                 return (
                                   <button
@@ -1643,17 +1778,17 @@ export default function CheckoutPage() {
                     )}
 
                     {/* ─── SECTION 3: Specialized Delivery ─── */}
-                    {(slotsApiData.earlyMorning.charge > 0 || slotsApiData.express.charge > 0 || slotsApiData.midnight.charge > 0) && (
+                    {(filteredSlotsData.earlyMorning.charge > 0 || filteredSlotsData.express.charge > 0 || filteredSlotsData.midnight.charge > 0) && (
                       <div>
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Specialized Delivery</p>
                         <div className="space-y-2">
 
                           {/* Early Morning */}
-                          {slotsApiData.earlyMorning.charge > 0 && (
+                          {filteredSlotsData.earlyMorning.charge > 0 && (
                             <div
-                              onClick={() => !slotsApiData.earlyMorning.cutoffPassed && handleSlotSelect('early-morning', slotsApiData.earlyMorning.charge, 'Early Morning')}
+                              onClick={() => !filteredSlotsData.earlyMorning.cutoffPassed && handleSlotSelect('early-morning', filteredSlotsData.earlyMorning.charge, 'Early Morning')}
                               className={`rounded-xl border transition-all ${
-                                slotsApiData.earlyMorning.cutoffPassed
+                                filteredSlotsData.earlyMorning.cutoffPassed
                                   ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
                                   : formData.deliverySlot === 'early-morning'
                                     ? 'border-pink-500 bg-pink-50 cursor-pointer'
@@ -1669,23 +1804,23 @@ export default function CheckoutPage() {
                                     </p>
                                     <p className="text-xs text-gray-500">6:00 AM &ndash; 8:00 AM</p>
                                     <p className="text-xs text-gray-400">
-                                      {slotsApiData.earlyMorning.cutoffPassed
+                                      {filteredSlotsData.earlyMorning.cutoffPassed
                                         ? 'Booking closed for today'
                                         : 'Must order by previous day 6 PM'}
                                     </p>
                                   </div>
                                 </div>
                                 <span className="text-sm font-semibold text-gray-700 shrink-0">
-                                  &#x20B9;{slotsApiData.earlyMorning.charge}
+                                  &#x20B9;{filteredSlotsData.earlyMorning.charge}
                                 </span>
                               </div>
                             </div>
                           )}
 
                           {/* Express */}
-                          {slotsApiData.express.charge > 0 && slotsApiData.express.available && (
+                          {filteredSlotsData.express.charge > 0 && filteredSlotsData.express.available && (
                             <div
-                              onClick={() => handleSlotSelect('express', slotsApiData.express.charge, 'Express Delivery')}
+                              onClick={() => handleSlotSelect('express', filteredSlotsData.express.charge, 'Express Delivery')}
                               className={`rounded-xl border transition-all cursor-pointer ${
                                 formData.deliverySlot === 'express'
                                   ? 'border-pink-500 bg-pink-50'
@@ -1704,22 +1839,20 @@ export default function CheckoutPage() {
                                   </div>
                                 </div>
                                 <span className="text-sm font-semibold text-gray-700 shrink-0">
-                                  &#x20B9;{slotsApiData.express.charge}
+                                  &#x20B9;{filteredSlotsData.express.charge}
                                 </span>
                               </div>
                             </div>
                           )}
 
                           {/* Midnight */}
-                          {slotsApiData.midnight.charge > 0 && (
+                          {filteredSlotsData.midnight.charge > 0 && !filteredSlotsData.midnight.cutoffPassed && (
                             <div
-                              onClick={() => !slotsApiData.midnight.cutoffPassed && handleSlotSelect('midnight', slotsApiData.midnight.charge, 'Midnight Delivery')}
-                              className={`rounded-xl border transition-all ${
-                                slotsApiData.midnight.cutoffPassed
-                                  ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
-                                  : formData.deliverySlot === 'midnight'
-                                    ? 'border-pink-500 bg-pink-50 cursor-pointer'
-                                    : 'border-gray-200 bg-white hover:border-pink-300 cursor-pointer'
+                              onClick={() => handleSlotSelect('midnight', filteredSlotsData.midnight.charge, 'Midnight Delivery')}
+                              className={`rounded-xl border transition-all cursor-pointer ${
+                                formData.deliverySlot === 'midnight'
+                                  ? 'border-pink-500 bg-pink-50'
+                                  : 'border-gray-200 bg-white hover:border-pink-300'
                               }`}
                             >
                               <div className="flex items-center justify-between p-4">
@@ -1730,15 +1863,11 @@ export default function CheckoutPage() {
                                       &#x1F319; Midnight Delivery
                                     </p>
                                     <p className="text-xs text-gray-500">11:00 PM &ndash; 11:59 PM</p>
-                                    <p className="text-xs text-gray-400">
-                                      {slotsApiData.midnight.cutoffPassed
-                                        ? 'Booking closed for today'
-                                        : 'Must order by 6 PM today'}
-                                    </p>
+                                    <p className="text-xs text-gray-400">Must order by 6 PM today</p>
                                   </div>
                                 </div>
                                 <span className="text-sm font-semibold text-gray-700 shrink-0">
-                                  &#x20B9;{slotsApiData.midnight.charge}
+                                  &#x20B9;{filteredSlotsData.midnight.charge}
                                 </span>
                               </div>
                             </div>

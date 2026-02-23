@@ -39,6 +39,24 @@ export async function GET(req: NextRequest) {
     const isToday = dateStr === todayIST
     const deliveryDate = parseLocalDate(dateStr)
 
+    // Optional: compute max preparation time from cart product IDs
+    const productIdsParam = searchParams.get('productIds')
+    let maxPreparationTime = 120 // default 120 minutes
+    if (productIdsParam) {
+      const productIds = productIdsParam.split(',').filter(Boolean)
+      if (productIds.length > 0) {
+        const vendorProducts = await prisma.vendorProduct.findMany({
+          where: { productId: { in: productIds }, isAvailable: true },
+          select: { preparationTime: true },
+        })
+        if (vendorProducts.length > 0) {
+          maxPreparationTime = Math.max(
+            ...vendorProducts.map(vp => vp.preparationTime)
+          )
+        }
+      }
+    }
+
     // 1. Get city
     const city = await prisma.city.findUnique({
       where: { id: cityId, isActive: true },
@@ -224,6 +242,7 @@ export async function GET(req: NextRequest) {
         surcharge: surchargeData,
         fullyBlocked: false,
         holidayReason: null,
+        maxPreparationTime,
       },
     })
   } catch (error) {
