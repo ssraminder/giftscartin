@@ -76,6 +76,11 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideBut
     } else if (!/^\+[1-9]\d{6,14}$/.test(value.senderPhone)) {
       newErrors.senderPhone = 'Enter a valid phone number with country code'
     }
+    if (!value.senderEmail.trim()) {
+      newErrors.senderEmail = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.senderEmail)) {
+      newErrors.senderEmail = 'Enter a valid email address'
+    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -125,11 +130,10 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideBut
         <p className="text-xs text-gray-400 mt-1">For delivery coordination if needed</p>
       </div>
 
-      {/* Your Email (optional) */}
+      {/* Your Email (required) */}
       <div>
         <Label htmlFor="senderEmail">
-          Your Email{' '}
-          <span className="text-gray-400 font-normal">(optional)</span>
+          Your Email <span className="text-red-500">*</span>
         </Label>
         <Input
           id="senderEmail"
@@ -140,6 +144,9 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideBut
           value={value.senderEmail}
           onChange={e => onChange({ ...value, senderEmail: e.target.value })}
         />
+        {errors.senderEmail && (
+          <p className="text-xs text-red-500 mt-1">{errors.senderEmail}</p>
+        )}
         <p className="text-xs text-gray-400 mt-1">Order confirmation and invoice</p>
       </div>
 
