@@ -141,6 +141,16 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      // Verify Razorpay key is configured before proceeding
+      const razorpayKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID
+      if (!razorpayKeyId) {
+        console.error('[payments] NEXT_PUBLIC_RAZORPAY_KEY_ID and RAZORPAY_KEY_ID are both missing')
+        return NextResponse.json(
+          { success: false, error: 'Payment gateway not configured' },
+          { status: 500 }
+        )
+      }
+
       const t2 = Date.now()
       let razorpayOrder
       try {
@@ -157,6 +167,7 @@ export async function POST(request: NextRequest) {
         )
       }
       console.log(`[payments] razorpay_create: ${Date.now() - t2}ms`)
+      console.log('[payments] razorpay order:', JSON.stringify(razorpayOrder))
 
       // Fire DB upsert without awaiting — we already have razorpayOrder.id for the response
       const t3 = Date.now()
@@ -192,7 +203,7 @@ export async function POST(request: NextRequest) {
           razorpayOrderId: razorpayOrder.id,
           amount: razorpayOrder.amount,
           currency: razorpayOrder.currency,
-          keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID,
+          keyId: razorpayKeyId,
         },
       })
     }
