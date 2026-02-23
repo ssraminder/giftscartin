@@ -17,7 +17,7 @@ interface ProductLocationCheckProps {
 type Status =
   | { type: 'checking' }
   | { type: 'success'; message: string; areaName: string }
-  | { type: 'coming_soon' }
+  | { type: 'coming_soon'; areaName: string }
   | { type: 'unavailable' }
   | null
 
@@ -55,12 +55,13 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
       const d = json.success ? json.data : null
 
       if (d?.comingSoon) {
-        setStatus({ type: 'coming_soon' })
+        const area = d.areaName || ''
+        setStatus({ type: 'coming_soon', areaName: area })
         onServiceabilityChange?.({
           isServiceable: false,
           comingSoon: true,
           vendorCount: 0,
-          message: "We're coming to your area soon!",
+          message: area ? `We're coming to ${area} soon!` : "We're coming to your area soon!",
         })
       } else if (d?.isServiceable && d.vendorCount > 0) {
         const area = d.areaName || contextAreaName || ''
@@ -175,7 +176,7 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
             {status.type === 'unavailable' && <XCircle className="h-4 w-4 shrink-0" />}
             <span>
               {status.type === 'success' && status.message}
-              {status.type === 'coming_soon' && 'Coming to your area soon!'}
+              {status.type === 'coming_soon' && (status.areaName ? `We're coming to ${status.areaName} soon!` : "We're coming to your area soon!")}
               {status.type === 'unavailable' && "We don't deliver here yet"}
             </span>
           </div>

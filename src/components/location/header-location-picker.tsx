@@ -15,7 +15,7 @@ type PincodeStatus =
   | { type: 'idle' }
   | { type: 'checking' }
   | { type: 'serviceable'; cityName: string; areaName: string }
-  | { type: 'coming_soon' }
+  | { type: 'coming_soon'; areaName: string }
   | { type: 'not_serviceable' }
   | { type: 'error'; message: string }
 
@@ -81,7 +81,7 @@ export function HeaderLocationPicker() {
       const d = json.success ? json.data : null
 
       if (d?.comingSoon) {
-        setPincodeStatus({ type: 'coming_soon' })
+        setPincodeStatus({ type: 'coming_soon', areaName: d.areaName || '' })
       } else if (d?.isServiceable && d.vendorCount > 0) {
         const cName = d.city?.name || d.cityName || ''
         const aName = d.areaName || ''
@@ -193,7 +193,7 @@ export function HeaderLocationPicker() {
             {/* Pincode status messages */}
             {pincodeStatus.type === 'coming_soon' && (
               <p className="mt-2 text-xs text-blue-600 font-medium">
-                Coming to your area soon!
+                {pincodeStatus.areaName ? `We're coming to ${pincodeStatus.areaName} soon!` : "We're coming to your area soon!"}
               </p>
             )}
             {pincodeStatus.type === 'not_serviceable' && (
