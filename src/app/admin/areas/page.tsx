@@ -143,19 +143,24 @@ function AdminAreasContent() {
     setLooking(true)
     setLookupResult(null)
     try {
-      const res = await fetch(`/api/location/pincode?pincode=${lookupPincode}`)
+      const res = await fetch('/api/city/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: lookupPincode }),
+      })
       const json = await res.json()
-      if (json.success && json.data.found) {
+      if (json.success && json.data?.length > 0) {
+        const d = json.data[0]
         setLookupResult({
-          areaName: json.data.areaName || `Area ${lookupPincode}`,
-          cityName: json.data.cityName || '',
-          state: json.data.state || '',
-          lat: json.data.lat || 0,
-          lng: json.data.lng || 0,
-          cityId: json.data.cityId,
+          areaName: d.areaName || `Area ${lookupPincode}`,
+          cityName: d.cityName || '',
+          state: '',
+          lat: 0,
+          lng: 0,
+          cityId: d.cityId,
         })
-        setAddName(json.data.areaName || `Area ${lookupPincode}`)
-        if (json.data.cityId) setAddCityId(json.data.cityId)
+        setAddName(d.areaName || `Area ${lookupPincode}`)
+        if (d.cityId) setAddCityId(d.cityId)
       } else {
         showToast('error', 'Pincode not found anywhere')
       }

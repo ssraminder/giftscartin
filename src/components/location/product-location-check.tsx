@@ -3,8 +3,6 @@
 import { useState, useCallback } from 'react'
 import { MapPin, CheckCircle2, Clock, XCircle, Loader2 } from 'lucide-react'
 import { useCity } from '@/hooks/use-city'
-import { LocationSearchInput } from './location-search'
-import type { LocationResult } from '@/types'
 
 interface ProductLocationCheckProps {
   productId: string
@@ -17,89 +15,87 @@ interface ProductLocationCheckProps {
 }
 
 type Status =
-  | { type: 'checking'; message: string }
-  | { type: 'success'; message: string }
-  | { type: 'coming_soon'; message: string }
-  | { type: 'unavailable'; message: string }
+  | { type: 'checking' }
+  | { type: 'success'; message: string; areaName: string }
+  | { type: 'coming_soon' }
+  | { type: 'unavailable' }
   | null
 
-/**
- * Product page location block — "Gift Receiver's Location" with serviceability check.
- * All results are DB-only (areas + cities), no Google Places resolve needed.
- */
 export function ProductLocationCheck({ productId, onServiceabilityChange }: ProductLocationCheckProps) {
-  const { isSelected, cityName, areaName, pincode: cityPincode, setCity, setArea } = useCity()
+  const { setCity, setArea } = useCity()
+  const [pincode, setPincode] = useState('')
   const [status, setStatus] = useState<Status>(null)
 
-  const defaultValue = cityPincode
-    ? (areaName ? `${areaName}, ${cityName} \u2014 ${cityPincode}` : cityPincode)
-    : ''
+  const handleCheck = useCallback(async () => {
+    if (!/^\d{6}$/.test(pincode)) return
+    setStatus({ type: 'checking' })
 
-  async function checkServiceability(pincode: string) {
     try {
-      const body: Record<string, unknown> = { pincode, productId }
-
       const res = await fetch('/api/serviceability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ pincode, productId }),
       })
       const json = await res.json()
       const d = json.success ? json.data : null
 
       if (d?.comingSoon) {
-        setStatus({ type: 'coming_soon', message: "We're coming to your area soon!" })
-        onServiceabilityChange?.({ isServiceable: false, comingSoon: true, vendorCount: 0, message: "We're coming to your area soon!" })
+        setStatus({ type: 'coming_soon' })
+        onServiceabilityChange?.({
+          isServiceable: false,
+          comingSoon: true,
+          vendorCount: 0,
+          message: "We're coming to your area soon!",
+        })
       } else if (d?.isServiceable && d.vendorCount > 0) {
-        const msg = `Delivery available \u2014 ${d.vendorCount} vendor${d.vendorCount !== 1 ? 's' : ''}`
-        setStatus({ type: 'success', message: msg })
-        onServiceabilityChange?.({ isServiceable: true, comingSoon: false, vendorCount: d.vendorCount, message: msg })
+        const areaName = d.areaName || ''
+        const msg = areaName
+          ? `Delivery available in ${areaName}`
+          : 'Delivery available'
+        setStatus({ type: 'success', message: msg, areaName })
+
+        // Update city context with full result
+        const cName = d.city?.name || d.cityName || ''
+        const cSlug = d.city?.slug || cName.toLowerCase().replace(/\s+/g, '-')
+        const cId = d.city?.id || ''
+
+        if (cId) {
+          setCity({
+            cityId: cId,
+            cityName: cName,
+            citySlug: cSlug,
+            pincode,
+            areaName: areaName || undefined,
+          })
+        }
+
+        setArea({ name: areaName, pincode, isServiceable: true })
+
+        onServiceabilityChange?.({
+          isServiceable: true,
+          comingSoon: false,
+          vendorCount: d.vendorCount,
+          message: msg,
+        })
       } else {
-        setStatus({ type: 'unavailable', message: "We don't deliver here yet." })
-        onServiceabilityChange?.({ isServiceable: false, comingSoon: false, vendorCount: 0, message: "We don't deliver here yet." })
+        setStatus({ type: 'unavailable' })
+        onServiceabilityChange?.({
+          isServiceable: false,
+          comingSoon: false,
+          vendorCount: 0,
+          message: "We don't deliver here yet",
+        })
       }
     } catch {
-      setStatus({ type: 'unavailable', message: 'Failed to check delivery availability.' })
+      setStatus({ type: 'unavailable' })
+      onServiceabilityChange?.({
+        isServiceable: false,
+        comingSoon: false,
+        vendorCount: 0,
+        message: 'Failed to check delivery availability',
+      })
     }
-  }
-
-  const handleSelect = useCallback(async (result: LocationResult) => {
-    setStatus({ type: 'checking', message: 'Checking delivery...' })
-
-    // Update city context
-    if (result.cityId) {
-      if (!isSelected) {
-        setCity({
-          cityId: result.cityId,
-          cityName: result.cityName || '',
-          citySlug: result.citySlug || (result.cityName || '').toLowerCase().replace(/\s+/g, '-'),
-          pincode: result.pincode || undefined,
-          areaName: result.areaName || undefined,
-          lat: result.lat || undefined,
-          lng: result.lng || undefined,
-          source: result.type,
-        })
-      } else if (result.pincode) {
-        setArea({
-          name: result.areaName || '',
-          pincode: result.pincode,
-          isServiceable: false,
-        })
-      }
-    }
-
-    // Check serviceability if we have a pincode
-    if (result.pincode) {
-      await checkServiceability(result.pincode)
-      return
-    }
-
-    // City-level result without pincode — just confirm
-    if (result.type === 'city') {
-      setStatus({ type: 'success', message: `Delivering to ${result.cityName}` })
-      onServiceabilityChange?.({ isServiceable: true, comingSoon: false, vendorCount: 0, message: `Delivering to ${result.cityName}` })
-    }
-  }, [isSelected, setCity, setArea, productId, onServiceabilityChange]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pincode, productId, setCity, setArea, onServiceabilityChange])
 
   return (
     <div className="mb-4">
@@ -108,34 +104,59 @@ export function ProductLocationCheck({ productId, onServiceabilityChange }: Prod
           <MapPin className="h-4 w-4 text-[#E91E63]" />
           Gift Receiver&apos;s Location
         </p>
-        {!isSelected && (
-          <p className="text-xs text-gray-500 mb-2">
-            Enter receiver&apos;s location to check delivery availability
-          </p>
-        )}
-        <LocationSearchInput
-          onSelect={handleSelect}
-          defaultValue={defaultValue}
-          placeholder="Enter receiver's area, city, or pincode"
-        />
+        <p className="text-xs text-gray-500 mb-3">
+          Enter receiver&apos;s pincode to check delivery availability
+        </p>
 
-        {status && (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="Enter 6-digit pincode"
+            value={pincode}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 6)
+              setPincode(val)
+              if (status) setStatus(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && pincode.length === 6) handleCheck()
+            }}
+            className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#E91E63]"
+          />
+          <button
+            onClick={handleCheck}
+            disabled={pincode.length !== 6 || status?.type === 'checking'}
+            className="px-4 py-2.5 text-sm font-medium rounded-lg bg-[#E91E63] text-white disabled:opacity-50 hover:bg-[#C2185B] transition-colors whitespace-nowrap"
+          >
+            {status?.type === 'checking' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              'Check Delivery'
+            )}
+          </button>
+        </div>
+
+        {/* Status messages */}
+        {status && status.type !== 'checking' && (
           <div
             className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
               status.type === 'success'
                 ? 'bg-green-50 text-green-700 border border-green-200'
                 : status.type === 'coming_soon'
                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : status.type === 'checking'
-                    ? 'bg-gray-50 text-gray-600 border border-gray-200'
-                    : 'bg-red-50 text-red-700 border border-red-200'
+                  : 'bg-red-50 text-red-700 border border-red-200'
             }`}
           >
             {status.type === 'success' && <CheckCircle2 className="h-4 w-4 shrink-0" />}
             {status.type === 'coming_soon' && <Clock className="h-4 w-4 shrink-0" />}
-            {status.type === 'checking' && <Loader2 className="h-4 w-4 shrink-0 animate-spin" />}
             {status.type === 'unavailable' && <XCircle className="h-4 w-4 shrink-0" />}
-            <span>{status.message}</span>
+            <span>
+              {status.type === 'success' && status.message}
+              {status.type === 'coming_soon' && 'Coming to your area soon!'}
+              {status.type === 'unavailable' && "We don't deliver here yet"}
+            </span>
           </div>
         )}
       </div>
