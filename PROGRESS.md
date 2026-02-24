@@ -13,68 +13,42 @@
 |Domain         |giftscart.in (production, eventual)                                               |
 |Live Staging   |https://giftscart.netlify.app                                                     |
 |Supabase       |https://saeditdtacprxcnlgips.supabase.co                                          |
-|Current Phase  |Phase A + B + C + D + E + F + Sprint 1 + Edge Migration complete. Phase 3 ongoing.|
-|Last Updated   |2026-02-23                                                                        |
+|Current Phase  |Phase A + B + C + D + E + F + Sprint 1 + Edge Migration complete. Styling updates ongoing (Feb 24).|
+|Last Updated   |2026-02-24                                                                        |
 
 ### What's Done
 
-- Full schema 31+ models in Supabase PostgreSQL, queried via Supabase JS client
-- All 90+ API routes with real Supabase queries (migrated from Prisma Feb 23)
-- Auth: custom JWT (jose) + email OTP via Brevo (migrated from NextAuth Feb 23)
-- Homepage, order history, order tracking — connected to real API
-- Admin dashboard: orders, vendor management, delivery config (real data)
-- Vendor dashboard: orders, products, earnings, settings (real data — Phase 3 PR #46)
-- Multi-currency support with sync-exchange-rates scheduled function
+- Full schema — 48 tables in Supabase PostgreSQL, queried via Supabase JS client (migrated from Prisma Feb 23)
+- All 90+ API routes with real Supabase queries
+- Auth: custom JWT (jose) + Email OTP via Brevo (migrated from NextAuth Feb 23)
+- Edge-compatible middleware — no Prisma, no NextAuth
+- Homepage, category pages, product pages, cart, checkout, order history, order tracking — all connected to real API
+- Admin dashboard: orders, vendor management, delivery config, banners, partners, categories, products, SEO settings
+- Vendor dashboard: orders, products, earnings, settings (Phase 3)
+- Multi-currency support (INR, USD, GBP, AED, EUR) with geo-detection
 - Guest checkout support
-- Referral logo branding system (?ref=CODE)
+- Referral/partner branding system (?ref=CODE, subdomain, custom domain)
 - Platform rebrand: Gifts Cart India by Cital Enterprises
+- Phase A: Variations (JSONB), addon groups, upsells, SEO fields, category templates
+- Phase B: SEO — generateMetadata, JSON-LD, sitemap.xml, robots.txt, breadcrumbs
+- Phase C: Admin product form (WooCommerce-style tabbed create/edit)
+- Phase D: Customer-facing variations & add-ons (all 6 addon types, file upload)
+- Phase E: AI content (Claude API) + image generation (GPT-image-1)
+- Phase F: Category management & addon templates with bulk propagation
+- Sprint 1: City-first UX — city modal on load, CitySearch, pincode-to-city resolver, [city] pages
 - Netlify auto-deploy from GitHub, build passing
-- Phase A: Schema foundation — variations (JSONB), addon groups, upsells, SEO fields, category templates, seo_settings, vendor variation availability
-- Phase B: SEO infrastructure — generateMetadata on product/category/home pages, JSON-LD structured data (Product, BreadcrumbList, Organization, LocalBusiness), sitemap.xml, robots.txt, breadcrumb component, admin SEO settings page
-- Phase C: Admin product form — WooCommerce-style tabbed create/edit form (General, Pricing, Inventory, Images, Attributes, Variations, Add-ons, SEO, Advanced), product list with filters/pagination/bulk actions, admin product CRUD API routes, category addon template sync
-- Phase D: Customer-facing variations & add-ons — attribute-based variation selector, addon group display (all 6 types), file upload addon with Supabase Storage, upsell products section, cart with variationId + addonSelections, variation-level vendor matching in order creation
-- Phase E: AI content & image generation — Claude API for SEO content, GPT-image-1 for product images, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload
-- Phase F: Category management & addon templates — Admin category CRUD API (tree structure), category form (Sheet with General/SEO/Addon Templates tabs), hierarchical category list page, bulk template propagation, per-product addon group re-sync API, detach/re-sync controls in product form
-- Fixed products API 500 — updated stale `addons` includes to use `addonGroups` relation in products list, product detail, and cart API routes
-- Product detail API: added `isVerified` filter to reviews query, verified all Prisma includes use `addonGroups` not `addons`
-- Fixed AI image generation — corrected model name references from `GPT-image-1.5` to `gpt-image-1`, verified base64 response handling and Supabase Storage upload
-- Sprint 1: City-First UX + Schema Integration — new tables (pincode_city_map, city_notifications, product_relations, image_generation_jobs, catalog_imports), city resolver API, CityProvider rewrite (stores full city+pincode+zone), city selection modal (site load blocker), CitySearch component, header city display, products/categories API citySlug filter, [city] page with coming-soon support
-- Fixed city resolve API 500 error — Prisma field `pincodePrefixes` was auto-mapping to `pincode_prefixes` but DB column is `pincode_prefix` (singular); added `@map("pincode_prefix")` to schema. Rewrote resolve route to use `$queryRaw` for alias ILIKE search (Prisma array filters don't support ILIKE) and partial pincode matching. Added detailed error logging in catch block.
-- **Fixed all Netlify API 500 errors** — Root cause: Netlify's `npx prisma generate` resolved to Prisma v7 (latest) instead of the project's v5.22.0. Prisma v7 dropped support for `url`/`directUrl` in datasource, breaking the generated client. Fix: pinned `prisma` and `@prisma/client` to exact `5.22.0` (removed `^` caret), changed build script to `npx prisma@5.22.0 generate && next build`. Also restored city/resolve route from diagnostic stub back to full implementation. All 24+ API routes should now work correctly on Netlify.
-- **Mobile viewport zoom fix** — Added `viewport` export to layout.tsx with `maximumScale: 1, userScalable: false` to prevent iOS Safari zoom on input focus. Changed all input/select/textarea elements to `text-base` (16px minimum) to avoid iOS auto-zoom trigger. Updated `input.tsx`, `select.tsx`, login page, checkout textareas, and city-search notify input.
-- **Skeleton loaders** — Created reusable `ProductCardSkeleton` and `ProductGridSkeleton` components. Added `TrendingSkeleton` and `CategoryGridSkeleton` for homepage sections. Wired skeletons into trending-products (loading state), category page (both initial load and product fetch), and updated existing inline skeletons to use shared components. Added shimmer CSS animation to globals.css. Updated base `Skeleton` component to use `bg-gray-200`.
-- **City modal instant chips + API optimization** — City chips now use static hardcoded data from `src/lib/cities-data.ts` — zero API calls for chip selection. CitySearch does local-first filtering for popular cities before hitting the API. Search debounce increased to 400ms, partial pincodes (1-3 digits) skip API calls. Header dropdown shows popular city chips immediately when opened. API pre-warmed on page load to prevent cold start latency. City resolve responses cached at CDN edge (5 min s-maxage, 10 min stale-while-revalidate).
-- **City-aware lazy loading + SWR caching** — isHydrating flag added to CityProvider (true until localStorage read completes). CityGate component gates product fetches until city context is confirmed from localStorage. SWR added for product fetching (trending products + category page) with 1-minute client-side deduplication cache — second visits and back-navigation show cached products instantly. CDN cache headers added to products API (60s s-maxage, 5min stale-while-revalidate). Category links prefetch on hover via Next.js router.prefetch. Checkout step buttons have loading/spinner state to prevent double-clicks.
-- **Sender details step in checkout** — Added Step 2 of 4 in checkout flow (Address > Sender > Delivery > Review). Fields: Your Name*, Your Mobile*, Email (optional), Occasion (19 options dropdown), Gift Card Message (200 chars). Auto-fills from user session. 4 new columns added to orders table (sender_name, sender_phone, sender_email, occasion). Gift details (occasion + message) shown on order confirmation page. Old gift message expandable removed from delivery step — now part of sender step.
-- **Partner resolution via ref param, custom domain, and subdomain** — PartnerProvider detects partner via `?ref=` param, custom domain, or subdomain. Partner stored in sessionStorage for the tab session. Partner default city auto-sets city, skips modal entirely. Resolve API (`GET /api/partners/resolve`) handles ref, customDomain, subdomain in one endpoint with CDN caching (5 min s-maxage). Netlify: wildcard `*.giftscart.in` configured once, partner custom domains added per partner. Header preserves `?ref=` param in category and occasion nav links. New Prisma fields: `default_city_id`, `default_vendor_id` on partners table.
-- **Vendor filtering + Admin partner management** — Partner vendor filter: products filtered to defaultVendorId when partner is active (Products API accepts `vendorId` param, trending products / category page / product detail all pass vendorId from partner context). partnerId + partner_earnings record created on order placement. Header: partner logo replaces platform logo when partner is active. Header: "powered by Gifts Cart India" badge shown if showPoweredBy is true. Primary brand colour applied to CTA buttons (Add to Cart, Place Order) when partner has custom primaryColor. Admin: /admin/partners list, create, edit pages with full form (name, refCode, commission, city, vendor, logo, brand color, toggles). Admin: city → vendor dependency dropdown (vendor list filters when city changes). Admin API: /api/admin/partners (GET list + POST create), /api/admin/partners/[id] (GET + PATCH). Partners link added to admin sidebar.
-
-- **Edge Migration (Feb 23, 2026)** — Replaced Prisma ORM with Supabase JS client for all DB queries (90+ API routes). Replaced NextAuth.js with custom JWT auth using jose library (edge-compatible). Auth flow: OTP via Brevo → JWT signed with HS256 → httpOnly cookie (giftscart_session, 30-day expiry). New routes: /api/auth/me, /api/auth/logout. New client hook: useAuth() replaces useSession(). Middleware rewritten for custom JWT verification. Removed packages: @prisma/client, prisma, next-auth. Added: jose. Environment changes: removed DATABASE_URL, DIRECT_URL, NEXTAUTH_SECRET, NEXTAUTH_URL; added JWT_SECRET, NEXT_PUBLIC_SITE_URL, SUPABASE_SERVICE_ROLE_KEY (now required).
+- Admin banner/slider system with image upload and city targeting
 
 ### What's NOT Done (Priority Order)
 
-#### Customer-Facing Fixes (needed before launch)
-
-- Checkout — connect to real order creation API + Razorpay payment integration
-- ~~Connect category listing page to real API (currently hardcoded CATEGORIES object)~~ — **DONE** (client component fetches from /api/categories + /api/products)
-- Connect trending products to real API (currently hardcoded array)
-
-#### Product System (Phases A–F — COMPLETE)
-
-- ~~Schema foundation (Phase A)~~ — **DONE**
-- ~~SEO infrastructure (Phase B)~~ — **DONE**
-- ~~Admin product form (Phase C)~~ — **DONE**
-- ~~Customer-facing variations & addons (Phase D)~~ — **DONE**
-- ~~AI content + image generation (Phase E)~~ — **DONE**
-- ~~Category management & addon templates (Phase F)~~ — **DONE**
-
-#### Management Features (Phase 3 continuation)
-
-- Admin delivery configuration UI
-- Vendor delivery config (pincodes, slots, capacity)
-- Coupon management
-- ~~Partner/referral management~~ — **DONE** (admin CRUD + vendor filtering + brand theming)
-- Audit log viewer
+- Checkout — Razorpay payment not fully wired end-to-end (order creation works, payment verify needs testing)
+- Location search — area/neighbourhood search removed pending Mappls API decision; city + pincode only currently
+- Vendor delivery config UI (pincodes, slots, capacity management)
+- Coupon admin CRUD (backend exists, no admin UI)
+- Audit log viewer in admin
+- Review submission by customers
+- Supabase Realtime order notifications for vendors
+- Mobile app (React Native — future phase)
 
 ---
 
