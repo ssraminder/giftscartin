@@ -10,7 +10,7 @@
 - **Auth:** Custom JWT (httpOnly cookie `giftscart_session`, 30-day expiry, signed with HS256 via `jose`) + Email OTP via Brevo
 - **Email/OTP:** Brevo API (transactional email + OTP delivery)
 - **Payments:** Razorpay (India) + Stripe + PayPal (international) — geo-selected
-- **Storage:** Supabase Storage (buckets: `products` public, `order-uploads` private)
+- **Storage:** Supabase Storage (buckets: `products` public, `banners` public, `order-uploads` private)
 - **Hosting:** Netlify (auto-deploy from GitHub, Pro plan)
 - **State Management:** Zustand (cart + UI state)
 

@@ -38,6 +38,7 @@
 - Sprint 1: City-first UX — city modal on load, CitySearch, pincode-to-city resolver, [city] pages
 - Netlify auto-deploy from GitHub, build passing
 - Admin banner/slider system with image upload and city targeting
+- AI banner generation: chatgpt-image-latest for images + Claude for copy (theme → image + title + subtitle + CTA + badge)
 
 ### What's NOT Done (Priority Order)
 
@@ -318,6 +319,7 @@
 | `/api/admin/categories/[id]/sync-templates` | ✅ | Yes | POST | Bulk template propagation to linked products (Phase F) |
 | `/api/admin/products/[id]/sync-addon-group` | ✅ | Yes | POST | Re-sync one addon group to category template (Phase F) |
 | `/api/admin/products/generate-content` | ✅ | Claude + OpenAI + Supabase Storage | POST | AI content generation + image generation (Phase E) |
+| `/api/admin/banners/generate` | ✅ | OpenAI + Claude + Supabase Storage | POST | AI banner image (chatgpt-image-latest) + copy (Claude) generation |
 | `/api/city/resolve` | ✅ | Yes | POST | City resolver: pincode + text search (Sprint 1) |
 | `/api/city/notify` | ✅ | Yes | POST | City notification: email signup for coming-soon cities (Sprint 1) |
 | `/api/partners/resolve` | ✅ | Yes | GET | Partner resolution: ref code, custom domain, subdomain |
@@ -438,7 +440,7 @@ The OtpVerification Prisma model has an `email` field (line 42-43 in schema) whi
 
 3. ~~**Phase D: Customer-Facing Variations & Add-ons**~~ — **COMPLETE.** Attribute-based variation selector, addon group display (CHECKBOX, RADIO, SELECT, TEXT_INPUT, TEXTAREA, FILE_UPLOAD), file upload to Supabase Storage, upsell products section, cart with variationId + addonSelections, variation-level vendor matching.
 
-4. ~~**Phase E: AI Content & Image Generation**~~ — **COMPLETE.** Claude API content generation, GPT-image-1 product image generation, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload.
+4. ~~**Phase E: AI Content & Image Generation**~~ — **COMPLETE.** Claude API content generation, chatgpt-image-latest product image generation, AI generator panel in product form (Images + SEO tabs), reference image support, Supabase Storage upload. AI banner generation (chatgpt-image-latest + Claude for copy) with theme-based generation panel in admin banner modal.
 
 5. ~~**Phase F: Category Management & Addon Templates**~~ — **COMPLETE.** Admin category CRUD API (tree structure, propagation), category form Sheet, hierarchical list page, bulk template sync, per-product addon group re-sync/detach.
 
@@ -640,7 +642,8 @@ any feature in these areas.
 | Vendor availability | Variation level (vendor_product_variations) | Supports eggless-only vendors correctly |
 | Photo upload | FILE_UPLOAD addon type on photo cake product | order-uploads bucket (private), signed URLs |
 | URL structure | Flat (/product/slug, /category/slug) | City-prefixed URLs too complex, local SEO via content signals |
-| Image generation | gpt-image-1 (not DALL-E 3) | Natively multimodal, accepts reference image, 4x faster |
+| Image generation | chatgpt-image-latest (not DALL-E 3) | Natively multimodal, accepts reference image, 4x faster |
 | SEO content | Claude claude-opus-4-5 | Best copywriting quality for Indian gifting context |
-| Storage buckets | products (public) + order-uploads (private) | Customer photos must never be publicly accessible |
+| Banner AI generation | chatgpt-image-latest (image) + Claude (copy) | Parallel generation, uploads to Supabase banners bucket |
+| Storage buckets | products (public) + banners (public) + order-uploads (private) | Customer photos must never be publicly accessible |
 | Product upsells | Separate product_upsells table | Clean cart line items, separate vendor assignment |
