@@ -8,6 +8,7 @@ interface Banner {
   titleHtml: string
   subtitleHtml?: string | null
   imageUrl: string
+  subjectImageUrl?: string | null
   ctaText: string
   ctaLink: string
   secondaryCtaText?: string | null
@@ -143,7 +144,7 @@ export default function HeroBanner() {
               xl:w-[calc((100%-36px)/3.5)]
               2xl:w-[calc((100%-48px)/4)]"
           >
-            {/* Background image or gradient fallback */}
+            {/* Layer 1 — Background image or gradient fallback */}
             {banner.imageUrl ? (
               <div
                 className="absolute inset-0 bg-cover bg-center"
@@ -153,8 +154,52 @@ export default function HeroBanner() {
               <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-purple-600" />
             )}
 
-            {/* Dark gradient overlay: bottom-left to top-right */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/30 to-transparent" />
+            {/* Layer 2 — Hero/subject image (only if subjectImageUrl exists) */}
+            {banner.subjectImageUrl && (
+              <div className="absolute right-0 bottom-0 w-[52%] h-full flex items-end justify-center z-[1] md:flex hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={banner.subjectImageUrl}
+                  alt=""
+                  className="h-[90%] w-auto object-contain object-bottom"
+                />
+              </div>
+            )}
+
+            {/* Layer 2 mobile — Hero/subject image repositioned for mobile */}
+            {banner.subjectImageUrl && (
+              <div className="absolute right-0 top-0 h-[55%] w-auto flex items-start justify-end z-[1] md:hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={banner.subjectImageUrl}
+                  alt=""
+                  className="h-full w-auto object-contain object-top pr-2 pt-2"
+                />
+              </div>
+            )}
+
+            {/* Layer 3 — Gradient mask */}
+            {banner.subjectImageUrl ? (
+              <>
+                {/* Desktop: left-to-right gradient */}
+                <div
+                  className="absolute inset-0 z-[2] hidden md:block"
+                  style={{
+                    background: 'linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 35%, rgba(0,0,0,0.1) 60%, transparent 100%)',
+                  }}
+                />
+                {/* Mobile: bottom-to-top gradient */}
+                <div
+                  className="absolute inset-0 z-[2] md:hidden"
+                  style={{
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 65%, transparent 100%)',
+                  }}
+                />
+              </>
+            ) : (
+              /* No hero image: original bottom-left to top-right gradient */
+              <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/30 to-transparent z-[2]" />
+            )}
 
             {/* Badge */}
             {banner.badgeText && (
@@ -163,8 +208,14 @@ export default function HeroBanner() {
               </span>
             )}
 
-            {/* Text content — anchored bottom-left */}
-            <div className="absolute bottom-0 left-0 z-10 p-6 flex flex-col gap-2 max-w-[85%]">
+            {/* Layer 4 — Text content */}
+            <div
+              className={`absolute z-10 flex flex-col gap-2 justify-end ${
+                banner.subjectImageUrl
+                  ? 'left-0 bottom-0 md:w-[48%] w-full p-6 md:bottom-0 bottom-0'
+                  : 'bottom-0 left-0 p-6 max-w-[85%]'
+              }`}
+            >
               <h2
                 className="text-xl md:text-3xl font-bold text-white leading-tight line-clamp-2"
                 dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}

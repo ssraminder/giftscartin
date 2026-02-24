@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
       titleHtml: b.title_html,
       subtitleHtml: b.subtitle_html,
       imageUrl: b.image_url,
+      subjectImageUrl: b.subject_image_url,
       ctaText: b.cta_text,
       ctaLink: b.cta_link,
       secondaryCtaText: b.secondary_cta_text,

@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
       titleHtml: b.title_html,
       subtitleHtml: b.subtitle_html,
       imageUrl: b.image_url,
+      subjectImageUrl: b.subject_image_url,
       ctaText: b.cta_text,
       ctaLink: b.cta_link,
       secondaryCtaText: b.secondary_cta_text,
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Optional fields
+    if (body.subjectImageUrl !== undefined) insertData.subject_image_url = body.subjectImageUrl || null
     if (body.theme !== undefined) insertData.theme = body.theme
     if (body.subtitleHtml !== undefined) insertData.subtitle_html = body.subtitleHtml
     if (body.secondaryCtaText !== undefined) insertData.secondary_cta_text = body.secondaryCtaText
@@ -106,6 +108,7 @@ export async function POST(request: NextRequest) {
       titleHtml: data.title_html,
       subtitleHtml: data.subtitle_html,
       imageUrl: data.image_url,
+      subjectImageUrl: data.subject_image_url,
       ctaText: data.cta_text,
       ctaLink: data.cta_link,
       secondaryCtaText: data.secondary_cta_text,

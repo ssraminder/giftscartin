@@ -36,6 +36,7 @@ export async function PATCH(
       sortOrder: 'sort_order',
       validFrom: 'valid_from',
       validUntil: 'valid_until',
+      subjectImageUrl: 'subject_image_url',
       targetCitySlug: 'target_city_slug',
       theme: 'theme',
     }
@@ -62,6 +63,7 @@ export async function PATCH(
       titleHtml: data.title_html,
       subtitleHtml: data.subtitle_html,
       imageUrl: data.image_url,
+      subjectImageUrl: data.subject_image_url,
       ctaText: data.cta_text,
       ctaLink: data.cta_link,
       secondaryCtaText: data.secondary_cta_text,

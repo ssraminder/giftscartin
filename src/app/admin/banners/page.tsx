@@ -47,6 +47,7 @@ interface Banner {
   titleHtml: string
   subtitleHtml: string | null
   imageUrl: string
+  subjectImageUrl: string | null
   ctaText: string
   ctaLink: string
   secondaryCtaText: string | null
@@ -66,6 +67,7 @@ interface Banner {
 
 interface BannerFormData {
   imageUrl: string
+  subjectImageUrl: string
   titleHtml: string
   subtitleHtml: string
   ctaText: string
@@ -84,6 +86,7 @@ interface BannerFormData {
 
 const EMPTY_FORM: BannerFormData = {
   imageUrl: '',
+  subjectImageUrl: '',
   titleHtml: '',
   subtitleHtml: '',
   ctaText: 'Shop Now',
@@ -135,9 +138,13 @@ export default function AdminBannersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  // Upload state
+  // Upload state (background)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+
+  // Upload state (hero image)
+  const [heroUploading, setHeroUploading] = useState(false)
+  const [heroUploadError, setHeroUploadError] = useState<string | null>(null)
 
   // AI generation state
   const [aiTheme, setAiTheme] = useState('')
@@ -253,6 +260,7 @@ export default function AdminBannersPage() {
     setEditingBanner(banner)
     setForm({
       imageUrl: banner.imageUrl,
+      subjectImageUrl: banner.subjectImageUrl || '',
       titleHtml: banner.titleHtml,
       subtitleHtml: banner.subtitleHtml || '',
       ctaText: banner.ctaText,
@@ -290,6 +298,7 @@ export default function AdminBannersPage() {
         titleHtml: form.titleHtml,
         subtitleHtml: form.subtitleHtml || null,
         imageUrl: form.imageUrl,
+        subjectImageUrl: form.subjectImageUrl || null,
         ctaText: form.ctaText,
         ctaLink: form.ctaLink,
         secondaryCtaText: form.secondaryCtaText || null,
@@ -367,10 +376,11 @@ export default function AdminBannersPage() {
     }
     setUploading(true)
     setUploadError(null)
-    const formData = new FormData()
-    formData.append('file', file)
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('type', 'background')
     try {
-      const res = await fetch('/api/admin/banners/upload', { method: 'POST', body: formData })
+      const res = await fetch('/api/admin/banners/upload', { method: 'POST', body: fd })
       const json = await res.json()
       if (json.success) {
         setForm(f => ({ ...f, imageUrl: json.data.url }))
@@ -382,6 +392,37 @@ export default function AdminBannersPage() {
       setUploadError('Upload failed. Please try again.')
     } finally {
       setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleHeroImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setHeroUploadError('File too large. Max 5MB.')
+      return
+    }
+    setHeroUploading(true)
+    setHeroUploadError(null)
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('type', 'hero')
+    try {
+      const res = await fetch('/api/admin/banners/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.success) {
+        setForm(f => ({ ...f, subjectImageUrl: json.data.url }))
+        if (json.data.warning) {
+          showToast('error', json.data.warning)
+        }
+      } else {
+        setHeroUploadError(json.error || 'Upload failed')
+      }
+    } catch {
+      setHeroUploadError('Upload failed. Please try again.')
+    } finally {
+      setHeroUploading(false)
       e.target.value = ''
     }
   }
@@ -698,9 +739,9 @@ export default function AdminBannersPage() {
               </p>
             </div>
 
-            {/* 1. Banner Image */}
+            {/* 1. Background Image */}
             <div className="space-y-2">
-              <Label>Banner Image</Label>
+              <Label>Background Image</Label>
               <div className="flex items-center gap-3">
                 <label className="cursor-pointer">
                   <input
@@ -732,13 +773,10 @@ export default function AdminBannersPage() {
                 <p className="text-sm text-red-500">{formErrors.imageUrl}</p>
               )}
               {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
-              <p className="text-xs text-gray-400">PNG, JPG or WebP &middot; Max 5MB &middot; Recommended: 1536&times;1024px</p>
-              <p className="text-xs text-slate-400">
-                Image fills the right side of the tile. Use a 4:3 landscape image with the subject centred. Leave blank to use theme colour only.
-              </p>
+              <p className="text-xs text-gray-400">Full tile background. Landscape photos, abstract textures, or blurred scenes work best. 1536&times;864px recommended.</p>
               {form.imageUrl && form.imageUrl?.trim() !== '' ? (
                 <div className="relative w-full h-36 rounded-lg overflow-hidden bg-gray-100 border mt-1">
-                  <Image src={form.imageUrl} alt="Preview" fill style={{ objectFit: 'cover' }} />
+                  <Image src={form.imageUrl} alt="Background Preview" fill style={{ objectFit: 'cover' }} />
                   <button
                     type="button"
                     onClick={() => setForm(f => ({ ...f, imageUrl: '' }))}
@@ -751,7 +789,57 @@ export default function AdminBannersPage() {
                 <div className="w-full h-36 rounded-lg bg-gray-100 border mt-1 flex items-center justify-center">
                   <div className="text-center text-gray-400">
                     <ImageIcon className="w-8 h-8 mx-auto mb-1" />
-                    <p className="text-xs">No image selected</p>
+                    <p className="text-xs">No background image selected</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 1b. Hero / Subject Image */}
+            <div className="space-y-2">
+              <Label>Hero Image</Label>
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleHeroImageUpload}
+                    disabled={heroUploading}
+                  />
+                  <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 transition-colors">
+                    {heroUploading
+                      ? <><Loader2 className="w-4 h-4 animate-spin text-purple-500" /><span className="text-sm text-gray-500">Removing background...</span></>
+                      : <><Upload className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-500">Upload hero image</span></>
+                    }
+                  </div>
+                </label>
+                <span className="text-sm text-gray-400">or</span>
+                <Input
+                  placeholder="Paste hero image URL (transparent PNG)"
+                  value={form.subjectImageUrl}
+                  onChange={e => setForm(f => ({ ...f, subjectImageUrl: e.target.value }))}
+                  className="flex-1"
+                />
+              </div>
+              {heroUploadError && <p className="text-sm text-red-500">{heroUploadError}</p>}
+              <p className="text-xs text-gray-400">Product or subject photo. Background will be auto-removed after upload. PNG preferred, max 5MB.</p>
+              {form.subjectImageUrl && form.subjectImageUrl?.trim() !== '' ? (
+                <div className="relative w-full h-36 rounded-lg overflow-hidden checker-bg border mt-1 flex items-center justify-center">
+                  <Image src={form.subjectImageUrl} alt="Hero Preview" fill style={{ objectFit: 'contain' }} />
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, subjectImageUrl: '' }))}
+                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 hover:bg-black/70 z-10"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-full h-36 rounded-lg bg-gray-100 border mt-1 flex items-center justify-center">
+                  <div className="text-center text-gray-400">
+                    <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                    <p className="text-xs">No hero image (optional)</p>
                   </div>
                 </div>
               )}
