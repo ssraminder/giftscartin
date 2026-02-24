@@ -758,110 +758,162 @@ export async function POST(request: NextRequest) {
       console.error('Order items creation error:', itemsError)
     }
 
-    // Insert status history entry
-    const { data: statusHistory, error: statusError } = await supabase
-      .from('order_status_history')
-      .insert({
-        orderId: order.id,
-        status: 'PENDING',
-        note: 'Order placed',
-      })
-      .select()
+    // --- Order created successfully. Everything below is non-critical. ---
+    // Each post-creation operation is wrapped in its own try-catch with a
+    // 5-second timeout (via Promise.race) so that an ETIMEDOUT on any single
+    // external call does NOT cause the overall order response to fail with 500.
 
-    if (statusError) {
-      console.error('Status history creation error:', statusError)
+    /** Race a thenable against a 5-second timeout. Rejects with an Error on timeout. */
+    const raceTimeout = <T>(thenable: PromiseLike<T>, label: string, ms = 5000): Promise<T> =>
+      Promise.race([
+        Promise.resolve(thenable),
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        ),
+      ])
+
+    // Non-critical: Insert status history entry
+    let statusHistory: Record<string, unknown>[] | null = null
+    try {
+      const { data, error: statusError } = await raceTimeout(
+        supabase
+          .from('order_status_history')
+          .insert({ orderId: order.id, status: 'PENDING', note: 'Order placed' })
+          .select(),
+        'Status history insert'
+      )
+      if (statusError) {
+        console.error('[orders] Status history insert error (non-fatal):', statusError)
+      } else {
+        statusHistory = data
+      }
+    } catch (e) {
+      console.error('[orders] Status history insert failed (non-fatal):', e)
     }
 
-    // Fetch the address for the response
-    const { data: orderAddress } = await supabase
-      .from('addresses')
-      .select('*')
-      .eq('id', order.addressId)
-      .single()
+    // Non-critical: Fetch the address for the response
+    let orderAddress: Record<string, unknown> | null = null
+    try {
+      const { data } = await raceTimeout(
+        supabase
+          .from('addresses')
+          .select('*')
+          .eq('id', order.addressId)
+          .single(),
+        'Address fetch'
+      )
+      orderAddress = data
+    } catch (e) {
+      console.error('[orders] Address fetch for response failed (non-fatal):', e)
+    }
 
-    // Create partner earning if partner is set
+    // Non-critical: Create partner earning if partner is set
     if (partnerId) {
       try {
-        const { data: partnerRecord } = await supabase
-          .from('partners')
-          .select('commissionPercent')
-          .eq('id', partnerId)
-          .single()
+        const { data: partnerRecord } = await raceTimeout(
+          supabase
+            .from('partners')
+            .select('commissionPercent')
+            .eq('id', partnerId)
+            .single(),
+          'Partner lookup'
+        )
 
         if (partnerRecord) {
           const earningAmount = (Number(order.total) * Number(partnerRecord.commissionPercent)) / 100
-          await supabase
-            .from('partner_earnings')
-            .insert({
-              partnerId,
-              orderId: order.id,
-              amount: earningAmount,
-              status: 'pending',
-            })
+          await raceTimeout(
+            supabase
+              .from('partner_earnings')
+              .insert({
+                partnerId,
+                orderId: order.id,
+                amount: earningAmount,
+                status: 'pending',
+              }),
+            'Partner earning insert'
+          )
         }
       } catch (partnerErr) {
-        // Non-critical: log but don't fail the order
-        console.error('Partner earning creation error:', partnerErr)
+        console.error('[orders] Partner earning creation failed (non-fatal):', partnerErr)
       }
     }
 
-    // Move FILE_UPLOAD addon files from pending/ to orders/{orderId}/
+    // Non-critical: Move FILE_UPLOAD addon files from pending/ to orders/{orderId}/
     try {
-      const storageClient = getSupabase()
-      for (const item of orderItems) {
-        if (!item.addons) continue
-        for (const addon of item.addons) {
-          if ('fileUrl' in addon && addon.fileUrl && typeof addon.fileUrl === 'string') {
-            // Extract the pending/ path from the signed URL
-            const urlObj = new URL(addon.fileUrl)
-            const pathMatch = urlObj.pathname.match(/pending\/([^?]+)/)
-            if (pathMatch) {
-              const pendingPath = `pending/${pathMatch[1]}`
-              const groupId = 'groupId' in addon ? addon.groupId : 'unknown'
-              const filename = pendingPath.split('/').pop() || 'file'
-              const newPath = `orders/${order.id}/${groupId}/${filename}`
+      await raceTimeout(
+        (async () => {
+          const storageClient = getSupabase()
+          for (const item of orderItems) {
+            if (!item.addons) continue
+            for (const addon of item.addons) {
+              if ('fileUrl' in addon && addon.fileUrl && typeof addon.fileUrl === 'string') {
+                const urlObj = new URL(addon.fileUrl)
+                const pathMatch = urlObj.pathname.match(/pending\/([^?]+)/)
+                if (pathMatch) {
+                  const pendingPath = `pending/${pathMatch[1]}`
+                  const groupId = 'groupId' in addon ? addon.groupId : 'unknown'
+                  const filename = pendingPath.split('/').pop() || 'file'
+                  const newPath = `orders/${order.id}/${groupId}/${filename}`
 
-              // Move file: copy then delete
-              const { error: copyError } = await storageClient.storage
-                .from('order-uploads')
-                .copy(pendingPath, newPath)
+                  const { error: copyError } = await storageClient.storage
+                    .from('order-uploads')
+                    .copy(pendingPath, newPath)
 
-              if (!copyError) {
-                await storageClient.storage
-                  .from('order-uploads')
-                  .remove([pendingPath])
+                  if (!copyError) {
+                    await storageClient.storage
+                      .from('order-uploads')
+                      .remove([pendingPath])
+                  }
+                }
               }
             }
           }
-        }
-      }
+        })(),
+        'File move'
+      )
     } catch (storageErr) {
-      // Non-critical: log but don't fail the order
-      console.error('File move error:', storageErr)
+      console.error('[orders] File move failed (non-fatal):', storageErr)
     }
 
-    // Increment coupon usage if applied
+    // Non-critical: Increment coupon usage if applied
     if (appliedCouponId) {
-      const { data: currentCoupon } = await supabase
-        .from('coupons')
-        .select('usedCount')
-        .eq('id', appliedCouponId)
-        .single()
+      try {
+        const { data: currentCoupon } = await raceTimeout(
+          supabase
+            .from('coupons')
+            .select('usedCount')
+            .eq('id', appliedCouponId)
+            .single(),
+          'Coupon fetch'
+        )
 
-      if (currentCoupon) {
-        await supabase
-          .from('coupons')
-          .update({
-            usedCount: (currentCoupon.usedCount || 0) + 1,
-            updatedAt: new Date().toISOString(),
-          })
-          .eq('id', appliedCouponId)
+        if (currentCoupon) {
+          await raceTimeout(
+            supabase
+              .from('coupons')
+              .update({
+                usedCount: (currentCoupon.usedCount || 0) + 1,
+                updatedAt: new Date().toISOString(),
+              })
+              .eq('id', appliedCouponId),
+            'Coupon usage update'
+          )
+        }
+      } catch (e) {
+        console.error('[orders] Coupon usage increment failed (non-fatal):', e)
       }
     }
 
-    // Clear the user's cart (only for logged-in users; guest cart is Zustand client-side)
+    // Non-critical: Clear the user's cart (only for logged-in users; guest cart is Zustand client-side)
     if (!isGuest) {
-      await supabase.from('cart_items').delete().eq('userId', user!.id)
+      try {
+        await raceTimeout(
+          supabase.from('cart_items').delete().eq('userId', user!.id),
+          'Cart clear'
+        )
+      } catch (e) {
+        console.error('[orders] Cart clearing failed (non-fatal):', e)
+      }
     }
 
     // Build response matching old format
