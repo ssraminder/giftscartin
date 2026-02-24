@@ -20,15 +20,28 @@ export async function PATCH(
       updated_at: new Date().toISOString(),
     }
 
-    const allowedFields = [
-      'title_html', 'subtitle_html', 'image_url', 'cta_text', 'cta_link',
-      'secondary_cta_text', 'secondary_cta_link', 'text_position', 'overlay_style',
-      'badge_text', 'is_active', 'sort_order', 'valid_from', 'valid_until', 'target_city_slug',
-    ]
+    // Map camelCase input from client to snake_case for Supabase
+    const fieldMap: Record<string, string> = {
+      titleHtml: 'title_html',
+      subtitleHtml: 'subtitle_html',
+      imageUrl: 'image_url',
+      ctaText: 'cta_text',
+      ctaLink: 'cta_link',
+      secondaryCtaText: 'secondary_cta_text',
+      secondaryCtaLink: 'secondary_cta_link',
+      textPosition: 'text_position',
+      overlayStyle: 'overlay_style',
+      badgeText: 'badge_text',
+      isActive: 'is_active',
+      sortOrder: 'sort_order',
+      validFrom: 'valid_from',
+      validUntil: 'valid_until',
+      targetCitySlug: 'target_city_slug',
+    }
 
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updateData[field] = body[field]
+    for (const [camel, snake] of Object.entries(fieldMap)) {
+      if (body[camel] !== undefined) {
+        updateData[snake] = body[camel]
       }
     }
 
@@ -43,7 +56,28 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, data })
+    const mapped = data ? {
+      id: data.id,
+      titleHtml: data.title_html,
+      subtitleHtml: data.subtitle_html,
+      imageUrl: data.image_url,
+      ctaText: data.cta_text,
+      ctaLink: data.cta_link,
+      secondaryCtaText: data.secondary_cta_text,
+      secondaryCtaLink: data.secondary_cta_link,
+      textPosition: data.text_position,
+      overlayStyle: data.overlay_style,
+      badgeText: data.badge_text,
+      isActive: data.is_active,
+      sortOrder: data.sort_order,
+      validFrom: data.valid_from,
+      validUntil: data.valid_until,
+      targetCitySlug: data.target_city_slug,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    } : null
+
+    return NextResponse.json({ success: true, data: mapped })
   } catch (error) {
     console.error('PATCH /api/admin/banners/[id] error:', error)
     return NextResponse.json({ success: false, error: 'Failed to update banner' }, { status: 500 })
