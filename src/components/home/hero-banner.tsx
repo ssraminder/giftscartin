@@ -36,18 +36,19 @@ export default function HeroBanner() {
   const [banners, setBanners] = useState<Banner[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [transitionDisabled, setTransitionDisabled] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [tileWidth, setTileWidth] = useState(0)
 
-  const trackRef = useRef<HTMLDivElement>(null)
   const tileRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
-  const currentIndexRef = useRef(0)
   const isPausedRef = useRef(false)
+  const initializedRef = useRef(false)
 
-  // Keep refs in sync
-  useEffect(() => { currentIndexRef.current = currentIndex }, [currentIndex])
+  // Keep isPaused ref in sync for interval callback
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
+  // Fetch banners
   useEffect(() => {
     fetch('/api/banners')
       .then((r) => r.json())
@@ -62,36 +63,71 @@ export default function HeroBanner() {
       .finally(() => setLoading(false))
   }, [])
 
-  const goTo = useCallback(
-    (index: number) => {
-      if (index < 0 || index >= banners.length) return
-      setCurrentIndex(index)
-    },
-    [banners.length]
-  )
-
-  const goPrev = useCallback(() => {
-    setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length)
+  // Measure tile width on mount and resize
+  useEffect(() => {
+    const measure = () => {
+      if (tileRef.current) setTileWidth(tileRef.current.offsetWidth)
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
   }, [banners.length])
 
-  // Single interval, never recreated — refs always have current values
+  // Initialize position + boundary detection (clone-based infinite loop)
+  useEffect(() => {
+    if (banners.length <= 1) return
+
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      setCurrentIndex(banners.length)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTransitionDisabled(false)
+        })
+      })
+      return
+    }
+
+    if (currentIndex >= banners.length * 2) {
+      setTransitionDisabled(true)
+      setCurrentIndex(banners.length)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTransitionDisabled(false)
+        })
+      })
+    } else if (currentIndex <= banners.length - 1) {
+      setTransitionDisabled(true)
+      setCurrentIndex(banners.length * 2 - 1)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTransitionDisabled(false)
+        })
+      })
+    }
+  }, [currentIndex, banners.length])
+
+  // Auto-advance every 5s, pause on hover
   useEffect(() => {
     if (banners.length <= 1) return
     const interval = setInterval(() => {
       if (isPausedRef.current) return
-      const next = (currentIndexRef.current + 1) % banners.length
-      setCurrentIndex(next)
+      setCurrentIndex(prev => prev + 1)
     }, 5000)
     return () => clearInterval(interval)
   }, [banners.length])
 
-  // Compute translate offset from first tile's width
-  const getTranslateX = useCallback((): string => {
-    const tile = tileRef.current
-    if (!tile) return '0px'
-    const tileWidth = tile.offsetWidth
-    return `-${currentIndex * (tileWidth + 12)}px`
-  }, [currentIndex])
+  // Build display list: triple for infinite loop, or original for single banner
+  const displayBanners = banners.length > 1
+    ? [...banners, ...banners, ...banners]
+    : banners
+
+  const gap = 12
+  const translateX = tileWidth > 0 ? currentIndex * (tileWidth + gap) : 0
+  const activeDot = banners.length > 0 ? currentIndex % banners.length : 0
+
+  const goNext = useCallback(() => setCurrentIndex(prev => prev + 1), [])
+  const goPrev = useCallback(() => setCurrentIndex(prev => prev - 1), [])
 
   // Touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -101,17 +137,16 @@ export default function HeroBanner() {
   const handleTouchEnd = (e: React.TouchEvent) => {
     const delta = touchStartX.current - e.changedTouches[0].clientX
     if (Math.abs(delta) > 50) {
-      if (delta > 0 && currentIndex < banners.length - 1) {
-        goTo(currentIndex + 1)
-      } else if (delta < 0 && currentIndex > 0) {
-        goTo(currentIndex - 1)
-      }
+      if (delta > 0) goNext()
+      else goPrev()
     }
   }
 
   if (loading) {
     return (
-      <div className="w-full h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+      <div className="px-4">
+        <div className="w-full h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+      </div>
     )
   }
 
@@ -119,32 +154,27 @@ export default function HeroBanner() {
 
   return (
     <div
-      className="relative w-full overflow-hidden"
+      className="relative w-full overflow-hidden px-4"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
       {/* Scrollable track */}
       <div
-        ref={trackRef}
         className="flex gap-3"
         style={{
-          transform: `translateX(${getTranslateX()})`,
-          transition: 'transform 400ms ease',
+          transform: `translateX(-${translateX}px)`,
+          transition: transitionDisabled ? 'none' : 'transform 400ms ease',
         }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {banners.map((banner, i) => (
+        {displayBanners.map((banner, i) => (
           <div
-            key={banner.id}
+            key={`${banner.id}-${i}`}
             ref={i === 0 ? tileRef : undefined}
             className="relative flex-shrink-0 overflow-hidden rounded-2xl
               h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px]
-              w-[100vw]
-              md:w-[calc((100%-12px)/2.5)]
-              lg:w-[calc((100%-24px)/3)]
-              xl:w-[calc((100%-36px)/3.5)]
-              2xl:w-[calc((100%-48px)/4)]"
+              w-[85vw] sm:w-[75vw] md:w-[60vw] lg:w-[calc(40vw)] xl:w-[calc(38vw)] 2xl:w-[calc(35vw)]"
           >
             {/* Layer 1 — Background image or gradient fallback */}
             {banner.imageUrl ? (
@@ -241,24 +271,39 @@ export default function HeroBanner() {
         ))}
       </div>
 
-      {/* Left arrow — hidden on mobile, hidden on first tile */}
-      {currentIndex > 0 && (
+      {/* Left arrow */}
+      {banners.length > 1 && (
         <button
           onClick={goPrev}
-          className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+          className="hidden md:flex absolute left-5 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
       )}
 
-      {/* Right arrow — hidden on mobile, hidden on last tile */}
-      {currentIndex < banners.length - 1 && (
+      {/* Right arrow */}
+      {banners.length > 1 && (
         <button
-          onClick={() => goTo(currentIndex + 1)}
-          className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+          onClick={goNext}
+          className="hidden md:flex absolute right-5 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
         >
           <ChevronRight className="w-5 h-5" />
         </button>
+      )}
+
+      {/* Dot indicators */}
+      {banners.length > 1 && (
+        <div className="flex justify-center gap-2 mt-3">
+          {banners.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentIndex(banners.length + i)}
+              className={`w-2 h-2 rounded-full transition-colors ${
+                i === activeDot ? 'bg-pink-500' : 'bg-gray-300'
+              }`}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
