@@ -262,10 +262,10 @@ export default function AdminBannersPage() {
   const handleSubmit = async () => {
     // Validate
     const errors: Record<string, string> = {}
-    if (!form.titleHtml.trim()) errors.titleHtml = 'Title HTML is required'
-    if (!form.imageUrl.trim()) errors.imageUrl = 'Image URL is required'
-    if (!form.ctaText.trim()) errors.ctaText = 'CTA text is required'
-    if (!form.ctaLink.trim()) errors.ctaLink = 'CTA link is required'
+    if (!form.titleHtml?.trim()) errors.titleHtml = 'Title HTML is required'
+    if (!form.imageUrl?.trim()) errors.imageUrl = 'Image URL is required'
+    if (!form.ctaText?.trim()) errors.ctaText = 'CTA text is required'
+    if (!form.ctaLink?.trim()) errors.ctaLink = 'CTA link is required'
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
       return
@@ -373,7 +373,7 @@ export default function AdminBannersPage() {
   }
 
   async function handleAiGenerate() {
-    if (!aiTheme.trim()) return
+    if (!aiTheme?.trim()) return
     setAiGenerating(true)
     setAiError(null)
 
@@ -501,7 +501,7 @@ export default function AdminBannersPage() {
               <GripVertical className="h-5 w-5 shrink-0 text-slate-300" />
 
               {/* Thumbnail */}
-              {banner.imageUrl && banner.imageUrl.trim() !== '' ? (
+              {banner.imageUrl && banner.imageUrl?.trim() !== '' ? (
                 <div className="relative w-16 h-10 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                   <Image
                     src={banner.imageUrl}
@@ -628,7 +628,7 @@ export default function AdminBannersPage() {
                 <Button
                   type="button"
                   onClick={handleAiGenerate}
-                  disabled={aiGenerating || !aiTheme.trim()}
+                  disabled={aiGenerating || !aiTheme?.trim()}
                   className="bg-purple-600 hover:bg-purple-700 text-white shrink-0"
                 >
                   {aiGenerating
@@ -678,7 +678,7 @@ export default function AdminBannersPage() {
               )}
               {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
               <p className="text-xs text-gray-400">PNG, JPG or WebP &middot; Max 5MB &middot; Recommended: 1536&times;1024px</p>
-              {form.imageUrl && form.imageUrl.trim() !== '' ? (
+              {form.imageUrl && form.imageUrl?.trim() !== '' ? (
                 <div className="relative w-full h-36 rounded-lg overflow-hidden bg-gray-100 border mt-1">
                   <Image src={form.imageUrl} alt="Preview" fill style={{ objectFit: 'cover' }} />
                   <button
