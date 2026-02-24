@@ -463,10 +463,16 @@ export default function AdminBannersPage() {
             setForm(f => ({
               ...f,
               ...(data.result?.imageUrl ? { imageUrl: data.result.imageUrl } : {}),
+              ...(data.result?.subjectImageUrl ? { subjectImageUrl: data.result.subjectImageUrl } : {}),
               ...(data.result?.titleHtml ? { titleHtml: data.result.titleHtml } : {}),
               ...(data.result?.subtitleHtml ? { subtitleHtml: data.result.subtitleHtml } : {}),
               ...(data.result?.ctaText ? { ctaText: data.result.ctaText } : {}),
+              ...(data.result?.ctaLink ? { ctaLink: data.result.ctaLink } : {}),
+              ...(data.result?.secondaryCtaText ? { secondaryCtaText: data.result.secondaryCtaText } : {}),
+              ...(data.result?.secondaryCtaLink ? { secondaryCtaLink: data.result.secondaryCtaLink } : {}),
               ...(data.result?.badgeText ? { badgeText: data.result.badgeText } : {}),
+              ...(data.result?.overlayStyle ? { overlayStyle: data.result.overlayStyle } : {}),
+              ...(data.result?.textPosition ? { textPosition: data.result.textPosition } : {}),
             }))
             setFormErrors({})
             setAiGenerating(false)
@@ -707,7 +713,7 @@ export default function AdminBannersPage() {
               </div>
               {aiError && <p className="text-xs text-red-500 mt-2">{aiError}</p>}
               <p className="text-xs text-purple-600 mt-2">
-                Generates banner image + title, subtitle, CTA and badge text automatically
+                Generates background image, hero product image (background removed), title, subtitle, CTA and badge text automatically
               </p>
             </div>
 
