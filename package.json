@@ -13,6 +13,7 @@
     "@anthropic-ai/sdk": "^0.77.0",
     "@fontsource-variable/inter": "^5.2.8",
     "@getbrevo/brevo": "^3.0.1",
+    "@netlify/functions": "^5.1.2",
     "@netlify/plugin-nextjs": "^5.15.8",
     "@paypal/checkout-server-sdk": "^1.0.3",
     "@paypal/paypal-js": "^9.2.0",
