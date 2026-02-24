@@ -12,8 +12,12 @@ import {
   Loader2,
   RefreshCw,
   Image as ImageIcon,
+  Upload,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -117,6 +121,10 @@ export default function AdminBannersPage() {
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Upload state
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -330,6 +338,34 @@ export default function AdminBannersPage() {
     return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
   }
 
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('File too large. Max 5MB.')
+      return
+    }
+    setUploading(true)
+    setUploadError(null)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/admin/banners/upload', { method: 'POST', body: formData })
+      const json = await res.json()
+      if (json.success) {
+        setForm(f => ({ ...f, imageUrl: json.data.url }))
+        setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
+      } else {
+        setUploadError(json.error || 'Upload failed')
+      }
+    } catch {
+      setUploadError('Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
   // ==================== Render ====================
 
   return (
@@ -501,36 +537,59 @@ export default function AdminBannersPage() {
           </DialogHeader>
 
           <div className="space-y-5">
-            {/* 1. Image URL */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Image URL</label>
-              <input
-                type="text"
-                value={form.imageUrl}
-                onChange={e => {
-                  setForm(f => ({ ...f, imageUrl: e.target.value }))
-                  setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
-                }}
-                placeholder="/banners/banner-cakes.png"
-                className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-              />
+            {/* 1. Banner Image */}
+            <div className="space-y-2">
+              <Label>Banner Image</Label>
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={uploading}
+                  />
+                  <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-pink-400 transition-colors">
+                    {uploading
+                      ? <><Loader2 className="w-4 h-4 animate-spin text-pink-500" /><span className="text-sm text-gray-500">Uploading...</span></>
+                      : <><Upload className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-500">Upload image</span></>
+                    }
+                  </div>
+                </label>
+                <span className="text-sm text-gray-400">or</span>
+                <Input
+                  placeholder="Paste Supabase / external URL"
+                  value={form.imageUrl}
+                  onChange={e => {
+                    setForm(f => ({ ...f, imageUrl: e.target.value }))
+                    setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
+                  }}
+                  className="flex-1"
+                />
+              </div>
               {formErrors.imageUrl && (
-                <p className="mt-1 text-xs text-red-600">{formErrors.imageUrl}</p>
+                <p className="text-sm text-red-500">{formErrors.imageUrl}</p>
               )}
+              {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
+              <p className="text-xs text-gray-400">PNG, JPG or WebP &middot; Max 5MB &middot; Recommended: 1536&times;1024px</p>
               {form.imageUrl && (
-                <div className="relative mt-2 h-32 w-full overflow-hidden rounded bg-gray-100">
+                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-gray-100 border mt-1">
                   <Image
                     src={form.imageUrl}
-                    alt="preview"
+                    alt="Preview"
                     fill
                     style={{ objectFit: 'cover' }}
                     unoptimized={form.imageUrl.startsWith('/')}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, imageUrl: '' }))}
+                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 hover:bg-black/70"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
               )}
-              <p className="mt-1 text-xs text-slate-400">
-                Upload image to /public/banners/ then enter path e.g. /banners/banner-cakes.png
-              </p>
             </div>
 
             {/* 2. Title HTML */}

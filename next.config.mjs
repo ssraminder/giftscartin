@@ -7,6 +7,11 @@ const nextConfig = {
         hostname: '*.supabase.co',
         pathname: '/storage/v1/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'saeditdtacprxcnlgips.supabase.co',
+        pathname: '/storage/v1/object/public/**',
+      },
     ],
     // Limit image sizes to avoid generating too many variants
     deviceSizes: [640, 750, 828, 1080, 1200],
