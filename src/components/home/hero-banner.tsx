@@ -111,7 +111,7 @@ export default function HeroBanner() {
 
   if (loading) {
     return (
-      <div className="w-full h-[240px] md:h-[340px] lg:h-[380px] xl:h-[400px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+      <div className="w-full h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
     )
   }
 
@@ -139,8 +139,8 @@ export default function HeroBanner() {
             key={banner.id}
             ref={i === 0 ? tileRef : undefined}
             className="relative flex-shrink-0 overflow-hidden rounded-2xl
-              h-[240px] md:h-[340px] lg:h-[380px] xl:h-[400px]
-              w-[90vw]
+              h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px]
+              w-[100vw]
               md:w-[calc((100%-12px)/2.5)]
               lg:w-[calc((100%-24px)/3)]
               xl:w-[calc((100%-36px)/3.5)]
