@@ -74,7 +74,7 @@
 | Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | ⏳ **PENDING — Run in Supabase SQL Editor** |
 | Delivery Slot System — Prompt 7 | Added min_lead_time_hours + lead_time_note to products; cutoff_hours + cutoff_time + slot_group to delivery_slots; replaced blocked_slots[] with mode + slot_overrides on delivery_holidays; seeded 6 fixed windows + Chandigarh city configs + example holidays | ⏳ **PENDING — Run `prisma/migrations/prompt7_delivery_slot_system.sql` in Supabase SQL Editor** |
 | ALTER TABLE products ADD COLUMN "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false | Add same-day eligible flag | ✅ Executed |
-| Migration 003 — Banners table | CREATE TABLE banners with 5 seed rows (3 active, 2 inactive). Supports homepage slider management with HTML content, CTA buttons, date-range visibility, and city targeting. | ⏳ **PENDING — Run `prisma/migrations/003_banners_table.sql` in Supabase SQL Editor** |
+| Migration 003 — Banners table | CREATE TABLE banners with 5 seed rows (3 active, 2 inactive). Supports homepage slider management with HTML content, CTA buttons, date-range visibility, and city targeting. | ✅ Executed |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 > Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
