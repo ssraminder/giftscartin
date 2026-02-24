@@ -41,12 +41,12 @@ export default function HeroBanner() {
   const trackRef = useRef<HTMLDivElement>(null)
   const tileRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
+  const currentIndexRef = useRef(0)
   const isPausedRef = useRef(false)
 
-  // Keep isPausedRef in sync with isPaused state
-  useEffect(() => {
-    isPausedRef.current = isPaused
-  }, [isPaused])
+  // Keep refs in sync
+  useEffect(() => { currentIndexRef.current = currentIndex }, [currentIndex])
+  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   useEffect(() => {
     fetch('/api/banners')
@@ -74,14 +74,15 @@ export default function HeroBanner() {
     setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length)
   }, [banners.length])
 
-  // Auto-advance every 5s, loops from last back to first
+  // Single interval, never recreated — refs always have current values
   useEffect(() => {
     if (banners.length <= 1) return
-    const timer = setInterval(() => {
+    const interval = setInterval(() => {
       if (isPausedRef.current) return
-      setCurrentIndex((prev) => (prev + 1) % banners.length)
+      const next = (currentIndexRef.current + 1) % banners.length
+      setCurrentIndex(next)
     }, 5000)
-    return () => clearInterval(timer)
+    return () => clearInterval(interval)
   }, [banners.length])
 
   // Compute translate offset from first tile's width
@@ -110,7 +111,7 @@ export default function HeroBanner() {
 
   if (loading) {
     return (
-      <div className="w-full aspect-video bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+      <div className="w-full h-[240px] md:h-[340px] lg:h-[380px] xl:h-[400px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
     )
   }
 
@@ -137,7 +138,8 @@ export default function HeroBanner() {
           <div
             key={banner.id}
             ref={i === 0 ? tileRef : undefined}
-            className="relative flex-shrink-0 overflow-hidden rounded-2xl aspect-video
+            className="relative flex-shrink-0 overflow-hidden rounded-2xl
+              h-[240px] md:h-[340px] lg:h-[380px] xl:h-[400px]
               w-[90vw]
               md:w-[calc((100%-12px)/2.5)]
               lg:w-[calc((100%-24px)/3)]
