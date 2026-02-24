@@ -118,14 +118,9 @@ export function Header({ logoUrl = null }: HeaderProps) {
       >
         {/* ── Row 1: Top Bar (desktop only) ─────────────────────── */}
         <div className="hidden md:flex border-b border-gray-100 bg-[#FFF8F0]">
-          <div className="container mx-auto px-4 flex items-center justify-between h-10">
-            {/* Left: delivery location selector */}
-            <div className="shrink-0">
-              <HeaderLocationPicker />
-            </div>
-
-            {/* Right: marquee trust strip */}
-            <div className="flex-1 ml-6 overflow-hidden">
+          <div className="container mx-auto px-4 flex items-center justify-center h-10">
+            {/* Marquee trust strip */}
+            <div className="flex-1 overflow-hidden">
               <div className="flex items-center whitespace-nowrap animate-marquee">
                 {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((msg, i) => (
                   <span
@@ -194,6 +189,11 @@ export function Header({ logoUrl = null }: HeaderProps) {
                 </>
               )}
             </Link>
+
+            {/* Delivering-to location pill — desktop only */}
+            <div className="hidden md:flex shrink-0">
+              <HeaderLocationPicker />
+            </div>
 
             {/* Search bar — desktop */}
             <form
