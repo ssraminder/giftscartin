@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const serviceablePincodeSet = new Set<string>()
     for (const row of vendorPincodeRows || []) {
-      const vendor = row.vendors as { id: string; cityId: string; status: string; isOnline: boolean } | null
+      const vendor = row.vendors as unknown as { id: string; cityId: string; status: string; isOnline: boolean } | null
       if (
         vendor &&
         vendor.cityId === cityId &&

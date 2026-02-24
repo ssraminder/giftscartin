@@ -14,7 +14,8 @@ type PincodeStatus =
   | { type: 'error'; message: string }
 
 export function LocationModal() {
-  const [visible, setVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [showModal, setShowModal] = useState(false)
   const [pincodeInput, setPincodeInput] = useState('')
   const [pincodeStatus, setPincodeStatus] = useState<PincodeStatus>({ type: 'idle' })
 
@@ -23,21 +24,26 @@ export function LocationModal() {
   const setCity = useLocation((s) => s.setCity)
   const setSkipped = useLocation((s) => s.setSkipped)
 
-  // Show modal after 800ms delay on first visit
+  // Hydration guard: wait one render cycle for Zustand to hydrate from localStorage
   useEffect(() => {
-    // Don't show if city already selected or user skipped
+    setMounted(true)
+  }, [])
+
+  // Show modal after 800ms delay on first visit (only after hydration)
+  useEffect(() => {
+    if (!mounted) return
     if (cityId || locationSkipped) return
 
     const timer = setTimeout(() => {
-      setVisible(true)
+      setShowModal(true)
     }, 800)
 
     return () => clearTimeout(timer)
-  }, [cityId, locationSkipped])
+  }, [mounted, cityId, locationSkipped])
 
   const handleClose = useCallback(() => {
     setSkipped()
-    setVisible(false)
+    setShowModal(false)
   }, [setSkipped])
 
   const handleCitySelect = useCallback(
@@ -47,7 +53,7 @@ export function LocationModal() {
         cityName: city.cityName,
         citySlug: city.citySlug,
       })
-      setVisible(false)
+      setShowModal(false)
     },
     [setCity]
   )
@@ -87,7 +93,7 @@ export function LocationModal() {
           pincode: pincodeInput,
           areaName: aName || undefined,
         })
-        setVisible(false)
+        setShowModal(false)
       } else {
         setPincodeStatus({ type: 'not_serviceable' })
       }
@@ -96,7 +102,7 @@ export function LocationModal() {
     }
   }, [pincodeInput, setCity])
 
-  if (!visible) return null
+  if (!showModal) return null
 
   // Filter to active non-coming-soon cities for chips
   const activeCities = POPULAR_CITIES.filter((c) => c.isActive && !c.isComingSoon)
