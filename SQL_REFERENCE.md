@@ -56,8 +56,9 @@
 | `image_generation_jobs` | ImageGenerationJob | id, productId, imageIndex, imageType, status, promptUsed, storageUrl, retryCount | → products, unique(productId, imageIndex) |
 | `catalog_imports` | CatalogImport | id, adminId, fileName, status, categoriesCount, productsCount | (standalone) |
 | `payment_methods` | PaymentMethod | id, name, slug (unique), description, isActive, sortOrder | (standalone) |
+| `banners` | Banner | id, title_html, subtitle_html, image_url, cta_text, cta_link, text_position, overlay_style, badge_text, is_active, sort_order, valid_from, valid_until, target_city_slug | (standalone) |
 
-**Total: 48 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods)
+**Total: 49 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods + 1 banners)
 
 ---
 
@@ -73,6 +74,7 @@
 | Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | ⏳ **PENDING — Run in Supabase SQL Editor** |
 | Delivery Slot System — Prompt 7 | Added min_lead_time_hours + lead_time_note to products; cutoff_hours + cutoff_time + slot_group to delivery_slots; replaced blocked_slots[] with mode + slot_overrides on delivery_holidays; seeded 6 fixed windows + Chandigarh city configs + example holidays | ⏳ **PENDING — Run `prisma/migrations/prompt7_delivery_slot_system.sql` in Supabase SQL Editor** |
 | ALTER TABLE products ADD COLUMN "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false | Add same-day eligible flag | ✅ Executed |
+| Migration 003 — Banners table | CREATE TABLE banners with 5 seed rows (3 active, 2 inactive). Supports homepage slider management with HTML content, CTA buttons, date-range visibility, and city targeting. | ⏳ **PENDING — Run `prisma/migrations/003_banners_table.sql` in Supabase SQL Editor** |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 > Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
@@ -213,6 +215,23 @@ ORDER BY ds.name, c.name;
 
 ```sql
 -- DELETE FROM otp_verifications WHERE email = 'user@example.com' AND verified = false;
+```
+
+### Banners
+
+```sql
+-- All banners with status
+SELECT id, title_html, is_active, sort_order, valid_from, valid_until, target_city_slug
+FROM banners
+ORDER BY sort_order ASC;
+
+-- Active banners for homepage (what customers see)
+SELECT id, title_html, image_url, cta_text, cta_link, badge_text
+FROM banners
+WHERE is_active = true
+  AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
+  AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
+ORDER BY sort_order ASC;
 ```
 
 ---
@@ -1002,6 +1021,31 @@ INSERT INTO payment_methods (id, name, slug, description, "sortOrder") VALUES
   (gen_random_uuid()::text, 'Cheque', 'cheque', 'Payment by cheque', 5),
   (gen_random_uuid()::text, 'Credit Card', 'credit-card', 'Visa, Mastercard, Amex', 6),
   (gen_random_uuid()::text, 'Wallet', 'wallet', 'Platform wallet balance', 7);
+```
+
+### Banners
+
+```sql
+CREATE TABLE banners (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  title_html TEXT NOT NULL,
+  subtitle_html TEXT,
+  image_url TEXT NOT NULL,
+  cta_text TEXT NOT NULL DEFAULT 'Shop Now',
+  cta_link TEXT NOT NULL DEFAULT '/',
+  secondary_cta_text TEXT,
+  secondary_cta_link TEXT,
+  text_position TEXT NOT NULL DEFAULT 'left',     -- 'left' | 'right'
+  overlay_style TEXT NOT NULL DEFAULT 'dark-left', -- 'dark-left' | 'dark-right' | 'full-dark'
+  badge_text TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  valid_from DATE,                                 -- null = always show
+  valid_until DATE,                                -- null = always show
+  target_city_slug TEXT,                           -- null = all cities
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 ```
 
 ### Pincode Lookup Queries
