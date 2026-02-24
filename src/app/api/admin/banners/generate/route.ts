@@ -1,3 +1,4 @@
+// Required env vars: OPENAI_API_KEY, ANTHROPIC_API_KEY, REMOVE_BG_API_KEY (optional — skips bg removal if missing)
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
