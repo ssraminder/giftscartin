@@ -1,15 +1,9 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { ChevronDown, MapPin, Loader2 } from 'lucide-react'
-import { useCity } from '@/hooks/use-city'
-
-interface CityOption {
-  id: string
-  name: string
-  slug: string
-  state: string
-}
+import { ChevronDown, MapPin, Loader2, Check } from 'lucide-react'
+import { useLocation } from '@/hooks/use-location'
+import { POPULAR_CITIES } from '@/lib/cities-data'
 
 type PincodeStatus =
   | { type: 'idle' }
@@ -20,10 +14,13 @@ type PincodeStatus =
   | { type: 'error'; message: string }
 
 export function HeaderLocationPicker() {
-  const { cityName, pincode: ctxPincode, isSelected, setCity } = useCity()
+  const cityId = useLocation((s) => s.cityId)
+  const cityName = useLocation((s) => s.cityName)
+  const pincode = useLocation((s) => s.pincode)
+  const areaName = useLocation((s) => s.areaName)
+  const setCity = useLocation((s) => s.setCity)
+
   const [open, setOpen] = useState(false)
-  const [cities, setCities] = useState<CityOption[]>([])
-  const [loadingCities, setLoadingCities] = useState(false)
   const [pincodeInput, setPincodeInput] = useState('')
   const [pincodeStatus, setPincodeStatus] = useState<PincodeStatus>({ type: 'idle' })
   const containerRef = useRef<HTMLDivElement>(null)
@@ -39,27 +36,12 @@ export function HeaderLocationPicker() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Fetch cities when dropdown opens
-  useEffect(() => {
-    if (!open || cities.length > 0) return
-    setLoadingCities(true)
-    fetch('/api/cities')
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data?.cities) {
-          setCities(json.data.cities)
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingCities(false))
-  }, [open, cities.length])
-
   const handleCitySelect = useCallback(
-    (city: CityOption) => {
+    (city: { cityId: string; cityName: string; citySlug: string }) => {
       setCity({
-        cityId: city.id,
-        cityName: city.name,
-        citySlug: city.slug,
+        cityId: city.cityId,
+        cityName: city.cityName,
+        citySlug: city.citySlug,
       })
       setOpen(false)
       setPincodeInput('')
@@ -102,67 +84,78 @@ export function HeaderLocationPicker() {
     }
   }, [pincodeInput, setCity])
 
-  const displayText = isSelected
-    ? `${cityName || 'City'}${ctxPincode ? ` - ${ctxPincode}` : ''}`
-    : null
+  const isSelected = !!cityId
+  const hasPincode = !!pincode
+
+  // Active non-coming-soon cities for chips
+  const activeCities = POPULAR_CITIES.filter((c) => c.isActive && !c.isComingSoon)
 
   return (
     <div ref={containerRef} className="relative">
       {/* Trigger button */}
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-sm hover:text-[#E91E63] transition-colors"
+        className={`flex items-center gap-1.5 text-sm transition-colors rounded-lg px-2 py-1.5 ${
+          hasPincode
+            ? 'border border-[#FFD6E4] bg-[#FFF0F5] hover:bg-[#FFE0EE]'
+            : 'hover:text-[#E91E63]'
+        }`}
       >
-        <MapPin className="h-4 w-4 text-[#E91E63]" />
+        <MapPin className="h-4 w-4 text-[#E91E63] shrink-0" />
         <div className="flex flex-col items-start">
-          <span className="text-[10px] text-gray-400 leading-none">Deliver to</span>
-          {displayText ? (
+          <span className="text-[10px] text-gray-400 leading-none">
+            {isSelected ? 'Delivering to' : 'Deliver to'}
+          </span>
+          {isSelected ? (
             <span className="text-xs font-semibold text-gray-800 max-w-[160px] truncate leading-tight">
-              {displayText}
+              {hasPincode && areaName
+                ? `${areaName} \u00b7 ${pincode}`
+                : cityName || 'City'}
             </span>
           ) : (
             <span className="text-xs font-semibold text-[#E91E63] leading-tight">
-              Select City
+              Select Location
             </span>
           )}
         </div>
         <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
       </button>
 
-      {/* Dropdown */}
+      {/* Compact dropdown */}
       {open && (
         <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-xl border border-gray-200 shadow-xl z-50 p-4">
-          <p className="text-sm font-semibold text-gray-800 mb-3">Select your city</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">
+            Change Location
+          </p>
 
-          {/* City list */}
-          {loadingCities ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {cities.map((city) => (
+          {/* City chips */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {activeCities.map((city) => {
+              const isActive = cityId === city.cityId
+              return (
                 <button
-                  key={city.id}
+                  key={city.cityId}
                   onClick={() => handleCitySelect(city)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                    isSelected && cityName === city.name
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    isActive
                       ? 'bg-[#E91E63] text-white border-[#E91E63]'
                       : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-[#E91E63] hover:text-[#E91E63]'
                   }`}
                 >
-                  {city.name}
+                  {city.cityName}
+                  {isActive && <Check className="h-3 w-3" />}
                 </button>
-              ))}
-              {cities.length === 0 && !loadingCities && (
-                <p className="text-xs text-gray-500">No cities available</p>
-              )}
-            </div>
-          )}
+              )
+            })}
+          </div>
 
-          {/* Pincode input */}
+          {/* Pincode section */}
           <div className="border-t border-gray-100 pt-3">
-            <p className="text-xs text-gray-500 mb-2">Or check by pincode</p>
+            <div className="flex items-center gap-3 mb-2.5">
+              <div className="flex-1 h-px bg-gray-100" />
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">or pincode</span>
+              <div className="flex-1 h-px bg-gray-100" />
+            </div>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -175,7 +168,10 @@ export function HeaderLocationPicker() {
                   setPincodeInput(val)
                   if (pincodeStatus.type !== 'idle') setPincodeStatus({ type: 'idle' })
                 }}
-                className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#E91E63]"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && pincodeInput.length === 6) handlePincodeCheck()
+                }}
+                className="flex-1 px-3 py-2 text-base border border-gray-200 rounded-lg focus:outline-none focus:border-[#E91E63]"
               />
               <button
                 onClick={handlePincodeCheck}
@@ -190,19 +186,21 @@ export function HeaderLocationPicker() {
               </button>
             </div>
 
-            {/* Pincode status messages */}
+            {/* Status messages */}
             {pincodeStatus.type === 'coming_soon' && (
-              <p className="mt-2 text-xs text-blue-600 font-medium">
-                {pincodeStatus.areaName ? `We're coming to ${pincodeStatus.areaName} soon!` : "We're coming to your area soon!"}
+              <p className="mt-2 text-xs text-[#1565C0] font-medium bg-[#E3F2FD] rounded-lg px-2.5 py-1.5 border border-[#90CAF9]">
+                {pincodeStatus.areaName
+                  ? `We're coming to ${pincodeStatus.areaName} soon!`
+                  : "We're coming to your area soon!"}
               </p>
             )}
             {pincodeStatus.type === 'not_serviceable' && (
-              <p className="mt-2 text-xs text-red-600 font-medium">
-                Not serviceable yet
+              <p className="mt-2 text-xs text-[#C62828] font-medium bg-[#FFEBEE] rounded-lg px-2.5 py-1.5 border border-[#EF9A9A]">
+                Not serviceable yet. Try a nearby pincode.
               </p>
             )}
             {pincodeStatus.type === 'error' && (
-              <p className="mt-2 text-xs text-red-600 font-medium">
+              <p className="mt-2 text-xs text-[#C62828] font-medium bg-[#FFEBEE] rounded-lg px-2.5 py-1.5 border border-[#EF9A9A]">
                 {pincodeStatus.message}
               </p>
             )}

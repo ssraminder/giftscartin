@@ -3,6 +3,7 @@ import { Footer } from "@/components/layout/footer"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { AnnouncementBar } from "@/components/layout/announcement-bar"
 import { ReferralProvider } from "@/components/providers/referral-provider"
+import { LocationModal } from "@/components/location/location-modal"
 import { getSupabaseAdmin } from "@/lib/supabase"
 
 interface MenuNode {
@@ -88,6 +89,7 @@ export default async function ShopLayout({
         <main className="flex-1">{children}</main>
         <Footer />
         <BottomNav />
+        <LocationModal />
       </div>
     </ReferralProvider>
   )
