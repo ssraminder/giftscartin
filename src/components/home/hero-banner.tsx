@@ -41,7 +41,7 @@ export default function HeroBanner() {
 
   const tileWidthRef = useRef(0)
   const isPausedRef = useRef(false)
-  const firstTileRef = useRef<HTMLDivElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
 
   // Fetch banners
@@ -69,17 +69,22 @@ export default function HeroBanner() {
     }
   }, [banners.length])
 
-  // Measure tile width on mount and resize — use ref so interval reads current value
-  useEffect(() => {
-    const measure = () => {
-      if (firstTileRef.current) {
-        tileWidthRef.current = firstTileRef.current.offsetWidth
-      }
+  const measure = useCallback(() => {
+    if (trackRef.current && trackRef.current.children.length > 0) {
+      const firstTile = trackRef.current.children[0] as HTMLElement
+      tileWidthRef.current = firstTile.offsetWidth
     }
+  }, [])
+
+  // Measure on mount, on banners change, and on resize
+  useEffect(() => {
     measure()
+  }, [banners, measure])
+
+  useEffect(() => {
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [])
+  }, [measure])
 
   // Handle jump at boundaries
   useEffect(() => {
@@ -174,6 +179,7 @@ export default function HeroBanner() {
 
       <div className="overflow-hidden rounded-2xl">
         <div
+          ref={trackRef}
           className="flex"
           style={{
             gap: '20px',
@@ -186,7 +192,6 @@ export default function HeroBanner() {
           {displayBanners.map((banner, i) => (
             <div
               key={`${banner.id}-${i}`}
-              ref={i === 0 ? firstTileRef : undefined}
               className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw] h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px] rounded-2xl overflow-hidden"
             >
               {/* Layer 1: background image */}
