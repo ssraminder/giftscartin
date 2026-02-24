@@ -37,9 +37,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Validate required fields
-    if (!body.title_html || !body.image_url || !body.cta_text || !body.cta_link) {
+    if (!body.titleHtml || !body.imageUrl || !body.ctaText || !body.ctaLink) {
       return NextResponse.json(
-        { success: false, error: 'title_html, image_url, cta_text, and cta_link are required' },
+        { success: false, error: 'titleHtml, imageUrl, ctaText, and ctaLink are required' },
         { status: 400 }
       )
     }
