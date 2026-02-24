@@ -6,7 +6,7 @@
 
 ## 2A — Current Tables
 
-| Table | Prisma Model | Key Columns | Relations |
+| Table | Model Name | Key Columns | Relations |
 |-------|-------------|-------------|-----------|
 | `users` | User | id, phone, email, name, role, walletBalance, isActive | → addresses, orders, reviews, cart_items |
 | `otp_verifications` | OtpVerification | id, email, otp, expiresAt, verified, attempts | (standalone) |
