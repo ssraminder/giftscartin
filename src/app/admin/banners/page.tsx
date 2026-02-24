@@ -14,6 +14,7 @@ import {
   Image as ImageIcon,
   Upload,
   X,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -125,6 +126,11 @@ export default function AdminBannersPage() {
   // Upload state
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+
+  // AI generation state
+  const [aiTheme, setAiTheme] = useState('')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -366,6 +372,37 @@ export default function AdminBannersPage() {
     }
   }
 
+  async function handleAiGenerate() {
+    if (!aiTheme.trim()) return
+    setAiGenerating(true)
+    setAiError(null)
+    try {
+      const res = await fetch('/api/admin/banners/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: aiTheme }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setForm(f => ({
+          ...f,
+          ...(json.data.imageUrl ? { imageUrl: json.data.imageUrl } : {}),
+          ...(json.data.titleHtml ? { titleHtml: json.data.titleHtml } : {}),
+          ...(json.data.subtitleHtml ? { subtitleHtml: json.data.subtitleHtml } : {}),
+          ...(json.data.ctaText ? { ctaText: json.data.ctaText } : {}),
+          ...(json.data.badgeText ? { badgeText: json.data.badgeText } : {}),
+        }))
+        setFormErrors({})
+      } else {
+        setAiError(json.error || 'Generation failed. Please try again.')
+      }
+    } catch {
+      setAiError('Generation failed. Please try again.')
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
   // ==================== Render ====================
 
   return (
@@ -543,6 +580,37 @@ export default function AdminBannersPage() {
           </DialogHeader>
 
           <div className="space-y-5">
+            {/* AI Generation Panel */}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                <span className="text-sm font-medium text-purple-900">Generate with AI</span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Describe the theme e.g. Birthday cakes, Midnight delivery, Flowers..."
+                  value={aiTheme}
+                  onChange={e => setAiTheme(e.target.value)}
+                  className="flex-1 text-sm"
+                />
+                <Button
+                  type="button"
+                  onClick={handleAiGenerate}
+                  disabled={aiGenerating || !aiTheme.trim()}
+                  className="bg-purple-600 hover:bg-purple-700 text-white shrink-0"
+                >
+                  {aiGenerating
+                    ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
+                    : <><Sparkles className="w-4 h-4 mr-2" />Generate</>
+                  }
+                </Button>
+              </div>
+              {aiError && <p className="text-xs text-red-500 mt-2">{aiError}</p>}
+              <p className="text-xs text-purple-600 mt-2">
+                Generates banner image + title, subtitle, CTA and badge text automatically
+              </p>
+            </div>
+
             {/* 1. Banner Image */}
             <div className="space-y-2">
               <Label>Banner Image</Label>
