@@ -1,7 +1,6 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { BottomNav } from "@/components/layout/bottom-nav"
-import { AnnouncementBar } from "@/components/layout/announcement-bar"
 import { ReferralProvider } from "@/components/providers/referral-provider"
 import { LocationModal } from "@/components/location/location-modal"
 import { getSupabaseAdmin } from "@/lib/supabase"
@@ -80,9 +79,7 @@ export default async function ShopLayout({
   return (
     <ReferralProvider>
       <div className="flex min-h-screen flex-col">
-        {/* Announcement bar scrolls away with page */}
-        <AnnouncementBar />
-        {/* Header is sticky */}
+        {/* Header is sticky — includes top bar with marquee */}
         <div className="sticky top-0 z-50">
           <Header logoUrl={logoUrl} menuItems={serializedMenu} />
         </div>
