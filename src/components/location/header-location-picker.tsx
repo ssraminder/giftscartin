@@ -103,17 +103,17 @@ export function HeaderLocationPicker() {
       >
         <MapPin className="h-4 w-4 text-[#E91E63] shrink-0" />
         <div className="flex flex-col items-start">
-          <span className="text-[10px] text-gray-400 leading-none">
+          <span className="text-xs text-gray-400 leading-none">
             {isSelected ? 'Delivering to' : 'Deliver to'}
           </span>
           {isSelected ? (
-            <span className="text-xs font-semibold text-gray-800 max-w-[160px] truncate leading-tight">
+            <span className="text-sm font-semibold text-gray-800 max-w-[180px] truncate leading-tight">
               {hasPincode && areaName
                 ? `${areaName} \u00b7 ${pincode}`
                 : cityName || 'City'}
             </span>
           ) : (
-            <span className="text-xs font-semibold text-[#E91E63] leading-tight">
+            <span className="text-sm font-semibold text-[#E91E63] leading-tight">
               Select Location
             </span>
           )}
