@@ -122,7 +122,7 @@ export default function HeroBanner() {
     ? [...banners, ...banners, ...banners]
     : banners
 
-  const gap = 12
+  const gap = 20
   const translateX = tileWidth > 0 ? currentIndex * (tileWidth + gap) : 0
   const activeDot = banners.length > 0 ? currentIndex % banners.length : 0
 
@@ -144,8 +144,8 @@ export default function HeroBanner() {
 
   if (loading) {
     return (
-      <div className="px-4">
-        <div className="w-full h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+      <div className="px-4 md:px-6 lg:px-8">
+        <div className="w-full h-[280px] md:h-[400px] lg:h-[480px] xl:h-[520px] 2xl:h-[540px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
@@ -154,13 +154,13 @@ export default function HeroBanner() {
 
   return (
     <div
-      className="relative w-full overflow-hidden px-4"
+      className="relative w-full overflow-hidden px-4 md:px-6 lg:px-8 h-[280px] md:h-[400px] lg:h-[480px] xl:h-[520px] 2xl:h-[540px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
       {/* Scrollable track */}
       <div
-        className="flex gap-3"
+        className="flex gap-5"
         style={{
           transform: `translateX(-${translateX}px)`,
           transition: transitionDisabled ? 'none' : 'transform 400ms ease',
@@ -173,8 +173,8 @@ export default function HeroBanner() {
             key={`${banner.id}-${i}`}
             ref={i === 0 ? tileRef : undefined}
             className="relative flex-shrink-0 overflow-hidden rounded-2xl
-              h-[100vw] max-h-[320px] md:h-[30vh] md:min-h-[280px] md:max-h-[420px]
-              w-[85vw] sm:w-[75vw] md:w-[60vw] lg:w-[calc(40vw)] xl:w-[calc(38vw)] 2xl:w-[calc(35vw)]"
+              h-[280px] md:h-[400px] lg:h-[480px] xl:h-[520px] 2xl:h-[540px]
+              w-[92vw] sm:w-[85vw] md:w-[72vw] lg:w-[55vw] xl:w-[50vw] 2xl:w-[46vw]"
           >
             {/* Layer 1 — Background image or gradient fallback */}
             {banner.imageUrl ? (
