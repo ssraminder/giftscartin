@@ -38,8 +38,9 @@ export default function HeroBanner() {
   const [isPaused, setIsPaused] = useState(false)
   const [transitionDisabled, setTransitionDisabled] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [tileWidth, setTileWidth] = useState(0)
 
+  const tileWidthRef = useRef(0)
+  const isPausedRef = useRef(false)
   const firstTileRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
 
@@ -58,24 +59,21 @@ export default function HeroBanner() {
       .finally(() => setLoading(false))
   }, [])
 
+  // Sync isPausedRef with isPaused state
+  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
+
   // Initialize currentIndex to middle set once banners load
   useEffect(() => {
-    if (banners.length > 1) {
-      setTransitionDisabled(true)
+    if (banners.length > 0) {
       setCurrentIndex(banners.length)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTransitionDisabled(false)
-        })
-      })
     }
   }, [banners.length])
 
-  // Read tile width after mount and on resize
+  // Measure tile width on mount and resize — use ref so interval reads current value
   useEffect(() => {
     const measure = () => {
       if (firstTileRef.current) {
-        setTileWidth(firstTileRef.current.offsetWidth)
+        tileWidthRef.current = firstTileRef.current.offsetWidth
       }
     }
     measure()
@@ -85,32 +83,35 @@ export default function HeroBanner() {
 
   // Handle jump at boundaries
   useEffect(() => {
-    if (banners.length <= 1) return
+    const len = banners.length
+    if (len === 0) return
 
-    if (currentIndex === banners.length * 2) {
-      setTimeout(() => {
+    if (currentIndex >= len * 2) {
+      const timer = setTimeout(() => {
         setTransitionDisabled(true)
-        setCurrentIndex(banners.length)
+        setCurrentIndex(len)
         requestAnimationFrame(() => requestAnimationFrame(() => setTransitionDisabled(false)))
-      }, 400)
+      }, 410)
+      return () => clearTimeout(timer)
     }
-    if (currentIndex === banners.length - 1) {
-      setTimeout(() => {
+    if (currentIndex <= len - 1) {
+      const timer = setTimeout(() => {
         setTransitionDisabled(true)
-        setCurrentIndex(banners.length * 2 - 1)
+        setCurrentIndex(len * 2 - 1)
         requestAnimationFrame(() => requestAnimationFrame(() => setTransitionDisabled(false)))
-      }, 400)
+      }, 410)
+      return () => clearTimeout(timer)
     }
   }, [currentIndex, banners.length])
 
-  // Auto advance
+  // Auto advance — no dependencies, refs handle freshness
   useEffect(() => {
-    if (banners.length <= 1) return
     const interval = setInterval(() => {
-      if (!isPaused) setCurrentIndex(prev => prev + 1)
+      if (isPausedRef.current) return
+      setCurrentIndex(prev => prev + 1)
     }, 3000)
     return () => clearInterval(interval)
-  }, [isPaused, banners.length])
+  }, [])
 
   // Build display list: triple for infinite loop, or original for single banner
   const displayBanners = banners.length > 1
@@ -176,7 +177,7 @@ export default function HeroBanner() {
           className="flex"
           style={{
             gap: '20px',
-            transform: `translateX(-${currentIndex * (tileWidth + 20)}px)`,
+            transform: `translateX(-${currentIndex * (tileWidthRef.current + 20)}px)`,
             transition: transitionDisabled ? 'none' : 'transform 400ms ease',
           }}
           onTouchStart={handleTouchStart}
