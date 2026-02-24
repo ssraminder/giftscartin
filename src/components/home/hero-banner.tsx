@@ -108,7 +108,7 @@ export default function HeroBanner() {
     if (banners.length <= 1) return
     const interval = setInterval(() => {
       if (!isPaused) setCurrentIndex(prev => prev + 1)
-    }, 5000)
+    }, 3000)
     return () => clearInterval(interval)
   }, [isPaused, banners.length])
 
@@ -138,7 +138,7 @@ export default function HeroBanner() {
   if (loading) {
     return (
       <div className="px-4 md:px-6 lg:px-8 py-2">
-        <div className="w-full h-[250px] md:h-[360px] lg:h-[430px] xl:h-[470px] 2xl:h-[485px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+        <div className="w-full h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
@@ -147,7 +147,7 @@ export default function HeroBanner() {
 
   return (
     <div
-      className="relative px-4 md:px-6 lg:px-8 py-2 h-[250px] md:h-[360px] lg:h-[430px] xl:h-[470px] 2xl:h-[485px]"
+      className="relative px-4 md:px-6 lg:px-8 py-2 h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
@@ -186,7 +186,7 @@ export default function HeroBanner() {
             <div
               key={`${banner.id}-${i}`}
               ref={i === 0 ? firstTileRef : undefined}
-              className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw] h-[250px] md:h-[360px] lg:h-[430px] xl:h-[470px] 2xl:h-[485px] rounded-2xl overflow-hidden"
+              className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw] h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px] rounded-2xl overflow-hidden"
             >
               {/* Layer 1: background image */}
               {banner.imageUrl ? (
