@@ -1148,3 +1148,28 @@ model MenuItem {
 
   @@map("menu_items")
 }
+
+// ==================== BANNERS ====================
+
+model Banner {
+  id               String    @id @default(cuid())
+  titleHtml        String
+  subtitleHtml     String?
+  imageUrl         String
+  ctaText          String    @default("Shop Now")
+  ctaLink          String    @default("/")
+  secondaryCtaText String?
+  secondaryCtaLink String?
+  textPosition     String    @default("left")
+  overlayStyle     String    @default("dark-left")
+  badgeText        String?
+  isActive         Boolean   @default(true)
+  sortOrder        Int       @default(0)
+  validFrom        DateTime? @db.Date
+  validUntil       DateTime? @db.Date
+  targetCitySlug   String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("banners")
+}
