@@ -40,6 +40,12 @@ export default function HeroBanner() {
   const trackRef = useRef<HTMLDivElement>(null)
   const tileRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
+  const isPausedRef = useRef(false)
+
+  // Keep isPausedRef in sync with isPaused state
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  }, [isPaused])
 
   useEffect(() => {
     fetch('/api/banners')
@@ -63,20 +69,19 @@ export default function HeroBanner() {
     [banners.length]
   )
 
-  const goNext = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % banners.length)
-  }, [banners.length])
-
   const goPrev = useCallback(() => {
     setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length)
   }, [banners.length])
 
-  // Auto-advance every 5 seconds
+  // Auto-advance every 5s, loops from last back to first
   useEffect(() => {
-    if (banners.length <= 1 || isPaused) return
-    const timer = setInterval(goNext, 5000)
+    if (banners.length <= 1) return
+    const timer = setInterval(() => {
+      if (isPausedRef.current) return
+      setCurrentIndex((prev) => (prev + 1) % banners.length)
+    }, 5000)
     return () => clearInterval(timer)
-  }, [banners.length, isPaused, goNext, currentIndex])
+  }, [banners.length])
 
   // Compute translate offset from first tile's width
   const getTranslateX = useCallback((): string => {
@@ -104,7 +109,7 @@ export default function HeroBanner() {
 
   if (loading) {
     return (
-      <div className="w-full h-[260px] md:h-[400px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse" />
+      <div className="w-full aspect-video bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
     )
   }
 
@@ -131,13 +136,12 @@ export default function HeroBanner() {
           <div
             key={banner.id}
             ref={i === 0 ? tileRef : undefined}
-            className="relative flex-shrink-0 overflow-hidden rounded-2xl
-              w-[90%]
+            className="relative flex-shrink-0 overflow-hidden rounded-2xl aspect-video
+              w-[90vw]
               md:w-[calc((100%-12px)/2.5)]
               lg:w-[calc((100%-24px)/3)]
               xl:w-[calc((100%-36px)/3.5)]
-              2xl:w-[calc((100%-48px)/4)]
-              h-[260px] md:h-[400px]"
+              2xl:w-[calc((100%-48px)/4)]"
           >
             {/* Background image or gradient fallback */}
             {banner.imageUrl ? (
