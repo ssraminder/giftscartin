@@ -15,90 +15,41 @@ const supabase = createClient(
 )
 
 function buildImagePrompt(theme: string): string {
-  const themePrompts: Record<string, string> = {
-    cakes: `
-      Commercial product photography for a premium Indian bakery delivery platform.
-      Scene: 2-3 stunning celebration cakes artfully arranged — a tall layered
-      chocolate drip cake, a pastel floral fondant cake, and a fruit-topped fresh
-      cream cake. Shot on a luxurious dark marble surface with warm golden bokeh
-      lights in the background. Soft studio lighting with a warm fill light from
-      the right. Garnishes: fresh berries, edible gold leaf, rose petals scattered
-      around the base. Depth of field: foreground cake sharp, background soft blur.
-      Camera angle: 30 degrees above eye level. Aspect ratio 16:9 landscape.
-      Style: Zomato / Swiggy Instamart premium product photography.
-      Slightly out of focus, atmospheric, suitable as a background layer.
-      --no text, no logos, no watermarks, no people
-    `,
-    flowers: `
-      Commercial photography for a premium Indian flower delivery platform.
-      Scene: Lush arrangement of fresh red roses, white lilies, and pink peonies
-      in a crystal vase. Soft morning light from the left, warm bokeh background
-      of greens and golds. Water droplets on petals suggesting freshness.
-      A few loose petals scattered on the white marble surface below.
-      Camera angle: slightly above eye level, tilted 10 degrees.
-      Style: FNP / Interflora hero banner photography, ultra-premium, editorial.
-      Aspect ratio 16:9 landscape. Slightly blurred, atmospheric background layer.
-      --no text, no logos, no watermarks, no people
-    `,
-    midnight: `
-      Dramatic nighttime luxury gifting photography for an Indian platform.
-      Scene: Elegant black gift box with gold ribbon, a lit sparkler creating
-      light trails, a slice of dark chocolate cake on a slate board, and a small
-      bouquet of red roses. Set on a dark navy/black velvet surface.
-      Lighting: single candle glow + sparkler light trails + city bokeh lights
-      visible through a blurred window in background. Moody, cinematic, dramatic.
-      Style: high-end luxury gifting editorial. Deep shadows, rich contrast.
-      Aspect ratio 16:9 landscape. Slightly out of focus, atmospheric background.
-      --no text, no logos, no watermarks, no people
-    `,
-    anniversary: `
-      Romantic luxury photography for an Indian anniversary gifting platform.
-      Scene: Red roses in a tall glass vase, a heart-shaped chocolate cake on
-      a cake stand, champagne flutes with sparkling juice, scattered rose petals
-      on a white linen tablecloth. Warm candlelight + bokeh fairy lights in
-      background creating a romantic golden atmosphere.
-      Style: premium lifestyle editorial, soft and warm tones, romantic depth.
-      Aspect ratio 16:9 landscape. Slightly blurred, atmospheric background layer.
-      --no text, no logos, no watermarks, no people
-    `,
-    birthday: `
-      Joyful premium birthday gifting photography for an Indian platform.
-      Scene: Tall 3-tier birthday cake with colourful macarons on top and
-      dripping ganache. Surrounded by wrapped gift boxes with ribbons,
-      gold and pink balloons blurred in background, confetti on the surface.
-      Lighting: bright, airy, celebratory. White and pastel background.
-      Style: Winni.in / FNP premium editorial birthday photography.
-      Aspect ratio 16:9 landscape. Slightly out of focus, atmospheric background.
-      --no text, no logos, no watermarks, no people
-    `,
-    corporate: `
-      Premium corporate gifting photography for an Indian B2B platform.
-      Scene: Sophisticated flat lay — branded gift hamper box open showing
-      premium dry fruits, chocolates, a journal, and a pen on a dark walnut
-      desk. Beside it: a curated cake box, and a small succulent plant.
-      Lighting: clean overhead studio light, minimal shadows.
-      Style: LinkedIn / corporate brand editorial, clean and professional.
-      Neutral tones — charcoal, cream, gold accents.
-      Aspect ratio 16:9 landscape. Slightly blurred, atmospheric background.
-      --no text, no logos, no watermarks, no people
-    `,
+  const t = theme.toLowerCase()
+
+  if (t.includes('cake') || t.includes('birthday')) {
+    return 'Light cream and blush pink background with soft geometric confetti shapes, delicate dot grid pattern, subtle pastel watercolor wash, airy and festive, high-key lighting, no people, no text, no logos'
+  }
+  if (t.includes('flower') || t.includes('rose') || t.includes('bouquet')) {
+    return 'Soft mint and white background with delicate botanical line art patterns, subtle floral geometric motifs, fresh pastel tones, airy and elegant, no people, no text, no logos'
+  }
+  if (t.includes('midnight') || t.includes('night')) {
+    return 'Deep navy background with glowing golden geometric star patterns, subtle constellation grid lines, elegant dark luxury feel, soft shimmer texture, no people, no text, no logos'
+  }
+  if (t.includes('anniversary') || t.includes('wedding') || t.includes('romantic')) {
+    return 'Blush pink and gold background with elegant art deco geometric patterns, delicate diamond lattice motifs, subtle shimmer, romantic and luxurious feel, no people, no text, no logos'
+  }
+  if (t.includes('corporate') || t.includes('business') || t.includes('gifting')) {
+    return 'Clean white and light grey background with subtle hexagonal grid pattern, minimal geometric lines, professional and modern, soft shadow depth, no people, no text, no logos'
+  }
+  if (t.includes('mother') || t.includes('maa') || t.includes('mom')) {
+    return 'Soft lavender and white background with delicate hand-drawn floral and heart patterns, gentle watercolor brush strokes, warm and tender feel, no people, no text, no logos'
+  }
+  if (t.includes('diwali') || t.includes('festival') || t.includes('celebration')) {
+    return 'Warm golden and saffron background with ornate mandala geometric patterns, traditional Indian decorative motifs, festive and rich, glowing bokeh lights, no people, no text, no logos'
+  }
+  if (t.includes('chocolate') || t.includes('truffle')) {
+    return 'Warm caramel and cream background with subtle diagonal stripe texture, soft geometric diamond pattern, cosy indulgent feel, no people, no text, no logos'
+  }
+  if (t.includes('plant') || t.includes('green') || t.includes('nature')) {
+    return 'Soft sage green and white background with delicate leaf and botanical geometric patterns, fresh natural feel, clean and airy, no people, no text, no logos'
+  }
+  if (t.includes('christmas') || t.includes('xmas')) {
+    return 'Crisp white and forest green background with elegant geometric snowflake patterns, subtle plaid texture, festive and clean, no people, no text, no logos'
   }
 
-  // Match theme keyword to a known prompt, fallback to a generic premium prompt
-  const key = Object.keys(themePrompts).find(k => theme.toLowerCase().includes(k))
-
-  if (key) return themePrompts[key].trim()
-
   // Generic fallback
-  return `
-    Ultra-premium commercial photography for an Indian gifting platform.
-    Scene: Beautiful arrangement of celebration cakes, fresh flowers and
-    wrapped gift boxes on a luxurious marble surface. Warm golden bokeh
-    background. Professional studio lighting, soft shadows, rich colours.
-    Style: FNP / Winni premium hero banner photography.
-    Aspect ratio 16:9 landscape. Slightly out of focus, atmospheric background layer.
-    --no text, no logos, no watermarks, no people
-  `.trim()
+  return 'Soft cream and warm white background with subtle abstract geometric pattern, gentle diagonal lines and organic shapes, airy and minimal, pastel accent tones, high-key lighting, no people, no text, no logos'
 }
 
 function buildSubjectPrompt(theme: string): string {
