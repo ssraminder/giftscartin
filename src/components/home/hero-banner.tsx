@@ -36,17 +36,12 @@ export default function HeroBanner() {
   const [banners, setBanners] = useState<Banner[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
-  const [transitionDisabled, setTransitionDisabled] = useState(true)
+  const [transitionDisabled, setTransitionDisabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [tileWidth, setTileWidth] = useState(0)
 
-  const tileRef = useRef<HTMLDivElement>(null)
+  const firstTileRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
-  const isPausedRef = useRef(false)
-  const initializedRef = useRef(false)
-
-  // Keep isPaused ref in sync for interval callback
-  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   // Fetch banners
   useEffect(() => {
@@ -63,67 +58,65 @@ export default function HeroBanner() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Measure tile width on mount and resize
+  // Initialize currentIndex to middle set once banners load
+  useEffect(() => {
+    if (banners.length > 1) {
+      setTransitionDisabled(true)
+      setCurrentIndex(banners.length)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTransitionDisabled(false)
+        })
+      })
+    }
+  }, [banners.length])
+
+  // Read tile width after mount and on resize
   useEffect(() => {
     const measure = () => {
-      if (tileRef.current) setTileWidth(tileRef.current.offsetWidth)
+      if (firstTileRef.current) {
+        setTileWidth(firstTileRef.current.offsetWidth)
+      }
     }
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [banners.length])
+  }, [])
 
-  // Initialize position + boundary detection (clone-based infinite loop)
+  // Handle jump at boundaries
   useEffect(() => {
     if (banners.length <= 1) return
 
-    if (!initializedRef.current) {
-      initializedRef.current = true
-      setCurrentIndex(banners.length)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTransitionDisabled(false)
-        })
-      })
-      return
+    if (currentIndex === banners.length * 2) {
+      setTimeout(() => {
+        setTransitionDisabled(true)
+        setCurrentIndex(banners.length)
+        requestAnimationFrame(() => requestAnimationFrame(() => setTransitionDisabled(false)))
+      }, 400)
     }
-
-    if (currentIndex >= banners.length * 2) {
-      setTransitionDisabled(true)
-      setCurrentIndex(banners.length)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTransitionDisabled(false)
-        })
-      })
-    } else if (currentIndex <= banners.length - 1) {
-      setTransitionDisabled(true)
-      setCurrentIndex(banners.length * 2 - 1)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setTransitionDisabled(false)
-        })
-      })
+    if (currentIndex === banners.length - 1) {
+      setTimeout(() => {
+        setTransitionDisabled(true)
+        setCurrentIndex(banners.length * 2 - 1)
+        requestAnimationFrame(() => requestAnimationFrame(() => setTransitionDisabled(false)))
+      }, 400)
     }
   }, [currentIndex, banners.length])
 
-  // Auto-advance every 5s, pause on hover
+  // Auto advance
   useEffect(() => {
     if (banners.length <= 1) return
     const interval = setInterval(() => {
-      if (isPausedRef.current) return
-      setCurrentIndex(prev => prev + 1)
+      if (!isPaused) setCurrentIndex(prev => prev + 1)
     }, 5000)
     return () => clearInterval(interval)
-  }, [banners.length])
+  }, [isPaused, banners.length])
 
   // Build display list: triple for infinite loop, or original for single banner
   const displayBanners = banners.length > 1
     ? [...banners, ...banners, ...banners]
     : banners
 
-  const gap = 20
-  const translateX = tileWidth > 0 ? currentIndex * (tileWidth + gap) : 0
   const activeDot = banners.length > 0 ? currentIndex % banners.length : 0
 
   const goNext = useCallback(() => setCurrentIndex(prev => prev + 1), [])
@@ -144,8 +137,8 @@ export default function HeroBanner() {
 
   if (loading) {
     return (
-      <div className="px-4 md:px-6 lg:px-8">
-        <div className="w-full h-[280px] md:h-[400px] lg:h-[480px] xl:h-[520px] 2xl:h-[540px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+      <div className="px-4 md:px-6 lg:px-8 py-2">
+        <div className="w-full h-[250px] md:h-[360px] lg:h-[430px] xl:h-[470px] 2xl:h-[485px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
@@ -154,128 +147,15 @@ export default function HeroBanner() {
 
   return (
     <div
-      className="relative w-full overflow-hidden px-4 md:px-6 lg:px-8 h-[280px] md:h-[400px] lg:h-[480px] xl:h-[520px] 2xl:h-[540px]"
+      className="relative px-4 md:px-6 lg:px-8 py-2 h-[250px] md:h-[360px] lg:h-[430px] xl:h-[470px] 2xl:h-[485px]"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Scrollable track */}
-      <div
-        className="flex gap-5"
-        style={{
-          transform: `translateX(-${translateX}px)`,
-          transition: transitionDisabled ? 'none' : 'transform 400ms ease',
-        }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        {displayBanners.map((banner, i) => (
-          <div
-            key={`${banner.id}-${i}`}
-            ref={i === 0 ? tileRef : undefined}
-            className="relative flex-shrink-0 overflow-hidden rounded-2xl
-              h-[280px] md:h-[400px] lg:h-[480px] xl:h-[520px] 2xl:h-[540px]
-              w-[92vw] sm:w-[85vw] md:w-[72vw] lg:w-[55vw] xl:w-[50vw] 2xl:w-[46vw]"
-          >
-            {/* Layer 1 — Background image or gradient fallback */}
-            {banner.imageUrl ? (
-              <div
-                className="absolute inset-0 bg-cover bg-center"
-                style={{ backgroundImage: `url(${banner.imageUrl})` }}
-              />
-            ) : (
-              <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-purple-600" />
-            )}
-
-            {/* Layer 2 — Hero/subject image (only if subjectImageUrl exists) */}
-            {banner.subjectImageUrl && (
-              <div className="absolute right-0 bottom-0 w-[52%] h-full flex items-end justify-center z-[1] md:flex hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={banner.subjectImageUrl}
-                  alt=""
-                  className="h-[90%] w-auto object-contain object-bottom"
-                />
-              </div>
-            )}
-
-            {/* Layer 2 mobile — Hero/subject image repositioned for mobile */}
-            {banner.subjectImageUrl && (
-              <div className="absolute right-0 top-0 h-[55%] w-auto flex items-start justify-end z-[1] md:hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={banner.subjectImageUrl}
-                  alt=""
-                  className="h-full w-auto object-contain object-top pr-2 pt-2"
-                />
-              </div>
-            )}
-
-            {/* Layer 3 — Gradient mask */}
-            {banner.subjectImageUrl ? (
-              <>
-                {/* Desktop: left-to-right gradient */}
-                <div
-                  className="absolute inset-0 z-[2] hidden md:block"
-                  style={{
-                    background: 'linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 35%, rgba(0,0,0,0.1) 60%, transparent 100%)',
-                  }}
-                />
-                {/* Mobile: bottom-to-top gradient */}
-                <div
-                  className="absolute inset-0 z-[2] md:hidden"
-                  style={{
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 65%, transparent 100%)',
-                  }}
-                />
-              </>
-            ) : (
-              /* No hero image: original bottom-left to top-right gradient */
-              <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/30 to-transparent z-[2]" />
-            )}
-
-            {/* Badge */}
-            {banner.badgeText && (
-              <span className="absolute top-4 right-4 z-10 bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1 rounded-full">
-                {banner.badgeText}
-              </span>
-            )}
-
-            {/* Layer 4 — Text content */}
-            <div
-              className={`absolute z-10 flex flex-col gap-2 justify-end ${
-                banner.subjectImageUrl
-                  ? 'left-0 bottom-0 md:w-[48%] w-full p-6 md:bottom-0 bottom-0'
-                  : 'bottom-0 left-0 p-6 max-w-[85%]'
-              }`}
-            >
-              <h2
-                className="text-xl md:text-3xl font-bold text-white leading-tight line-clamp-2"
-                dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
-              />
-              {banner.subtitleHtml && (
-                <p
-                  className="text-sm md:text-base text-white/80 line-clamp-2"
-                  dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
-                />
-              )}
-              <div className="mt-1">
-                <Link
-                  href={banner.ctaLink}
-                  className="inline-block bg-white text-gray-900 font-semibold text-sm px-5 py-2 rounded-full hover:bg-gray-100 transition-colors"
-                >
-                  {banner.ctaText}
-                </Link>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* Left arrow */}
       {banners.length > 1 && (
         <button
           onClick={goPrev}
-          className="hidden md:flex absolute left-5 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+          className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -285,11 +165,121 @@ export default function HeroBanner() {
       {banners.length > 1 && (
         <button
           onClick={goNext}
-          className="hidden md:flex absolute right-5 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+          className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
         >
           <ChevronRight className="w-5 h-5" />
         </button>
       )}
+
+      <div className="overflow-hidden rounded-2xl">
+        <div
+          className="flex"
+          style={{
+            gap: '20px',
+            transform: `translateX(-${currentIndex * (tileWidth + 20)}px)`,
+            transition: transitionDisabled ? 'none' : 'transform 400ms ease',
+          }}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {displayBanners.map((banner, i) => (
+            <div
+              key={`${banner.id}-${i}`}
+              ref={i === 0 ? firstTileRef : undefined}
+              className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw] h-[250px] md:h-[360px] lg:h-[430px] xl:h-[470px] 2xl:h-[485px] rounded-2xl overflow-hidden"
+            >
+              {/* Layer 1: background image */}
+              {banner.imageUrl ? (
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{ backgroundImage: `url(${banner.imageUrl})` }}
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-purple-600" />
+              )}
+
+              {/* Layer 1b: Hero/subject image (desktop) */}
+              {banner.subjectImageUrl && (
+                <div className="absolute right-0 bottom-0 w-[52%] h-full hidden md:flex items-end justify-center z-[1]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={banner.subjectImageUrl}
+                    alt=""
+                    className="h-[90%] w-auto object-contain object-bottom"
+                  />
+                </div>
+              )}
+
+              {/* Layer 1b: Hero/subject image (mobile) */}
+              {banner.subjectImageUrl && (
+                <div className="absolute right-0 top-0 h-[55%] w-auto flex items-start justify-end z-[1] md:hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={banner.subjectImageUrl}
+                    alt=""
+                    className="h-full w-auto object-contain object-top pr-2 pt-2"
+                  />
+                </div>
+              )}
+
+              {/* Layer 2: gradient overlay */}
+              {banner.subjectImageUrl ? (
+                <>
+                  <div
+                    className="absolute inset-0 z-[2] hidden md:block"
+                    style={{
+                      background: 'linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 35%, rgba(0,0,0,0.1) 60%, transparent 100%)',
+                    }}
+                  />
+                  <div
+                    className="absolute inset-0 z-[2] md:hidden"
+                    style={{
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 65%, transparent 100%)',
+                    }}
+                  />
+                </>
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/30 to-transparent z-[2]" />
+              )}
+
+              {/* Badge */}
+              {banner.badgeText && (
+                <span className="absolute top-4 right-4 z-10 bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1 rounded-full">
+                  {banner.badgeText}
+                </span>
+              )}
+
+              {/* Layer 3: text content */}
+              <div
+                className={`absolute z-10 flex flex-col gap-2 justify-end ${
+                  banner.subjectImageUrl
+                    ? 'left-0 bottom-0 md:w-[48%] w-full p-6'
+                    : 'bottom-0 left-0 p-6 max-w-[85%]'
+                }`}
+              >
+                <h2
+                  className="text-xl md:text-3xl font-bold text-white leading-tight line-clamp-2"
+                  dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
+                />
+                {banner.subtitleHtml && (
+                  <p
+                    className="text-sm md:text-base text-white/80 line-clamp-2"
+                    dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
+                  />
+                )}
+                <div className="mt-1">
+                  <Link
+                    href={banner.ctaLink}
+                    className="inline-block bg-white text-gray-900 font-semibold text-sm px-5 py-2 rounded-full hover:bg-gray-100 transition-colors"
+                  >
+                    {banner.ctaText}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Dot indicators */}
       {banners.length > 1 && (
