@@ -9,7 +9,6 @@ import {
   ChevronDown,
   Gift,
   LogOut,
-  MapPin,
   Package,
   Search,
   ShoppingCart,
@@ -28,7 +27,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useCart } from "@/hooks/use-cart"
 import { usePartner } from "@/hooks/use-partner"
-import { useLocation } from "@/hooks/use-location"
 import { HeaderLocationPicker } from "@/components/location/header-location-picker"
 import type { MenuNode } from "@/components/layout/mega-menu"
 
@@ -80,7 +78,6 @@ export function Header({ logoUrl = null }: HeaderProps) {
   const { user, logout } = useAuth()
   const cartCount = useCart((s) => s.getItemCount())
   const { partner } = usePartner()
-  const cityName = useLocation((s) => s.cityName)
   const router = useRouter()
 
   const withRef = (path: string) => {
@@ -120,8 +117,8 @@ export function Header({ logoUrl = null }: HeaderProps) {
         }`}
       >
         {/* ── Row 1: Top Bar (desktop only) ─────────────────────── */}
-        <div className="hidden md:block border-b border-gray-100 bg-[#FFF8F0]">
-          <div className="container mx-auto px-4 flex items-center h-9">
+        <div className="hidden md:flex border-b border-gray-100 bg-[#FFF8F0]">
+          <div className="container mx-auto px-4 flex items-center justify-between h-10">
             {/* Left: delivery location selector */}
             <div className="shrink-0">
               <HeaderLocationPicker />
@@ -225,14 +222,6 @@ export function Header({ logoUrl = null }: HeaderProps) {
               >
                 <Search className="h-5 w-5 text-gray-700" />
               </button>
-
-              {/* Desktop: compact location indicator */}
-              <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded-lg text-sm text-gray-600 cursor-default">
-                <MapPin className="h-4 w-4 text-[#E91E63] shrink-0" />
-                <span className="max-w-[100px] truncate text-xs font-medium">
-                  {cityName || "Location"}
-                </span>
-              </div>
 
               {/* Cart */}
               <Link
