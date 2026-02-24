@@ -1,3 +1,11 @@
+// Required env vars:
+// OPENAI_API_KEY
+// OPENAI_IMAGE_MODEL (optional, defaults to 'chatgpt-image-latest')
+// ANTHROPIC_API_KEY
+// NEXT_PUBLIC_SUPABASE_URL
+// SUPABASE_SERVICE_ROLE_KEY
+// REMOVE_BG_API_KEY (optional, skips bg removal if missing)
+
 import type { BackgroundHandler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 
@@ -121,6 +129,7 @@ function buildSubjectPrompt(theme: string): string {
 
 export const handler: BackgroundHandler = async (event) => {
   const { theme, jobId } = JSON.parse(event.body ?? '{}')
+  const imageModel = process.env.OPENAI_IMAGE_MODEL ?? 'chatgpt-image-latest'
 
   try {
     // Update job status to processing
@@ -208,11 +217,10 @@ Return ONLY valid JSON, no markdown fences, no explanation:
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-image-1',
+            model: imageModel,
             prompt: buildImagePrompt(theme),
             size: '1536x1024',
             quality: 'high',
-            response_format: 'b64_json',
             n: 1,
           }),
         })
@@ -245,11 +253,10 @@ Return ONLY valid JSON, no markdown fences, no explanation:
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-image-1',
+            model: imageModel,
             prompt: buildSubjectPrompt(theme),
             size: '1024x1024',
             quality: 'high',
-            response_format: 'b64_json',
             n: 1,
           }),
         })
