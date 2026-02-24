@@ -190,27 +190,27 @@ export function Header({ logoUrl = null }: HeaderProps) {
               )}
             </Link>
 
-            {/* Delivering-to location pill — desktop only */}
-            <div className="hidden md:flex shrink-0">
-              <HeaderLocationPicker />
-            </div>
-
-            {/* Search bar — desktop */}
-            <form
-              onSubmit={handleSearch}
-              className="hidden md:flex flex-1 justify-center mx-4"
-            >
-              <div className="relative w-full max-w-[520px]">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search cakes, flowers, gifts..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full h-10 pl-10 pr-4 rounded-full border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-[#E91E63] focus:bg-white transition-colors placeholder:text-gray-400"
-                />
+            {/* Delivering-to capsule + Search bar — grouped together */}
+            <div className="hidden md:flex items-center gap-2 flex-1 max-w-2xl mx-4">
+              <div className="shrink-0">
+                <HeaderLocationPicker />
               </div>
-            </form>
+              <form
+                onSubmit={handleSearch}
+                className="flex flex-1"
+              >
+                <div className="relative w-full">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search cakes, flowers, gifts..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full h-10 pl-10 pr-4 rounded-full border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:border-[#E91E63] focus:bg-white transition-colors placeholder:text-gray-400"
+                  />
+                </div>
+              </form>
+            </div>
 
             {/* Right-side icons */}
             <div className="flex items-center gap-1 md:gap-2 ml-auto shrink-0">
