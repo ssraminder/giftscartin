@@ -27,7 +27,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, data }, {
+    const mapped = (data ?? []).map(b => ({
+      id: b.id,
+      titleHtml: b.title_html,
+      subtitleHtml: b.subtitle_html,
+      imageUrl: b.image_url,
+      ctaText: b.cta_text,
+      ctaLink: b.cta_link,
+      secondaryCtaText: b.secondary_cta_text,
+      secondaryCtaLink: b.secondary_cta_link,
+      textPosition: b.text_position,
+      overlayStyle: b.overlay_style,
+      badgeText: b.badge_text,
+      isActive: b.is_active,
+      sortOrder: b.sort_order,
+      validFrom: b.valid_from,
+      validUntil: b.valid_until,
+      targetCitySlug: b.target_city_slug,
+    }))
+
+    return NextResponse.json({ success: true, data: mapped }, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
       },
