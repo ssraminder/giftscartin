@@ -171,15 +171,17 @@ export function Header({ logoUrl = null, menuItems = [] }: HeaderProps) {
             {/* Cart icon */}
             <Link
               href="/cart"
-              className="relative flex items-center justify-center h-9 w-9 rounded-full hover:bg-pink-50 transition-colors"
+              className="flex items-center justify-center h-9 w-9 rounded-full hover:bg-pink-50 transition-colors"
               aria-label="Cart"
             >
-              <ShoppingCart className="h-5 w-5 text-gray-700" />
-              {mounted && cartCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-[#E91E63] text-[10px] font-bold text-white">
-                  {cartCount > 9 ? "9+" : cartCount}
-                </span>
-              )}
+              <div className="relative">
+                <ShoppingCart className="w-6 h-6 text-gray-700" />
+                {mounted && cartCount > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] bg-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {cartCount > 9 ? "9+" : cartCount}
+                  </span>
+                )}
+              </div>
             </Link>
 
             {/* Account / Login */}
