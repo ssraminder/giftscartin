@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
     // 5. Build slots
     const configsList = (cityConfigs || [])
     const filteredConfigs = holiday?.mode === 'STANDARD_ONLY'
-      ? configsList.filter((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>)?.slotGroup === 'standard')
+      ? configsList.filter((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>)?.slug === 'standard')
       : configsList
 
     const slots = filteredConfigs.map((config: Record<string, unknown>) => {
@@ -217,7 +217,7 @@ export async function GET(req: NextRequest) {
       let priceLabel: string
       if (price === 0) {
         priceLabel = 'Free'
-      } else if (slot.slotGroup === 'fixed') {
+      } else if (slot.slug === 'fixed-slot') {
         priceLabel = `From \u20B9${price}`
       } else {
         priceLabel = `\u20B9${price}`
@@ -232,7 +232,7 @@ export async function GET(req: NextRequest) {
         isAvailable: boolean
       }[] | undefined
 
-      if (slot.slotGroup === 'fixed') {
+      if (slot.slug === 'fixed-slot') {
         windows = FIXED_WINDOWS.map(fw => {
           const anyVendorCovers = qualifyingVendors.some((vp) => {
             const wh = vp.vendor.workingHours.find((w: Record<string, unknown>) => w.dayOfWeek === dayOfWeek)
@@ -288,19 +288,13 @@ export async function GET(req: NextRequest) {
       }
     }).filter((s: unknown): s is NonNullable<typeof s> => s !== null)
 
-    // Sort: standard first, then other groups
-    const groupOrder = ['standard', 'fixed', 'midnight', 'early-morning', 'express']
+    // Sort: standard first, then other groups (by slug)
+    const slugOrder = ['standard', 'fixed-slot', 'midnight', 'early-morning', 'express']
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     slots.sort((a: any, b: any) => {
-      const aSlot = filteredConfigs.find((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>).id === a.id)
-      const bSlot = filteredConfigs.find((c: Record<string, unknown>) => (c.delivery_slots as Record<string, unknown>).id === b.id)
-      const aIdx = groupOrder.indexOf(
-        (aSlot?.delivery_slots as Record<string, unknown>)?.slotGroup as string ?? ''
-      )
-      const bIdx = groupOrder.indexOf(
-        (bSlot?.delivery_slots as Record<string, unknown>)?.slotGroup as string ?? ''
-      )
-      return aIdx - bIdx
+      const aIdx = slugOrder.indexOf(a.slug as string ?? '')
+      const bIdx = slugOrder.indexOf(b.slug as string ?? '')
+      return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx)
     })
 
     return NextResponse.json({

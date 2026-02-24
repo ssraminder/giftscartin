@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     const [cityConfigsResult, holidaysResult] = await Promise.all([
       supabase
         .from('city_delivery_configs')
-        .select('delivery_slots(slotGroup)')
+        .select('delivery_slots(slug)')
         .eq('cityId', cityId)
         .eq('isAvailable', true),
       supabase
@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
       if (holiday?.mode === 'STANDARD_ONLY') {
         const hasStandard = cityConfigs.some((c: Record<string, unknown>) => {
           const slot = c.delivery_slots as Record<string, unknown> | null
-          return slot?.slotGroup === 'standard'
+          return slot?.slug === 'standard'
         })
         if (!hasStandard) continue
       }

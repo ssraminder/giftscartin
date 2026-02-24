@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
     const cityConfigs = (allCityConfigs || []).filter((c: Record<string, unknown>) => {
       const slot = c.delivery_slots as Record<string, unknown>
       if (holiday?.mode === 'STANDARD_ONLY') {
-        return slot?.slotGroup === 'standard'
+        return slot?.slug === 'standard'
       }
       return true
     })
@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
     // Standard slot
     const standardConfig = cityConfigs.find((c: Record<string, unknown>) => {
       const slot = c.delivery_slots as Record<string, unknown>
-      return slot?.slotGroup === 'standard' && slot?.isActive
+      return slot?.slug === 'standard' && slot?.isActive
     })
     let standardResult: { available: boolean; charge: number }
     if (!standardConfig || isHolidayBlocked((standardConfig.delivery_slots as Record<string, unknown>).slug as string)) {
@@ -171,7 +171,7 @@ export async function GET(req: NextRequest) {
     // Fixed time windows
     const fixedConfig = cityConfigs.find((c: Record<string, unknown>) => {
       const slot = c.delivery_slots as Record<string, unknown>
-      return slot?.slotGroup === 'fixed' && slot?.isActive
+      return slot?.slug === 'fixed-slot' && slot?.isActive
     })
     let fixedWindows: { label: string; start: string; end: string; charge: number; available: boolean }[] = []
     if (fixedConfig && !isHolidayBlocked((fixedConfig.delivery_slots as Record<string, unknown>).slug as string)) {
@@ -205,7 +205,7 @@ export async function GET(req: NextRequest) {
     // Early Morning slot
     const earlyConfig = cityConfigs.find((c: Record<string, unknown>) => {
       const slot = c.delivery_slots as Record<string, unknown>
-      return slot?.slotGroup === 'early-morning' && slot?.isActive
+      return slot?.slug === 'early-morning' && slot?.isActive
     })
     let earlyMorningResult: { available: boolean; charge: number; cutoffPassed: boolean }
     if (!earlyConfig || isHolidayBlocked((earlyConfig.delivery_slots as Record<string, unknown>).slug as string)) {
@@ -229,7 +229,7 @@ export async function GET(req: NextRequest) {
     // Express slot
     const expressConfig = cityConfigs.find((c: Record<string, unknown>) => {
       const slot = c.delivery_slots as Record<string, unknown>
-      return slot?.slotGroup === 'express' && slot?.isActive
+      return slot?.slug === 'express' && slot?.isActive
     })
     let expressResult: { available: boolean; charge: number }
     if (!expressConfig || isHolidayBlocked((expressConfig.delivery_slots as Record<string, unknown>).slug as string)) {
@@ -242,7 +242,7 @@ export async function GET(req: NextRequest) {
     // Midnight slot
     const midnightConfig = cityConfigs.find((c: Record<string, unknown>) => {
       const slot = c.delivery_slots as Record<string, unknown>
-      return slot?.slotGroup === 'midnight' && slot?.isActive
+      return slot?.slug === 'midnight' && slot?.isActive
     })
     let midnightResult: { available: boolean; charge: number; cutoffPassed: boolean }
     if (!midnightConfig || isHolidayBlocked((midnightConfig.delivery_slots as Record<string, unknown>).slug as string)) {
