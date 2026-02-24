@@ -247,7 +247,7 @@ export default function AdminBannersPage() {
       validFrom: banner.validFrom ? banner.validFrom.split('T')[0] : '',
       validUntil: banner.validUntil ? banner.validUntil.split('T')[0] : '',
       targetCitySlug: banner.targetCitySlug || '',
-      isActive: banner.isActive,
+      isActive: Boolean(banner.isActive),
     })
     setFormErrors({})
     setModalOpen(true)
@@ -281,7 +281,7 @@ export default function AdminBannersPage() {
         validFrom: form.validFrom || null,
         validUntil: form.validUntil || null,
         targetCitySlug: form.targetCitySlug || null,
-        isActive: form.isActive,
+        isActive: Boolean(form.isActive),
       }
 
       const url = editingBanner
@@ -506,7 +506,7 @@ export default function AdminBannersPage() {
 
                 {/* Active toggle */}
                 <Switch
-                  checked={banner.isActive}
+                  checked={Boolean(banner.isActive)}
                   onCheckedChange={() => handleToggleActive(banner)}
                 />
 
