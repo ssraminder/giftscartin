@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     const { error: insertError } = await supabase
       .from('otp_verifications')
       .insert({
+        id: crypto.randomUUID(),
         email,
         otp,
         expiresAt: expiresAt.toISOString(),
