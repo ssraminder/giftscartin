@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface Banner {
   id: string
@@ -27,18 +28,23 @@ const FALLBACK_BANNERS: Banner[] = [
     textPosition: 'left',
     overlayStyle: 'dark-left',
     badgeText: null,
-  }
+  },
 ]
 
 export default function HeroBanner() {
   const [banners, setBanners] = useState<Banner[]>([])
-  const [current, setCurrent] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  const trackRef = useRef<HTMLDivElement>(null)
+  const tileRef = useRef<HTMLDivElement>(null)
+  const touchStartX = useRef(0)
 
   useEffect(() => {
     fetch('/api/banners')
-      .then(r => r.json())
-      .then(json => {
+      .then((r) => r.json())
+      .then((json) => {
         if (json.success && json.data?.length > 0) {
           setBanners(json.data)
         } else {
@@ -49,119 +55,153 @@ export default function HeroBanner() {
       .finally(() => setLoading(false))
   }, [])
 
-  const prev = () => setCurrent(i => (i - 1 + banners.length) % banners.length)
-  const next = useCallback(() => setCurrent(i => (i + 1) % banners.length), [banners.length])
+  const goTo = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= banners.length) return
+      setCurrentIndex(index)
+    },
+    [banners.length]
+  )
+
+  const goNext = useCallback(() => {
+    setCurrentIndex((prev) => (prev + 1) % banners.length)
+  }, [banners.length])
+
+  const goPrev = useCallback(() => {
+    setCurrentIndex((prev) => (prev - 1 + banners.length) % banners.length)
+  }, [banners.length])
 
   // Auto-advance every 5 seconds
   useEffect(() => {
-    if (banners.length <= 1) return
-    const timer = setInterval(next, 5000)
+    if (banners.length <= 1 || isPaused) return
+    const timer = setInterval(goNext, 5000)
     return () => clearInterval(timer)
-  }, [banners.length, next])
+  }, [banners.length, isPaused, goNext, currentIndex])
 
-  if (loading) {
-    return <div className="w-full h-[420px] md:h-[520px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse" />
+  // Compute translate offset from first tile's width
+  const getTranslateX = useCallback((): string => {
+    const tile = tileRef.current
+    if (!tile) return '0px'
+    const tileWidth = tile.offsetWidth
+    return `-${currentIndex * (tileWidth + 12)}px`
+  }, [currentIndex])
+
+  // Touch handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
   }
 
-  const banner = banners[current]
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const delta = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(delta) > 50) {
+      if (delta > 0 && currentIndex < banners.length - 1) {
+        goTo(currentIndex + 1)
+      } else if (delta < 0 && currentIndex > 0) {
+        goTo(currentIndex - 1)
+      }
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="w-full h-[260px] md:h-[400px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse" />
+    )
+  }
+
+  if (banners.length === 0) return null
 
   return (
-    <div className="relative w-full overflow-hidden">
-      {/* Banner slide */}
+    <div
+      className="relative w-full overflow-hidden"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+    >
+      {/* Scrollable track */}
       <div
-        className="relative w-full h-[420px] md:h-[520px] bg-cover bg-center transition-all duration-500"
+        ref={trackRef}
+        className="flex gap-3"
         style={{
-          backgroundImage: banner.imageUrl
-            ? `url(${banner.imageUrl})`
-            : undefined,
-          backgroundColor: banner.imageUrl ? undefined : '#e91e8c',
+          transform: `translateX(${getTranslateX()})`,
+          transition: 'transform 400ms ease',
         }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Gradient fallback when no image */}
-        {!banner.imageUrl && (
-          <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-purple-600" />
-        )}
-
-        {/* Overlay */}
-        <div className={`absolute inset-0 ${
-          banner.overlayStyle === 'dark-right'
-            ? 'bg-gradient-to-l from-black/60 via-black/30 to-transparent'
-            : banner.overlayStyle === 'full-dark'
-            ? 'bg-black/50'
-            : 'bg-gradient-to-r from-black/60 via-black/30 to-transparent'
-        }`} />
-
-        {/* Content */}
-        <div className={`relative z-10 h-full flex flex-col justify-center px-8 md:px-16 ${
-          banner.textPosition === 'right'
-            ? 'ml-auto max-w-2xl items-end text-right'
-            : 'max-w-2xl items-start text-left'
-        }`}>
-          {banner.badgeText && (
-            <span className="inline-block bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1 rounded-full mb-4">
-              {banner.badgeText}
-            </span>
-          )}
-          <h2
-            className="text-3xl md:text-5xl font-bold text-white leading-tight mb-3"
-            dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
-          />
-          {banner.subtitleHtml && (
-            <p
-              className="text-white/90 text-base md:text-lg mb-6"
-              dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
-            />
-          )}
-          <div className="flex gap-3 flex-wrap">
-            <Link
-              href={banner.ctaLink}
-              className="bg-white text-gray-900 font-semibold px-6 py-3 rounded-full hover:bg-gray-100 transition-colors"
-            >
-              {banner.ctaText}
-            </Link>
-            {banner.secondaryCtaText && (
-              <Link
-                href={banner.secondaryCtaLink ?? '#'}
-                className="border-2 border-white text-white font-semibold px-6 py-3 rounded-full hover:bg-white/10 transition-colors"
-              >
-                {banner.secondaryCtaText}
-              </Link>
+        {banners.map((banner, i) => (
+          <div
+            key={banner.id}
+            ref={i === 0 ? tileRef : undefined}
+            className="relative flex-shrink-0 overflow-hidden rounded-2xl
+              w-[90%]
+              md:w-[calc((100%-12px)/2.5)]
+              lg:w-[calc((100%-24px)/3)]
+              xl:w-[calc((100%-36px)/3.5)]
+              2xl:w-[calc((100%-48px)/4)]
+              h-[260px] md:h-[400px]"
+          >
+            {/* Background image or gradient fallback */}
+            {banner.imageUrl ? (
+              <div
+                className="absolute inset-0 bg-cover bg-center"
+                style={{ backgroundImage: `url(${banner.imageUrl})` }}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-purple-600" />
             )}
+
+            {/* Dark gradient overlay: bottom-left to top-right */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/30 to-transparent" />
+
+            {/* Badge */}
+            {banner.badgeText && (
+              <span className="absolute top-4 right-4 z-10 bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1 rounded-full">
+                {banner.badgeText}
+              </span>
+            )}
+
+            {/* Text content — anchored bottom-left */}
+            <div className="absolute bottom-0 left-0 z-10 p-6 flex flex-col gap-2 max-w-[85%]">
+              <h2
+                className="text-xl md:text-3xl font-bold text-white leading-tight line-clamp-2"
+                dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
+              />
+              {banner.subtitleHtml && (
+                <p
+                  className="text-sm md:text-base text-white/80 line-clamp-2"
+                  dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
+                />
+              )}
+              <div className="mt-1">
+                <Link
+                  href={banner.ctaLink}
+                  className="inline-block bg-white text-gray-900 font-semibold text-sm px-5 py-2 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  {banner.ctaText}
+                </Link>
+              </div>
+            </div>
           </div>
-        </div>
+        ))}
       </div>
 
-      {/* Navigation arrows — only show if multiple banners */}
-      {banners.length > 1 && (
-        <>
-          <button
-            onClick={prev}
-            className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white/20 hover:bg-white/40 text-white rounded-full p-2 transition-colors"
-          >
-            ‹
-          </button>
-          <button
-            onClick={next}
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-white/20 hover:bg-white/40 text-white rounded-full p-2 transition-colors"
-          >
-            ›
-          </button>
-        </>
+      {/* Left arrow — hidden on mobile, hidden on first tile */}
+      {currentIndex > 0 && (
+        <button
+          onClick={goPrev}
+          className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
       )}
 
-      {/* Dots */}
-      {banners.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2">
-          {banners.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrent(i)}
-              className={`rounded-full transition-all ${
-                i === current ? 'w-6 h-2 bg-white' : 'w-2 h-2 bg-white/50'
-              }`}
-            />
-          ))}
-        </div>
+      {/* Right arrow — hidden on mobile, hidden on last tile */}
+      {currentIndex < banners.length - 1 && (
+        <button
+          onClick={() => goTo(currentIndex + 1)}
+          className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
       )}
     </div>
   )
