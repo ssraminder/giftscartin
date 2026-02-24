@@ -432,26 +432,32 @@ export default function AdminBannersPage() {
               <GripVertical className="h-5 w-5 shrink-0 text-slate-300" />
 
               {/* Thumbnail */}
-              <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded bg-gray-100">
-                <Image
-                  src={banner.imageUrl}
-                  alt=""
-                  fill
-                  className="object-cover"
-                  unoptimized={banner.imageUrl.startsWith('/')}
-                />
-              </div>
+              {banner.imageUrl && banner.imageUrl.trim() !== '' ? (
+                <div className="relative w-16 h-10 rounded overflow-hidden bg-gray-100 flex-shrink-0">
+                  <Image
+                    src={banner.imageUrl}
+                    alt="Banner"
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                  />
+                </div>
+              ) : (
+                <div className="w-16 h-10 rounded bg-gray-200 flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="w-4 h-4 text-gray-400" />
+                </div>
+              )}
 
               {/* Content */}
               <div className="min-w-0 flex-1">
                 <div
                   className="truncate text-sm font-medium text-slate-900"
-                  dangerouslySetInnerHTML={{ __html: banner.titleHtml }}
+                  dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
                 />
                 {banner.subtitleHtml && (
                   <div
                     className="truncate text-xs text-slate-500"
-                    dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
+                    dangerouslySetInnerHTML={{ __html: banner.subtitleHtml ?? '' }}
                   />
                 )}
                 <div className="mt-1 flex flex-wrap gap-1">
@@ -572,15 +578,9 @@ export default function AdminBannersPage() {
               )}
               {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
               <p className="text-xs text-gray-400">PNG, JPG or WebP &middot; Max 5MB &middot; Recommended: 1536&times;1024px</p>
-              {form.imageUrl && (
+              {form.imageUrl && form.imageUrl.trim() !== '' ? (
                 <div className="relative w-full h-36 rounded-lg overflow-hidden bg-gray-100 border mt-1">
-                  <Image
-                    src={form.imageUrl}
-                    alt="Preview"
-                    fill
-                    style={{ objectFit: 'cover' }}
-                    unoptimized={form.imageUrl.startsWith('/')}
-                  />
+                  <Image src={form.imageUrl} alt="Preview" fill style={{ objectFit: 'cover' }} />
                   <button
                     type="button"
                     onClick={() => setForm(f => ({ ...f, imageUrl: '' }))}
@@ -588,6 +588,13 @@ export default function AdminBannersPage() {
                   >
                     <X className="w-3 h-3" />
                   </button>
+                </div>
+              ) : (
+                <div className="w-full h-36 rounded-lg bg-gray-100 border mt-1 flex items-center justify-center">
+                  <div className="text-center text-gray-400">
+                    <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                    <p className="text-xs">No image selected</p>
+                  </div>
                 </div>
               )}
             </div>
@@ -616,7 +623,7 @@ export default function AdminBannersPage() {
               )}
               {form.titleHtml && (
                 <div className="mt-2 rounded bg-gray-900 p-3 text-2xl font-bold leading-tight text-white">
-                  <span dangerouslySetInnerHTML={{ __html: form.titleHtml }} />
+                  <span dangerouslySetInnerHTML={{ __html: form.titleHtml ?? '' }} />
                 </div>
               )}
             </div>
@@ -638,7 +645,7 @@ export default function AdminBannersPage() {
               />
               {form.subtitleHtml && (
                 <div className="mt-2 rounded bg-gray-900 p-2 text-sm text-white/80">
-                  <span dangerouslySetInnerHTML={{ __html: form.subtitleHtml }} />
+                  <span dangerouslySetInnerHTML={{ __html: form.subtitleHtml ?? '' }} />
                 </div>
               )}
             </div>
