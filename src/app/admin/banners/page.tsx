@@ -376,29 +376,61 @@ export default function AdminBannersPage() {
     if (!aiTheme.trim()) return
     setAiGenerating(true)
     setAiError(null)
+
     try {
+      // Start background job
       const res = await fetch('/api/admin/banners/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ theme: aiTheme }),
       })
       const json = await res.json()
-      if (json.success) {
-        setForm(f => ({
-          ...f,
-          ...(json.data.imageUrl ? { imageUrl: json.data.imageUrl } : {}),
-          ...(json.data.titleHtml ? { titleHtml: json.data.titleHtml } : {}),
-          ...(json.data.subtitleHtml ? { subtitleHtml: json.data.subtitleHtml } : {}),
-          ...(json.data.ctaText ? { ctaText: json.data.ctaText } : {}),
-          ...(json.data.badgeText ? { badgeText: json.data.badgeText } : {}),
-        }))
-        setFormErrors({})
-      } else {
-        setAiError(json.error || 'Generation failed. Please try again.')
+      if (!json.success || !json.jobId) {
+        setAiError(json.error || 'Failed to start generation.')
+        setAiGenerating(false)
+        return
       }
+
+      const jobId = json.jobId
+
+      // Poll every 3 seconds for up to 2 minutes
+      let attempts = 0
+      const maxAttempts = 40
+      const poll = setInterval(async () => {
+        attempts++
+        try {
+          const pollRes = await fetch(`/api/admin/banners/generate/${jobId}`)
+          const pollJson = await pollRes.json()
+          const data = pollJson.data
+
+          if (data?.status === 'done') {
+            clearInterval(poll)
+            setForm(f => ({
+              ...f,
+              ...(data.result?.imageUrl ? { imageUrl: data.result.imageUrl } : {}),
+              ...(data.result?.titleHtml ? { titleHtml: data.result.titleHtml } : {}),
+              ...(data.result?.subtitleHtml ? { subtitleHtml: data.result.subtitleHtml } : {}),
+              ...(data.result?.ctaText ? { ctaText: data.result.ctaText } : {}),
+              ...(data.result?.badgeText ? { badgeText: data.result.badgeText } : {}),
+            }))
+            setFormErrors({})
+            setAiGenerating(false)
+          } else if (data?.status === 'failed' || attempts >= maxAttempts) {
+            clearInterval(poll)
+            setAiError(data?.error || 'Generation timed out. Please try again.')
+            setAiGenerating(false)
+          }
+        } catch {
+          // Ignore individual poll failures, keep trying
+          if (attempts >= maxAttempts) {
+            clearInterval(poll)
+            setAiError('Generation timed out. Please try again.')
+            setAiGenerating(false)
+          }
+        }
+      }, 3000)
     } catch {
       setAiError('Generation failed. Please try again.')
-    } finally {
       setAiGenerating(false)
     }
   }
