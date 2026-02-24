@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { buildOrganizationJsonLd, buildLocalBusinessJsonLd } from '@/lib/seo'
 import { JsonLd } from '@/components/seo/json-ld'
-import { HeroBanner } from "@/components/home/hero-banner"
+import HeroBanner from "@/components/home/hero-banner"
 import { OccasionPills } from "@/components/home/occasion-pills"
 import { TrendingProducts } from "@/components/home/trending-products"
 import { CategoryGrid } from "@/components/home/category-grid"
