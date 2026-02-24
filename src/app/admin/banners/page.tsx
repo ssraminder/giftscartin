@@ -59,6 +59,7 @@ interface Banner {
   validFrom: string | null
   validUntil: string | null
   targetCitySlug: string | null
+  theme: string
   createdAt: string
   updatedAt: string
 }
@@ -78,6 +79,7 @@ interface BannerFormData {
   validUntil: string
   targetCitySlug: string
   isActive: boolean
+  theme: string
 }
 
 const EMPTY_FORM: BannerFormData = {
@@ -95,7 +97,17 @@ const EMPTY_FORM: BannerFormData = {
   validUntil: '',
   targetCitySlug: '',
   isActive: true,
+  theme: 'blush',
 }
+
+const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
+  { value: 'blush', color: '#fce4ec', label: 'Blush' },
+  { value: 'purple', color: '#ede7f6', label: 'Purple' },
+  { value: 'gold', color: '#fff8e1', label: 'Gold' },
+  { value: 'navy', color: '#1a237e', label: 'Navy' },
+  { value: 'mint', color: '#e8f5e9', label: 'Mint' },
+  { value: 'peach', color: '#fff3e0', label: 'Peach' },
+]
 
 const CITY_OPTIONS = [
   { value: '', label: 'All Cities' },
@@ -254,6 +266,7 @@ export default function AdminBannersPage() {
       validUntil: banner.validUntil ? banner.validUntil.split('T')[0] : '',
       targetCitySlug: banner.targetCitySlug || '',
       isActive: Boolean(banner.isActive),
+      theme: banner.theme || 'blush',
     })
     setFormErrors({})
     setModalOpen(true)
@@ -288,6 +301,7 @@ export default function AdminBannersPage() {
         validUntil: form.validUntil || null,
         targetCitySlug: form.targetCitySlug || null,
         isActive: Boolean(form.isActive),
+        theme: form.theme || 'blush',
       }
 
       const url = editingBanner
@@ -519,10 +533,23 @@ export default function AdminBannersPage() {
 
               {/* Content */}
               <div className="min-w-0 flex-1">
-                <div
-                  className="truncate text-sm font-medium text-slate-900"
-                  dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
-                />
+                <div className="flex items-center gap-1.5">
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: '50%',
+                      backgroundColor: THEME_SWATCHES.find(s => s.value === banner.theme)?.color || '#fce4ec',
+                      border: '1px solid rgba(0,0,0,0.1)',
+                      flexShrink: 0,
+                      display: 'inline-block',
+                    }}
+                  />
+                  <div
+                    className="truncate text-sm font-medium text-slate-900"
+                    dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
+                  />
+                </div>
                 {banner.subtitleHtml && (
                   <div
                     className="truncate text-xs text-slate-500"
@@ -643,6 +670,34 @@ export default function AdminBannersPage() {
               </p>
             </div>
 
+            {/* Theme Picker */}
+            <div className="space-y-2">
+              <Label>Theme</Label>
+              <div className="flex items-center gap-3">
+                {THEME_SWATCHES.map(s => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    title={s.label}
+                    onClick={() => setForm(f => ({ ...f, theme: s.value }))}
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      backgroundColor: s.color,
+                      outline: form.theme === s.value ? '2px solid #111' : '2px solid transparent',
+                      outlineOffset: 3,
+                      border: '1px solid rgba(0,0,0,0.12)',
+                      cursor: 'pointer',
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
+                Selected: {THEME_SWATCHES.find(s => s.value === form.theme)?.label || form.theme}
+              </p>
+            </div>
+
             {/* 1. Banner Image */}
             <div className="space-y-2">
               <Label>Banner Image</Label>
@@ -678,6 +733,9 @@ export default function AdminBannersPage() {
               )}
               {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
               <p className="text-xs text-gray-400">PNG, JPG or WebP &middot; Max 5MB &middot; Recommended: 1536&times;1024px</p>
+              <p className="text-xs text-slate-400">
+                Image fills the right side of the tile. Use a 4:3 landscape image with the subject centred. Leave blank to use theme colour only.
+              </p>
               {form.imageUrl && form.imageUrl?.trim() !== '' ? (
                 <div className="relative w-full h-36 rounded-lg overflow-hidden bg-gray-100 border mt-1">
                   <Image src={form.imageUrl} alt="Preview" fill style={{ objectFit: 'cover' }} />

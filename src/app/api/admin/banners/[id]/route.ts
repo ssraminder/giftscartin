@@ -37,6 +37,7 @@ export async function PATCH(
       validFrom: 'valid_from',
       validUntil: 'valid_until',
       targetCitySlug: 'target_city_slug',
+      theme: 'theme',
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {
@@ -73,6 +74,7 @@ export async function PATCH(
       validFrom: data.valid_from,
       validUntil: data.valid_until,
       targetCitySlug: data.target_city_slug,
+      theme: data.theme,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

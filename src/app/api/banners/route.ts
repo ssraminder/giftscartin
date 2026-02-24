@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       validFrom: b.valid_from,
       validUntil: b.valid_until,
       targetCitySlug: b.target_city_slug,
+      theme: b.theme,
     }))
 
     return NextResponse.json({ success: true, data: mapped }, {

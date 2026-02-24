@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       validFrom: b.valid_from,
       validUntil: b.valid_until,
       targetCitySlug: b.target_city_slug,
+      theme: b.theme,
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }))
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Optional fields
+    if (body.theme !== undefined) insertData.theme = body.theme
     if (body.subtitleHtml !== undefined) insertData.subtitle_html = body.subtitleHtml
     if (body.secondaryCtaText !== undefined) insertData.secondary_cta_text = body.secondaryCtaText
     if (body.secondaryCtaLink !== undefined) insertData.secondary_cta_link = body.secondaryCtaLink
@@ -116,6 +118,7 @@ export async function POST(request: NextRequest) {
       validFrom: data.valid_from,
       validUntil: data.valid_until,
       targetCitySlug: data.target_city_slug,
+      theme: data.theme,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null
