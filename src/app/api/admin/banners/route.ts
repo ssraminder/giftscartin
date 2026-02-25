@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
       badgeBgColor: b.badge_bg_color ?? 'rgba(255,255,255,0.2)',
       badgeTextColor: b.badge_text_color ?? '#FFFFFF',
       layers: b.layers ?? [],
+      layout: b.layout ?? '16:9',
+      mobileOnly: b.mobile_only ?? false,
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }))
@@ -136,6 +138,8 @@ export async function POST(request: NextRequest) {
     if (body.badgeBgColor !== undefined) insertData.badge_bg_color = body.badgeBgColor
     if (body.badgeTextColor !== undefined) insertData.badge_text_color = body.badgeTextColor
     if (body.layers !== undefined) insertData.layers = body.layers
+    if (body.layout !== undefined) insertData.layout = body.layout
+    if (body.mobileOnly !== undefined) insertData.mobile_only = body.mobileOnly
 
     const { data, error } = await supabase
       .from('banners')
@@ -188,6 +192,8 @@ export async function POST(request: NextRequest) {
       badgeBgColor: data.badge_bg_color ?? 'rgba(255,255,255,0.2)',
       badgeTextColor: data.badge_text_color ?? '#FFFFFF',
       layers: data.layers ?? [],
+      layout: data.layout ?? '16:9',
+      mobileOnly: data.mobile_only ?? false,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

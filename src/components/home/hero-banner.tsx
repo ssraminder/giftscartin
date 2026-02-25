@@ -21,13 +21,14 @@ const CLONE_COUNT = 3
 const AUTO_PLAY_MS = 4000
 
 export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {}) {
-  const [banners, setBanners] = useState<ResolvedBanner[]>([])
+  const [allBanners, setAllBanners] = useState<ResolvedBanner[]>([])
   const [currentIndex, setCurrentIndex] = useState(CLONE_COUNT)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [loading, setLoading] = useState(true)
   const [slideWidth, setSlideWidth] = useState(0)
   const [gap, setGap] = useState(16)
+  const [isMobile, setIsMobile] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -53,7 +54,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       const resolved = propBanners
         .map(resolveBanner)
         .filter((b): b is ResolvedBanner => b !== null)
-      setBanners(resolved)
+      setAllBanners(resolved)
       setLoading(false)
       return
     }
@@ -65,12 +66,25 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
           const resolved = json.data
             .map(resolveBanner)
             .filter((b: ResolvedBanner | null): b is ResolvedBanner => b !== null)
-          setBanners(resolved)
+          setAllBanners(resolved)
         }
       })
       .catch(() => { /* no banners */ })
       .finally(() => setLoading(false))
   }, [propBanners, resolveBanner])
+
+  // Filter banners by viewport:
+  // Desktop: 16:9 banners + 4:3 banners where mobileOnly=false
+  // Mobile: 4:3 banners only (fallback to all if no 4:3 exist)
+  const banners = useMemo(() => {
+    if (allBanners.length === 0) return []
+    if (isMobile) {
+      const mobileBanners = allBanners.filter(b => (b.layout || '16:9') === '4:3')
+      return mobileBanners.length > 0 ? mobileBanners : allBanners
+    }
+    // Desktop: show 16:9 + non-mobile-only 4:3
+    return allBanners.filter(b => (b.layout || '16:9') === '16:9' || !b.mobileOnly)
+  }, [allBanners, isMobile])
 
   // Measure container and compute responsive slide dimensions
   useEffect(() => {
@@ -80,10 +94,11 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       const cs = getComputedStyle(el)
       const pl = parseFloat(cs.paddingLeft) || 0
       const visibleArea = el.clientWidth - pl
-      const isMobile = el.clientWidth < 768
-      const g = isMobile ? 12 : 16
+      const mobile = el.clientWidth < 768
+      setIsMobile(mobile)
+      const g = mobile ? 12 : 16
       // Mobile: ~1.1 tiles visible, Desktop: ~2.5 tiles visible
-      const visibleCount = isMobile ? 1.1 : 2.5
+      const visibleCount = mobile ? 1.1 : 2.5
       const gapsInView = Math.floor(visibleCount)
       const sw = (visibleArea - gapsInView * g) / visibleCount
       setSlideWidth(sw)
@@ -97,6 +112,12 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   }, [])
 
   const realCount = banners.length
+
+  // Reset carousel index when filtered banner set changes
+  useEffect(() => {
+    setCurrentIndex(CLONE_COUNT)
+    setIsTransitioning(false)
+  }, [realCount])
 
   // Build extended slides: [last N clones] + [real slides] + [first N clones]
   const extendedSlides = useMemo(() => {
@@ -199,7 +220,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
             {extendedSlides.map((banner, idx) => (
               <div
                 key={`${banner.id}-${idx}`}
-                className="flex-shrink-0 rounded-2xl overflow-hidden aspect-[16/9]"
+                className={`flex-shrink-0 rounded-2xl overflow-hidden ${(banner.layout || '16:9') === '4:3' ? 'aspect-[4/3]' : 'aspect-[16/9]'}`}
                 style={{ width: `${slideWidth}px` }}
               >
                 <BannerLayerRenderer
@@ -215,7 +236,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="flex-shrink-0 aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl"
+                className={`flex-shrink-0 bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl ${isMobile ? 'aspect-[4/3]' : 'aspect-[16/9]'}`}
                 style={{ width: '38%' }}
               />
             ))}

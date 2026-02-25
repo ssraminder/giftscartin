@@ -61,6 +61,8 @@ export async function PATCH(
       badgeBgColor: 'badge_bg_color',
       badgeTextColor: 'badge_text_color',
       layers: 'layers',
+      layout: 'layout',
+      mobileOnly: 'mobile_only',
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {
@@ -121,6 +123,8 @@ export async function PATCH(
       badgeBgColor: data.badge_bg_color ?? 'rgba(255,255,255,0.2)',
       badgeTextColor: data.badge_text_color ?? '#FFFFFF',
       layers: data.layers ?? [],
+      layout: data.layout ?? '16:9',
+      mobileOnly: data.mobile_only ?? false,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null
