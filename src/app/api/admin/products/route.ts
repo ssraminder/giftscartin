@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
+import { autoAssignProductToVendors } from '@/lib/auto-assign-vendor-products'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -374,6 +375,15 @@ export async function POST(request: NextRequest) {
         upsellProductId: data.upsellIds[i],
         sortOrder: i,
       })
+    }
+
+    // Auto-assign this product to all vendors whose categories match
+    if (data.isActive) {
+      const assignResult = await autoAssignProductToVendors(product.id, data.categoryId)
+      console.log(
+        `[product-create] Auto-assigned product ${product.id} to ${assignResult.attempted} vendors` +
+        (assignResult.error ? `, error: ${assignResult.error}` : '')
+      )
     }
 
     // Fetch the full product with relations
