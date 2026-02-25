@@ -194,8 +194,10 @@ function ObjectPositionGrid({ value, onChange }: { value: string; onChange: (v: 
 
 // ==================== Common Layer Properties ====================
 
-function CommonLayerProperties({ layer, onUpdate }: { layer: Layer; onUpdate: (u: Partial<Layer>) => void }) {
+function CommonLayerProperties({ layer, layerType, onUpdate }: { layer: Layer; layerType: string; onUpdate: (u: Partial<Layer>) => void }) {
   if (layer.type === 'background') return null
+
+  const isImage = layerType === 'image'
 
   return (
     <div className="space-y-3">
@@ -209,22 +211,42 @@ function CommonLayerProperties({ layer, onUpdate }: { layer: Layer; onUpdate: (u
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        {([
-          { label: 'X', key: 'x' as const },
-          { label: 'Y', key: 'y' as const },
-          { label: 'W', key: 'w' as const },
-          { label: 'H', key: 'h' as const },
-        ]).map(({ label, key }) => (
-          <div key={key}>
-            <label className="text-xs text-gray-500">{label} %</label>
-            <input
-              type="number" step="0.5" min="0" max="100"
-              value={Math.round((layer[key] as number) * 10) / 10}
-              onChange={(e) => onUpdate({ [key]: parseFloat(e.target.value) || 0 })}
-              className="w-full text-sm border rounded px-2 py-1"
-            />
-          </div>
-        ))}
+        <div>
+          <label className="text-xs text-gray-500">X %</label>
+          <input
+            type="number" step="0.5" min={0} max={100}
+            value={Math.round((layer.x as number) * 10) / 10}
+            onChange={(e) => onUpdate({ x: parseFloat(e.target.value) || 0 })}
+            className="w-full text-sm border rounded px-2 py-1"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">Y %</label>
+          <input
+            type="number" step="0.5" min={isImage ? -100 : 0} max={100}
+            value={Math.round((layer.y as number) * 10) / 10}
+            onChange={(e) => onUpdate({ y: parseFloat(e.target.value) || 0 })}
+            className="w-full text-sm border rounded px-2 py-1"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">W %</label>
+          <input
+            type="number" step="0.5" min={5} max={isImage ? 200 : 100}
+            value={Math.round((layer.w as number) * 10) / 10}
+            onChange={(e) => onUpdate({ w: parseFloat(e.target.value) || 0 })}
+            className="w-full text-sm border rounded px-2 py-1"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500">H %</label>
+          <input
+            type="number" step="0.5" min={5} max={isImage ? 200 : 100}
+            value={Math.round((layer.h as number) * 10) / 10}
+            onChange={(e) => onUpdate({ h: parseFloat(e.target.value) || 0 })}
+            className="w-full text-sm border rounded px-2 py-1"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -429,6 +451,51 @@ function ImageProperties({ layer, allLayers, onUpdate }: { layer: ImageLayer; al
 
       <ObjectPositionGrid value={layer.objectPosition} onChange={(v) => onUpdate({ objectPosition: v })} />
 
+      <div className="mt-3">
+        <p className="text-xs font-medium text-gray-500 mb-1">Hero presets</p>
+        <div className="flex flex-col gap-1">
+          {[
+            {
+              label: '\u2197 Right, overflow top',
+              updates: {
+                x: 52, y: -8, w: 45, h: 115,
+                objectFit: 'contain' as const, objectPosition: 'bottom center'
+              }
+            },
+            {
+              label: '\u2192 Right, contained',
+              updates: {
+                x: 54, y: 5, w: 42, h: 88,
+                objectFit: 'contain' as const, objectPosition: 'center center'
+              }
+            },
+            {
+              label: '\u2B1B Right half fill',
+              updates: {
+                x: 50, y: 0, w: 50, h: 100,
+                objectFit: 'cover' as const, objectPosition: 'center center'
+              }
+            },
+            {
+              label: '\u2199 Right, overflow bottom',
+              updates: {
+                x: 52, y: 5, w: 45, h: 115,
+                objectFit: 'contain' as const, objectPosition: 'top center'
+              }
+            },
+          ].map(preset => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => onUpdate(preset.updates)}
+              className="text-left text-xs px-2 py-1.5 rounded border hover:bg-pink-50 hover:border-pink-300 transition-colors text-gray-600"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div>
         <label className="text-xs text-gray-500">Border Radius (px)</label>
         <input
@@ -482,11 +549,16 @@ function TextProperties({ layer, allLayers, onUpdate }: { layer: TextLayer; allL
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-gray-500">Line Height</label>
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            Line Height
+            {(layer as TextLayer).lineHeight < 1 && (
+              <span className="text-amber-500 text-[10px]">&#9888; tight</span>
+            )}
+          </label>
           <input
-            type="number" min="0.8" max="2.5" step="0.1"
-            value={layer.lineHeight}
-            onChange={(e) => onUpdate({ lineHeight: parseFloat(e.target.value) || 1.2 })}
+            type="number" step="0.05" min={0.5} max={3}
+            value={(layer as TextLayer).lineHeight}
+            onChange={(e) => onUpdate({ lineHeight: parseFloat(e.target.value) })}
             className="w-full text-sm border rounded px-2 py-1 mt-1"
           />
         </div>
@@ -980,7 +1052,7 @@ export function PropertiesPanel({ layer, allLayers, onUpdate }: PropertiesPanelP
   return (
     <div className="h-full overflow-y-auto p-3 space-y-4">
       {/* Common fields */}
-      <CommonLayerProperties layer={layer} onUpdate={onUpdate} />
+      <CommonLayerProperties layer={layer} layerType={layer.type} onUpdate={onUpdate} />
 
       {/* Divider */}
       <div className="border-t pt-3">

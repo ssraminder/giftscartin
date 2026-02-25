@@ -11,6 +11,7 @@ interface DraggableResizableProps {
   label?: string
   accentColor?: string
   lockRatio?: boolean
+  allowOverflow?: boolean
   disabled?: boolean
   isSelected?: boolean
   rotation?: number
@@ -40,6 +41,7 @@ export function DraggableResizable({
   containerRef,
   label,
   accentColor = '#E91E63',
+  allowOverflow = false,
   disabled = false,
   isSelected = false,
   rotation = 0,
@@ -92,16 +94,16 @@ export function DraggableResizable({
 
       if (isDragging.current) {
         const newX = snap(clamp(s.x + dx, 0, 100 - s.w))
-        const newY = snap(clamp(s.y + dy, 0, 100 - s.h))
+        const newY = snap(clamp(s.y + dy, allowOverflow ? -100 : 0, allowOverflow ? 100 : 100 - s.h))
         onChange(newX, newY, s.w, s.h)
       } else if (isResizing.current) {
         let newX = s.x, newY = s.y, newW = s.w, newH = s.h
 
         const dir = isResizing.current
-        if (dir.includes('e')) { newW = clamp(s.w + dx, 5, 100 - s.x) }
+        if (dir.includes('e')) { newW = clamp(s.w + dx, 5, allowOverflow ? 200 : 100 - s.x) }
         if (dir.includes('w')) { newX = clamp(s.x + dx, 0, s.x + s.w - 5); newW = s.w - (newX - s.x) }
-        if (dir.includes('s')) { newH = clamp(s.h + dy, 5, 100 - s.y) }
-        if (dir.includes('n')) { newY = clamp(s.y + dy, 0, s.y + s.h - 5); newH = s.h - (newY - s.y) }
+        if (dir.includes('s')) { newH = clamp(s.h + dy, 5, allowOverflow ? 200 : 100 - s.y) }
+        if (dir.includes('n')) { newY = clamp(s.y + dy, allowOverflow ? -100 : 0, s.y + s.h - 5); newH = s.h - (newY - s.y) }
 
         onChange(snap(newX), snap(newY), snap(newW), snap(newH))
       }
