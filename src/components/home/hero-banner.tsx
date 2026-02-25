@@ -17,12 +17,21 @@ interface ResolvedBanner {
   resolvedLayers: Layer[]
 }
 
+const SLIDE_GAP = 16 // gap-4 = 1rem
+const AUTO_PLAY_MS = 5000
+const TRANSITION_MS = 400
+
 export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {}) {
   const [banners, setBanners] = useState<ResolvedBanner[]>([])
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [transitionEnabled, setTransitionEnabled] = useState(true)
   const [loading, setLoading] = useState(true)
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const [slideWidth, setSlideWidth] = useState(0)
+
+  const trackRef = useRef<HTMLDivElement>(null)
+  const isPausedRef = useRef(false)
+  const touchStartX = useRef(0)
 
   // Resolve layers for a banner — migrate old format if needed
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,52 +74,138 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       .finally(() => setLoading(false))
   }, [propBanners, resolveBanner])
 
-  const goTo = useCallback((index: number) => {
-    setBanners(prev => {
-      const len = prev.length
-      if (len === 0) return prev
-      setActiveIndex((index + len) % len)
-      return prev
-    })
+  // Sync ref
+  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
+
+  const len = banners.length
+  const hasMultiple = len > 1
+
+  // For infinite loop: displayBanners = [lastClone, ...banners, firstClone]
+  // Index 0 = clone of last, index len+1 = clone of first
+  // Start at index 1 (first real slide)
+  useEffect(() => {
+    if (hasMultiple) setCurrentIndex(1)
+    else setCurrentIndex(0)
+  }, [hasMultiple])
+
+  // Measure slide width from DOM
+  const measure = useCallback(() => {
+    if (trackRef.current && trackRef.current.children.length > 0) {
+      setSlideWidth((trackRef.current.children[0] as HTMLElement).offsetWidth)
+    }
   }, [])
 
-  // Auto-play — 5 second interval
-  useEffect(() => {
-    if (banners.length <= 1 || isPaused) {
-      if (timerRef.current) clearInterval(timerRef.current)
-      timerRef.current = null
-      return
-    }
-    timerRef.current = setInterval(() => {
-      setActiveIndex(i => (i + 1) % banners.length)
-    }, 5000)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [banners.length, isPaused])
+  useEffect(() => { measure() }, [banners, measure])
 
-  // Touch handlers for swipe
-  const touchStartX = useRef(0)
+  useEffect(() => {
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [measure])
+
+  // Infinite loop boundary jumps
+  useEffect(() => {
+    if (!hasMultiple) return
+
+    if (currentIndex === len + 1) {
+      // Reached clone of first → jump back to real first
+      const t = setTimeout(() => {
+        setTransitionEnabled(false)
+        setCurrentIndex(1)
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => setTransitionEnabled(true))
+        )
+      }, TRANSITION_MS + 20)
+      return () => clearTimeout(t)
+    }
+
+    if (currentIndex === 0) {
+      // Reached clone of last → jump to real last
+      const t = setTimeout(() => {
+        setTransitionEnabled(false)
+        setCurrentIndex(len)
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => setTransitionEnabled(true))
+        )
+      }, TRANSITION_MS + 20)
+      return () => clearTimeout(t)
+    }
+  }, [currentIndex, len, hasMultiple])
+
+  // Auto-advance
+  useEffect(() => {
+    if (!hasMultiple) return
+    const interval = setInterval(() => {
+      if (isPausedRef.current) return
+      setTransitionEnabled(true)
+      setCurrentIndex(prev => prev + 1)
+    }, AUTO_PLAY_MS)
+    return () => clearInterval(interval)
+  }, [hasMultiple])
+
+  const goNext = useCallback(() => {
+    setTransitionEnabled(true)
+    setCurrentIndex(prev => prev + 1)
+  }, [])
+
+  const goPrev = useCallback(() => {
+    setTransitionEnabled(true)
+    setCurrentIndex(prev => prev - 1)
+  }, [])
+
+  const goToDot = useCallback((dotIndex: number) => {
+    setTransitionEnabled(true)
+    setCurrentIndex(dotIndex + 1) // +1 because index 0 is lastClone
+  }, [])
+
+  // Touch handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX
   }
   const handleTouchEnd = (e: React.TouchEvent) => {
     const delta = touchStartX.current - e.changedTouches[0].clientX
     if (Math.abs(delta) > 50) {
-      if (delta > 0) goTo(activeIndex + 1)
-      else goTo(activeIndex - 1)
+      if (delta > 0) goNext()
+      else goPrev()
     }
   }
+
+  const activeDot = hasMultiple ? ((currentIndex - 1 + len) % len) : 0
 
   if (loading) {
     return (
       <div className="px-4 md:px-6 lg:px-8 py-2">
-        <div className="w-full aspect-[4/3] md:aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+        <div className="w-[92vw] sm:w-[55vw] md:w-[45vw] lg:w-[37vw] 2xl:w-[31vw] max-w-[600px] aspect-[4/3] md:aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
 
-  if (banners.length === 0) return null
+  if (len === 0) return null
+
+  // Single banner — no carousel
+  if (len === 1) {
+    return (
+      <div className="px-4 md:px-6 lg:px-8 py-2">
+        <div className="relative overflow-hidden rounded-2xl w-[92vw] sm:w-[55vw] md:w-[45vw] lg:w-[37vw] 2xl:w-[31vw] max-w-[600px] aspect-[4/3] md:aspect-[16/9]">
+          <BannerLayerRenderer
+            layers={banners[0].resolvedLayers}
+            priority={true}
+            className="absolute inset-0 w-full h-full"
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Build display list with clones: [lastClone, ...banners, firstClone]
+  const displayBanners = [
+    banners[len - 1],
+    ...banners,
+    banners[0],
+  ]
+
+  const offset = slideWidth > 0
+    ? currentIndex * (slideWidth + SLIDE_GAP)
+    : 0
 
   return (
     <div
@@ -118,78 +213,74 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      <div
-        className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9]"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+      {/* Left arrow */}
+      <button
+        onClick={goPrev}
+        className="hidden md:flex absolute left-1 top-1/2 -translate-y-1/2 z-20
+                   items-center justify-center w-9 h-9 rounded-full
+                   bg-black/30 hover:bg-black/50 text-white transition-colors"
+        aria-label="Previous banner"
       >
-        {/* Slide track — all slides stacked, only active one visible via opacity */}
-        {banners.map((banner, index) => (
-          <div
-            key={banner.id}
-            aria-hidden={index !== activeIndex}
-            className="absolute inset-0 w-full h-full transition-opacity duration-500"
+        <ChevronLeft className="w-5 h-5" />
+      </button>
+
+      {/* Right arrow */}
+      <button
+        onClick={goNext}
+        className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 z-20
+                   items-center justify-center w-9 h-9 rounded-full
+                   bg-black/30 hover:bg-black/50 text-white transition-colors"
+        aria-label="Next banner"
+      >
+        <ChevronRight className="w-5 h-5" />
+      </button>
+
+      <div className="overflow-hidden rounded-2xl">
+        <div
+          ref={trackRef}
+          className="flex gap-4"
+          style={{
+            transform: `translateX(-${offset}px)`,
+            transition: transitionEnabled ? `transform ${TRANSITION_MS}ms ease` : 'none',
+          }}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {displayBanners.map((banner, i) => (
+            <div
+              key={`${banner.id}-${i}`}
+              className="relative flex-shrink-0 rounded-2xl overflow-hidden
+                         w-[92vw] sm:w-[55vw] md:w-[45vw] lg:w-[37vw] 2xl:w-[31vw] max-w-[600px]"
+            >
+              <div className="relative w-full aspect-[4/3] md:aspect-[16/9]">
+                <BannerLayerRenderer
+                  layers={banner.resolvedLayers}
+                  priority={i <= 2}
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Dot indicators */}
+      <div className="flex justify-center gap-1.5 mt-3">
+        {banners.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => goToDot(i)}
+            aria-label={`Go to slide ${i + 1}`}
+            className="transition-all duration-300 rounded-full"
             style={{
-              opacity: index === activeIndex ? 1 : 0,
-              pointerEvents: index === activeIndex ? 'auto' : 'none',
-              zIndex: index === activeIndex ? 1 : 0,
+              width: i === activeDot ? '20px' : '6px',
+              height: '6px',
+              backgroundColor: i === activeDot
+                ? '#E91E63'
+                : 'rgba(0,0,0,0.2)',
             }}
-          >
-            <BannerLayerRenderer
-              layers={banner.resolvedLayers}
-              priority={index === 0}
-              className="w-full h-full"
-            />
-          </div>
+          />
         ))}
-
-        {/* Prev/Next arrows — only show if more than 1 banner */}
-        {banners.length > 1 && (
-          <>
-            <button
-              onClick={() => goTo(activeIndex - 1)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-10
-                         w-8 h-8 rounded-full bg-white/80 hover:bg-white
-                         flex items-center justify-center shadow-md
-                         transition-colors"
-              aria-label="Previous banner"
-            >
-              <ChevronLeft className="w-4 h-4 text-gray-700" />
-            </button>
-            <button
-              onClick={() => goTo(activeIndex + 1)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 z-10
-                         w-8 h-8 rounded-full bg-white/80 hover:bg-white
-                         flex items-center justify-center shadow-md
-                         transition-colors"
-              aria-label="Next banner"
-            >
-              <ChevronRight className="w-4 h-4 text-gray-700" />
-            </button>
-          </>
-        )}
-
-        {/* Dot navigation */}
-        {banners.length > 1 && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10
-                          flex gap-1.5">
-            {banners.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => goTo(i)}
-                aria-label={`Go to slide ${i + 1}`}
-                className="transition-all duration-300 rounded-full"
-                style={{
-                  width:  i === activeIndex ? '20px' : '6px',
-                  height: '6px',
-                  backgroundColor: i === activeIndex
-                    ? '#E91E63'
-                    : 'rgba(255,255,255,0.7)',
-                }}
-              />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   )
