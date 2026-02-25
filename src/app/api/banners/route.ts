@@ -52,6 +52,14 @@ export async function GET(request: NextRequest) {
       verticalAlign: b.vertical_align ?? 'center',
       heroSize: b.hero_size ?? 'md',
       contentPadding: b.content_padding ?? 'normal',
+      contentX: b.content_x ?? 5,
+      contentY: b.content_y ?? 50,
+      contentW: b.content_w ?? 55,
+      contentH: b.content_h ?? 80,
+      heroX: b.hero_x ?? 55,
+      heroY: b.hero_y ?? 10,
+      heroW: b.hero_w ?? 40,
+      heroH: b.hero_h ?? 85,
     }))
 
     return NextResponse.json({ success: true, data: mapped }, {
