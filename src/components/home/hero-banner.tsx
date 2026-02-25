@@ -1,91 +1,24 @@
 'use client'
+
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { type Layer, migrateOldBannerToLayers } from '@/lib/banner-layers'
+import { BannerLayerRenderer } from '@/components/home/banner-layer-renderer'
 
-interface Banner {
+interface HeroBannerProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  banners?: any[]
+}
+
+interface ResolvedBanner {
   id: string
-  titleHtml: string
-  subtitleHtml?: string | null
-  imageUrl: string
-  subjectImageUrl?: string | null
-  ctaText: string
-  ctaLink: string
-  secondaryCtaText?: string | null
-  secondaryCtaLink?: string | null
-  textPosition: string
-  overlayStyle: string
-  badgeText?: string | null
-  contentWidth?: string
-  titleSize?: string
-  subtitleSize?: string
-  verticalAlign?: string
-  heroSize?: string
-  contentPadding?: string
-  contentX?: number
-  contentY?: number
-  contentW?: number
-  contentH?: number
-  heroX?: number
-  heroY?: number
-  heroW?: number
-  heroH?: number
-  ctaBgColor?: string | null
-  ctaTextColor?: string | null
-  ctaBorderColor?: string | null
-  badgeBgColor?: string | null
-  badgeTextColor?: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any
+  resolvedLayers: Layer[]
 }
 
-// ---- Sizing maps ----
-
-const TITLE_SIZE_MAP: Record<string, string> = { sm: '1.25rem', md: '1.75rem', lg: '2.25rem', xl: '2.75rem', '2xl': '3.5rem' }
-const SUBTITLE_SIZE_MAP: Record<string, string> = { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.25rem' }
-const PADDING_MAP: Record<string, string> = { tight: '1rem', normal: '2rem', spacious: '3rem' }
-
-const FALLBACK_BANNERS: Banner[] = [
-  {
-    id: 'fallback-1',
-    titleHtml: '<strong>Fresh Cakes,</strong><br/>Delivered Today',
-    subtitleHtml: 'Handcrafted by local bakers, delivered to your doorstep',
-    imageUrl: '',
-    ctaText: 'Order Now',
-    ctaLink: '/category/cakes',
-    textPosition: 'left',
-    overlayStyle: 'dark-left',
-    badgeText: null,
-  },
-]
-
-// ---- Overlay helpers ----
-
-function getOverlayCss(overlayStyle: string): React.CSSProperties | null {
-  switch (overlayStyle) {
-    case 'none':
-      return null
-    case 'dark-left':
-      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
-    case 'dark-right':
-      return { background: 'linear-gradient(to left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
-    case 'full-dark':
-      return { background: 'rgba(0,0,0,0.6)' }
-    case 'light-left':
-      return { background: 'linear-gradient(to right, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
-    case 'light-right':
-      return { background: 'linear-gradient(to left, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
-    case 'full-light':
-      return { background: 'rgba(255,255,255,0.75)' }
-    default:
-      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
-  }
-}
-
-function isLightOverlay(style: string): boolean {
-  return style.startsWith('light-') || style === 'full-light'
-}
-
-export default function HeroBanner() {
-  const [banners, setBanners] = useState<Banner[]>([])
+export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {}) {
+  const [banners, setBanners] = useState<ResolvedBanner[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [transitionDisabled, setTransitionDisabled] = useState(false)
@@ -96,20 +29,46 @@ export default function HeroBanner() {
   const trackRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
 
-  // Fetch banners
+  // Resolve layers for a banner — migrate old format if needed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resolveBanner = useCallback((banner: any): ResolvedBanner | null => {
+    const isActive = banner.is_active || banner.isActive
+    if (!isActive) return null
+
+    const rawLayers = banner.layers
+    const hasLayers = Array.isArray(rawLayers) && rawLayers.length > 0
+    return {
+      ...banner,
+      resolvedLayers: hasLayers
+        ? rawLayers as Layer[]
+        : migrateOldBannerToLayers(banner),
+    }
+  }, [])
+
+  // Fetch banners (if not passed as prop)
   useEffect(() => {
+    if (propBanners) {
+      const resolved = propBanners
+        .map(resolveBanner)
+        .filter((b): b is ResolvedBanner => b !== null)
+      setBanners(resolved)
+      setLoading(false)
+      return
+    }
+
     fetch('/api/banners')
       .then((r) => r.json())
       .then((json) => {
         if (json.success && json.data?.length > 0) {
-          setBanners(json.data)
-        } else {
-          setBanners(FALLBACK_BANNERS)
+          const resolved = json.data
+            .map(resolveBanner)
+            .filter((b: ResolvedBanner | null): b is ResolvedBanner => b !== null)
+          setBanners(resolved)
         }
       })
-      .catch(() => setBanners(FALLBACK_BANNERS))
+      .catch(() => { /* no banners */ })
       .finally(() => setLoading(false))
-  }, [])
+  }, [propBanners, resolveBanner])
 
   // Sync isPausedRef with isPaused state
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
@@ -129,16 +88,14 @@ export default function HeroBanner() {
   }, [])
 
   // Measure on mount, on banners change, and on resize
-  useEffect(() => {
-    measure()
-  }, [banners, measure])
+  useEffect(() => { measure() }, [banners, measure])
 
   useEffect(() => {
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
   }, [measure])
 
-  // Handle jump at boundaries
+  // Handle jump at boundaries (infinite loop)
   useEffect(() => {
     const len = banners.length
     if (len === 0) return
@@ -161,7 +118,7 @@ export default function HeroBanner() {
     }
   }, [currentIndex, banners.length])
 
-  // Auto advance — no dependencies, refs handle freshness
+  // Auto advance — 3 second interval
   useEffect(() => {
     const interval = setInterval(() => {
       if (isPausedRef.current) return
@@ -203,31 +160,40 @@ export default function HeroBanner() {
 
   if (banners.length === 0) return null
 
+  // Single banner — no carousel
+  if (banners.length === 1) {
+    return (
+      <div className="px-4 md:px-6 lg:px-8 py-2">
+        <BannerLayerRenderer
+          layers={banners[0].resolvedLayers}
+          priority={true}
+          className="w-full rounded-2xl"
+        />
+      </div>
+    )
+  }
+
   return (
     <div
-      className="relative px-4 md:px-6 lg:px-8 py-2 h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px]"
+      className="relative px-4 md:px-6 lg:px-8 py-2"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
       {/* Left arrow */}
-      {banners.length > 1 && (
-        <button
-          onClick={goPrev}
-          className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-      )}
+      <button
+        onClick={goPrev}
+        className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+      >
+        <ChevronLeft className="w-5 h-5" />
+      </button>
 
       {/* Right arrow */}
-      {banners.length > 1 && (
-        <button
-          onClick={goNext}
-          className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      )}
+      <button
+        onClick={goNext}
+        className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 items-center justify-center w-10 h-10 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+      >
+        <ChevronRight className="w-5 h-5" />
+      </button>
 
       <div className="overflow-hidden rounded-2xl">
         <div
@@ -241,240 +207,33 @@ export default function HeroBanner() {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          {displayBanners.map((banner, i) => {
-            const isNone = banner.overlayStyle === 'none'
-            const light = isLightOverlay(banner.overlayStyle)
-            const textColor = isNone ? '#ffffff' : light ? '#1a1a1a' : '#ffffff'
-            const defaultBadgeBg = isNone ? 'rgba(255,255,255,0.2)' : light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
-            const ctaBgColor = banner.ctaBgColor || undefined
-            const ctaTextColor = banner.ctaTextColor || undefined
-            const ctaBorderColor = banner.ctaBorderColor || undefined
-            const badgeBg = banner.badgeBgColor || defaultBadgeBg
-            const badgeTextClr = banner.badgeTextColor || textColor
-            const titleFontSize = TITLE_SIZE_MAP[banner.titleSize ?? 'lg'] ?? '2.25rem'
-            const subtitleFontSize = SUBTITLE_SIZE_MAP[banner.subtitleSize ?? 'sm'] ?? '0.875rem'
-            const padding = PADDING_MAP[banner.contentPadding ?? 'normal'] ?? '2rem'
-
-            // Coordinate-based positioning (fallback to legacy values)
-            const cX = banner.contentX ?? 5
-            const cY = banner.contentY ?? 50
-            const cW = banner.contentW ?? 55
-            const cH = banner.contentH ?? 80
-            const hX = banner.heroX ?? 55
-            const hY = banner.heroY ?? 10
-            const hW = banner.heroW ?? 40
-            const hH = banner.heroH ?? 85
-
-            const overlayCss = getOverlayCss(banner.overlayStyle)
-
-            return (
+          {displayBanners.map((banner, i) => (
             <div
               key={`${banner.id}-${i}`}
-              className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw] h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px] rounded-2xl overflow-hidden"
+              className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw]"
             >
-              {/* Layer 1: background image */}
-              {banner.imageUrl ? (
-                <div
-                  className="absolute inset-0 bg-cover bg-center"
-                  style={{ backgroundImage: `url(${banner.imageUrl})` }}
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-pink-500 to-purple-600" />
-              )}
-
-              {/* Layer 2: gradient overlay */}
-              {overlayCss && (
-                <div className="absolute inset-0 z-[2]" style={overlayCss} />
-              )}
-
-              {/* Layer 3: Hero/subject image (desktop — coordinate positioned) */}
-              {banner.subjectImageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={banner.subjectImageUrl}
-                  alt=""
-                  onError={(e) => { e.currentTarget.style.display = 'none' }}
-                  className="absolute hidden md:block"
-                  style={{
-                    left: `${hX}%`,
-                    top: `${hY}%`,
-                    width: `${hW}%`,
-                    height: `${hH}%`,
-                    objectFit: 'contain',
-                    objectPosition: 'bottom center',
-                    zIndex: 3,
-                  }}
-                />
-              )}
-
-              {/* Layer 3b: Hero/subject image (mobile) */}
-              {banner.subjectImageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={banner.subjectImageUrl}
-                  alt=""
-                  onError={(e) => { e.currentTarget.style.display = 'none' }}
-                  className="absolute right-0 top-0 h-[55%] w-auto object-contain object-top pr-2 pt-2 md:hidden"
-                  style={{ zIndex: 3 }}
-                />
-              )}
-
-              {/* Mobile: bottom-to-top gradient for readability */}
-              {banner.subjectImageUrl && !isNone && (
-                <div
-                  className="absolute inset-0 z-[4] md:hidden"
-                  style={{
-                    background: light
-                      ? 'linear-gradient(to top, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 40%, rgba(255,255,255,0.1) 65%, transparent 100%)'
-                      : 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 65%, transparent 100%)',
-                  }}
-                />
-              )}
-
-              {/* Layer 4: text content (desktop — coordinate positioned) */}
-              <div
-                className="absolute z-10 hidden md:flex flex-col justify-center overflow-hidden"
-                style={{
-                  left: `${cX}%`,
-                  top: `${cY}%`,
-                  width: `${cW}%`,
-                  height: `${cH}%`,
-                  padding,
-                  textAlign: banner.textPosition === 'right' ? 'right' : banner.textPosition === 'center' ? 'center' : 'left',
-                }}
-              >
-                {banner.badgeText && (
-                  <span
-                    className="backdrop-blur-sm"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      width: 'fit-content',
-                      padding: '4px 12px',
-                      borderRadius: '9999px',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      backgroundColor: badgeBg,
-                      color: badgeTextClr,
-                      whiteSpace: 'nowrap' as const,
-                      marginBottom: '0.5rem',
-                    }}
-                  >
-                    {banner.badgeText}
-                  </span>
-                )}
-                <h2
-                  className="font-bold leading-tight line-clamp-2"
-                  style={{ color: textColor, fontSize: titleFontSize }}
-                  dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
-                />
-                {banner.subtitleHtml && (
-                  <p
-                    className="mt-2 line-clamp-2"
-                    style={{ color: textColor, opacity: 0.75, fontSize: subtitleFontSize }}
-                    dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
-                  />
-                )}
-                <div className="mt-3">
-                  <Link
-                    href={banner.ctaLink}
-                    className="transition-colors hover:opacity-90"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      width: 'fit-content',
-                      padding: '10px 24px',
-                      borderRadius: '9999px',
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
-                      backgroundColor: ctaBgColor || (light && !isNone ? '#111827' : '#ffffff'),
-                      color: ctaTextColor || (light && !isNone ? '#ffffff' : '#111827'),
-                      border: ctaBorderColor ? `1px solid ${ctaBorderColor}` : 'none',
-                      whiteSpace: 'nowrap' as const,
-                    }}
-                  >
-                    {banner.ctaText}
-                  </Link>
-                </div>
-              </div>
-
-              {/* Layer 4: text content (mobile — simpler bottom-aligned) */}
-              <div className="absolute inset-0 z-10 flex flex-col justify-end p-4 md:hidden">
-                <div className="max-w-[85%]">
-                  {banner.badgeText && (
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        width: 'fit-content',
-                        padding: '2px 8px',
-                        borderRadius: '9999px',
-                        fontSize: '10px',
-                        fontWeight: 600,
-                        backgroundColor: badgeBg,
-                        color: badgeTextClr,
-                        whiteSpace: 'nowrap' as const,
-                        marginBottom: '0.25rem',
-                      }}
-                    >
-                      {banner.badgeText}
-                    </span>
-                  )}
-                  <h2
-                    className="text-xl font-bold leading-tight line-clamp-2"
-                    style={{ color: textColor }}
-                    dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
-                  />
-                  {banner.subtitleHtml && (
-                    <p
-                      className="text-sm mt-1 line-clamp-2"
-                      style={{ color: textColor, opacity: 0.75 }}
-                      dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
-                    />
-                  )}
-                  <div className="mt-2">
-                    <Link
-                      href={banner.ctaLink}
-                      className="transition-colors hover:opacity-90"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        width: 'fit-content',
-                        padding: '6px 16px',
-                        borderRadius: '9999px',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        backgroundColor: ctaBgColor || (light && !isNone ? '#111827' : '#ffffff'),
-                        color: ctaTextColor || (light && !isNone ? '#ffffff' : '#111827'),
-                        border: ctaBorderColor ? `1px solid ${ctaBorderColor}` : 'none',
-                        whiteSpace: 'nowrap' as const,
-                      }}
-                    >
-                      {banner.ctaText}
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              <BannerLayerRenderer
+                layers={banner.resolvedLayers}
+                priority={i === 0}
+                className="rounded-2xl"
+              />
             </div>
-            )
-          })}
+          ))}
         </div>
       </div>
 
       {/* Dot indicators */}
-      {banners.length > 1 && (
-        <div className="flex justify-center gap-2 mt-3">
-          {banners.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrentIndex(banners.length + i)}
-              className={`w-2 h-2 rounded-full transition-colors ${
-                i === activeDot ? 'bg-pink-500' : 'bg-gray-300'
-              }`}
-            />
-          ))}
-        </div>
-      )}
+      <div className="flex justify-center gap-2 mt-3">
+        {banners.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => setCurrentIndex(banners.length + i)}
+            className={`w-2 h-2 rounded-full transition-colors ${
+              i === activeDot ? 'bg-pink-500' : 'bg-gray-300'
+            }`}
+          />
+        ))}
+      </div>
     </div>
   )
 }
