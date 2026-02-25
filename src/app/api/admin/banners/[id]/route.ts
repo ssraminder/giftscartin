@@ -55,6 +55,11 @@ export async function PATCH(
       heroH: 'hero_h',
       contentLockRatio: 'content_lock_ratio',
       heroLockRatio: 'hero_lock_ratio',
+      ctaBgColor: 'cta_bg_color',
+      ctaTextColor: 'cta_text_color',
+      ctaBorderColor: 'cta_border_color',
+      badgeBgColor: 'badge_bg_color',
+      badgeTextColor: 'badge_text_color',
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {
@@ -109,6 +114,11 @@ export async function PATCH(
       heroH: data.hero_h ?? 85,
       contentLockRatio: data.content_lock_ratio ?? false,
       heroLockRatio: data.hero_lock_ratio ?? false,
+      ctaBgColor: data.cta_bg_color ?? '#E91E63',
+      ctaTextColor: data.cta_text_color ?? '#FFFFFF',
+      ctaBorderColor: data.cta_border_color ?? null,
+      badgeBgColor: data.badge_bg_color ?? 'rgba(255,255,255,0.2)',
+      badgeTextColor: data.badge_text_color ?? '#FFFFFF',
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

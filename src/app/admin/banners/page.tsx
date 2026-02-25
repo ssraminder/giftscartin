@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { BannerImageGenerator } from '@/components/admin/banner-image-generator'
 import { BannerTextStyler } from '@/components/admin/banner-text-styler'
+import { FormattingToolbar } from '@/components/admin/formatting-toolbar'
 import { PositionEditor } from '@/components/admin/position-editor'
 import {
   Dialog,
@@ -80,6 +81,11 @@ interface Banner {
   heroH: number
   contentLockRatio: boolean
   heroLockRatio: boolean
+  ctaBgColor: string | null
+  ctaTextColor: string | null
+  ctaBorderColor: string | null
+  badgeBgColor: string | null
+  badgeTextColor: string | null
   createdAt: string
   updatedAt: string
 }
@@ -117,6 +123,11 @@ interface BannerFormData {
   heroH: number
   contentLockRatio: boolean
   heroLockRatio: boolean
+  ctaBgColor: string
+  ctaTextColor: string
+  ctaBorderColor: string
+  badgeBgColor: string
+  badgeTextColor: string
 }
 
 const EMPTY_FORM: BannerFormData = {
@@ -152,6 +163,11 @@ const EMPTY_FORM: BannerFormData = {
   heroH: 85,
   contentLockRatio: false,
   heroLockRatio: false,
+  ctaBgColor: '#E91E63',
+  ctaTextColor: '#FFFFFF',
+  ctaBorderColor: '',
+  badgeBgColor: 'rgba(255,255,255,0.2)',
+  badgeTextColor: '#FFFFFF',
 }
 
 const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
@@ -221,7 +237,10 @@ function BannerPreview({ form, showGuides }: { form: BannerFormData; showGuides?
   const isNone = form.overlayStyle === 'none'
   const light = isLightOverlay(form.overlayStyle)
   const textColor = isNone ? '#ffffff' : light ? '#1a1a1a' : '#ffffff'
-  const badgeBg = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
+  const ctaBgColor = form.ctaBgColor || '#E91E63'
+  const ctaTextColor = form.ctaTextColor || '#FFFFFF'
+  const badgeBgColorVal = form.badgeBgColor || (light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)')
+  const badgeTextColorVal = form.badgeTextColor || textColor
   const hasImage = form.imageUrl?.trim()
   const hasHero = form.subjectImageUrl?.trim() && !heroError
 
@@ -289,8 +308,18 @@ function BannerPreview({ form, showGuides }: { form: BannerFormData; showGuides?
         {/* Badge */}
         {form.badgeText?.trim() && (
           <span
-            className="inline-block text-[9px] font-semibold px-2 py-0.5 rounded-full mb-1"
-            style={{ color: textColor, backgroundColor: badgeBg }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              width: 'fit-content',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+              fontSize: '9px',
+              fontWeight: 600,
+              backgroundColor: badgeBgColorVal,
+              color: badgeTextColorVal,
+              whiteSpace: 'nowrap' as const,
+            }}
           >
             {form.badgeText}
           </span>
@@ -314,7 +343,21 @@ function BannerPreview({ form, showGuides }: { form: BannerFormData; showGuides?
         )}
         {form.ctaText?.trim() && (
           <span
-            className="inline-block mt-2 bg-pink-500 text-white text-[10px] font-semibold px-3 py-1 rounded-full"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              width: 'fit-content',
+              marginTop: '0.5rem',
+              padding: '4px 12px',
+              borderRadius: '9999px',
+              fontSize: '10px',
+              fontWeight: 600,
+              backgroundColor: ctaBgColor,
+              color: ctaTextColor,
+              border: form.ctaBorderColor ? `1px solid ${form.ctaBorderColor}` : 'none',
+              whiteSpace: 'nowrap' as const,
+              cursor: 'pointer',
+            }}
           >
             {form.ctaText}
           </span>
@@ -392,8 +435,14 @@ export default function AdminBannersPage() {
   const [showBgAiGen, setShowBgAiGen] = useState(false)
   const [showHeroAiGen, setShowHeroAiGen] = useState(false)
 
-  // AI text styler
-  const [showTextStyler, setShowTextStyler] = useState(false)
+  // AI text styler — null = closed, 'title' | 'subtitle' | 'both' = open with target
+  const [textStylerTarget, setTextStylerTarget] = useState<'title' | 'subtitle' | 'both' | null>(null)
+
+  // AI color suggestion state
+  const [suggestingColors, setSuggestingColors] = useState(false)
+  const [colorSuggestion, setColorSuggestion] = useState<{
+    ctaBgColor: string; ctaTextColor: string; badgeBgColor: string; badgeTextColor: string; explanation: string
+  } | null>(null)
 
   // Preview guides
   const [showGuides, setShowGuides] = useState(false)
@@ -538,6 +587,11 @@ export default function AdminBannersPage() {
       heroH: banner.heroH ?? 85,
       contentLockRatio: banner.contentLockRatio ?? false,
       heroLockRatio: banner.heroLockRatio ?? false,
+      ctaBgColor: banner.ctaBgColor || '#E91E63',
+      ctaTextColor: banner.ctaTextColor || '#FFFFFF',
+      ctaBorderColor: banner.ctaBorderColor || '',
+      badgeBgColor: banner.badgeBgColor || 'rgba(255,255,255,0.2)',
+      badgeTextColor: banner.badgeTextColor || '#FFFFFF',
     })
     setFormErrors({})
     setModalOpen(true)
@@ -590,6 +644,11 @@ export default function AdminBannersPage() {
         heroH: form.heroH,
         contentLockRatio: form.contentLockRatio,
         heroLockRatio: form.heroLockRatio,
+        ctaBgColor: form.ctaBgColor || '#E91E63',
+        ctaTextColor: form.ctaTextColor || '#FFFFFF',
+        ctaBorderColor: form.ctaBorderColor || null,
+        badgeBgColor: form.badgeBgColor || 'rgba(255,255,255,0.2)',
+        badgeTextColor: form.badgeTextColor || '#FFFFFF',
       }
 
       const url = editingBanner
@@ -1221,13 +1280,31 @@ export default function AdminBannersPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setShowTextStyler(v => !v)}
+                        onClick={() => setTextStylerTarget(textStylerTarget === 'title' ? null : 'title')}
                         className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
                       >
                         <Sparkles className="w-3 h-3" />
-                        Style with AI
+                        Style Title
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTextStylerTarget(textStylerTarget === 'both' ? null : 'both')}
+                        className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        Style Both
                       </Button>
                     </div>
+                    <FormattingToolbar
+                      value={form.titleHtml}
+                      onChange={v => {
+                        setForm(f => ({ ...f, titleHtml: v }))
+                        setFormErrors(e2 => ({ ...e2, titleHtml: '' }))
+                      }}
+                      label="Title"
+                    />
                     <textarea
                       rows={3}
                       value={form.titleHtml}
@@ -1248,12 +1325,46 @@ export default function AdminBannersPage() {
                     )}
                   </div>
 
+                  {/* AI Text Styler Panel — title only */}
+                  {textStylerTarget === 'title' && (
+                    <BannerTextStyler
+                      target="title"
+                      titleHtml={form.titleHtml}
+                      subtitleHtml={form.subtitleHtml}
+                      ctaText={form.ctaText}
+                      backgroundImageUrl={form.imageUrl || undefined}
+                      overlayStyle={form.overlayStyle}
+                      onAccept={(newTitle, newSubtitle) => {
+                        setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
+                        setTextStylerTarget(null)
+                      }}
+                      onClose={() => setTextStylerTarget(null)}
+                    />
+                  )}
+
                   {/* Subtitle HTML */}
                   <div>
-                    <label className="mb-1 block text-sm font-medium">
-                      Subtitle HTML{' '}
-                      <span className="font-normal text-slate-400">(HTML allowed)</span>
-                    </label>
+                    <div className="mb-1 flex items-center gap-2">
+                      <label className="block text-sm font-medium">
+                        Subtitle HTML{' '}
+                        <span className="font-normal text-slate-400">(HTML allowed)</span>
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setTextStylerTarget(textStylerTarget === 'subtitle' ? null : 'subtitle')}
+                        className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        Style Subtitle
+                      </Button>
+                    </div>
+                    <FormattingToolbar
+                      value={form.subtitleHtml}
+                      onChange={v => setForm(f => ({ ...f, subtitleHtml: v }))}
+                      label="Subtitle"
+                    />
                     <textarea
                       rows={3}
                       value={form.subtitleHtml}
@@ -1268,9 +1379,10 @@ export default function AdminBannersPage() {
                     )}
                   </div>
 
-                  {/* AI Text Styler Panel */}
-                  {showTextStyler && (
+                  {/* AI Text Styler Panel — subtitle only */}
+                  {textStylerTarget === 'subtitle' && (
                     <BannerTextStyler
+                      target="subtitle"
                       titleHtml={form.titleHtml}
                       subtitleHtml={form.subtitleHtml}
                       ctaText={form.ctaText}
@@ -1278,9 +1390,26 @@ export default function AdminBannersPage() {
                       overlayStyle={form.overlayStyle}
                       onAccept={(newTitle, newSubtitle) => {
                         setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
-                        setShowTextStyler(false)
+                        setTextStylerTarget(null)
                       }}
-                      onClose={() => setShowTextStyler(false)}
+                      onClose={() => setTextStylerTarget(null)}
+                    />
+                  )}
+
+                  {/* AI Text Styler Panel — both */}
+                  {textStylerTarget === 'both' && (
+                    <BannerTextStyler
+                      target="both"
+                      titleHtml={form.titleHtml}
+                      subtitleHtml={form.subtitleHtml}
+                      ctaText={form.ctaText}
+                      backgroundImageUrl={form.imageUrl || undefined}
+                      overlayStyle={form.overlayStyle}
+                      onAccept={(newTitle, newSubtitle) => {
+                        setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
+                        setTextStylerTarget(null)
+                      }}
+                      onClose={() => setTextStylerTarget(null)}
                     />
                   )}
 
@@ -1494,6 +1623,246 @@ export default function AdminBannersPage() {
                         className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                       />
                     </div>
+                  </div>
+                </div>
+
+                {/* ---- Section 4b: Button & Badge Colors ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-700">Button &amp; Badge Colors</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={suggestingColors}
+                      onClick={async () => {
+                        setSuggestingColors(true)
+                        setColorSuggestion(null)
+                        try {
+                          const res = await fetch('/api/admin/banners/style-text', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              titleHtml: form.titleHtml,
+                              subtitleHtml: form.subtitleHtml,
+                              ctaText: form.ctaText,
+                              overlayStyle: form.overlayStyle,
+                              styleInstruction: `Suggest colors for the CTA button and badge pill that complement the banner style and text.`,
+                              mode: 'colors_only',
+                            }),
+                          })
+                          const json = await res.json()
+                          if (json.success) {
+                            setColorSuggestion(json.data)
+                          }
+                        } catch { /* ignore */ }
+                        setSuggestingColors(false)
+                      }}
+                      className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
+                    >
+                      {suggestingColors ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" /> Suggesting...</>
+                      ) : (
+                        <><Sparkles className="w-3 h-3" /> Suggest Colors</>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* AI color suggestion */}
+                  {colorSuggestion && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
+                      <p className="text-xs text-purple-600 italic">{colorSuggestion.explanation}</p>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-500">Preview:</span>
+                        <span
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', padding: '4px 12px',
+                            borderRadius: '9999px', fontSize: '11px', fontWeight: 600,
+                            backgroundColor: colorSuggestion.ctaBgColor, color: colorSuggestion.ctaTextColor,
+                          }}
+                        >
+                          {form.ctaText || 'Shop Now'}
+                        </span>
+                        {form.badgeText && (
+                          <span
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
+                              borderRadius: '9999px', fontSize: '10px', fontWeight: 600,
+                              backgroundColor: colorSuggestion.badgeBgColor, color: colorSuggestion.badgeTextColor,
+                            }}
+                          >
+                            {form.badgeText}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            setForm(f => ({
+                              ...f,
+                              ctaBgColor: colorSuggestion.ctaBgColor,
+                              ctaTextColor: colorSuggestion.ctaTextColor,
+                              badgeBgColor: colorSuggestion.badgeBgColor,
+                              badgeTextColor: colorSuggestion.badgeTextColor,
+                            }))
+                            setColorSuggestion(null)
+                          }}
+                          className="bg-green-600 hover:bg-green-700 text-white text-xs h-6"
+                        >
+                          Apply
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setColorSuggestion(null)}
+                          className="text-xs h-6"
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* CTA Button Colors */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-600">CTA Button</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500 w-20 shrink-0">Background:</label>
+                          <input
+                            type="color"
+                            value={form.ctaBgColor?.startsWith('#') ? form.ctaBgColor : '#E91E63'}
+                            onChange={e => setForm(f => ({ ...f, ctaBgColor: e.target.value }))}
+                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.ctaBgColor}
+                            onChange={e => setForm(f => ({ ...f, ctaBgColor: e.target.value }))}
+                            className="flex-1 text-xs border rounded px-2 py-1"
+                            placeholder="#E91E63"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500 w-20 shrink-0">Text:</label>
+                          <input
+                            type="color"
+                            value={form.ctaTextColor?.startsWith('#') ? form.ctaTextColor : '#FFFFFF'}
+                            onChange={e => setForm(f => ({ ...f, ctaTextColor: e.target.value }))}
+                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.ctaTextColor}
+                            onChange={e => setForm(f => ({ ...f, ctaTextColor: e.target.value }))}
+                            className="flex-1 text-xs border rounded px-2 py-1"
+                            placeholder="#FFFFFF"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500 w-20 shrink-0">Border:</label>
+                          <input
+                            type="color"
+                            value={form.ctaBorderColor?.startsWith('#') ? form.ctaBorderColor : '#E91E63'}
+                            onChange={e => setForm(f => ({ ...f, ctaBorderColor: e.target.value }))}
+                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.ctaBorderColor}
+                            onChange={e => setForm(f => ({ ...f, ctaBorderColor: e.target.value }))}
+                            className="flex-1 text-xs border rounded px-2 py-1"
+                            placeholder="none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Badge Pill Colors */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-600">Badge Pill</p>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500 w-20 shrink-0">Background:</label>
+                          <input
+                            type="text"
+                            value={form.badgeBgColor}
+                            onChange={e => setForm(f => ({ ...f, badgeBgColor: e.target.value }))}
+                            className="flex-1 text-xs border rounded px-2 py-1"
+                            placeholder="rgba(255,255,255,0.2)"
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-1 ml-[5.5rem]">
+                          {[
+                            { l: 'White 15%', v: 'rgba(255,255,255,0.15)' },
+                            { l: 'White 30%', v: 'rgba(255,255,255,0.3)' },
+                            { l: 'Black 20%', v: 'rgba(0,0,0,0.2)' },
+                            { l: 'Black 50%', v: 'rgba(0,0,0,0.5)' },
+                            { l: 'Pink 20%', v: 'rgba(233,30,99,0.2)' },
+                            { l: 'Gold 25%', v: 'rgba(255,215,0,0.25)' },
+                          ].map(p => (
+                            <button
+                              key={p.l}
+                              type="button"
+                              onClick={() => setForm(f => ({ ...f, badgeBgColor: p.v }))}
+                              className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                form.badgeBgColor === p.v ? 'border-purple-400 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                              }`}
+                            >
+                              {p.l}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500 w-20 shrink-0">Text:</label>
+                          <input
+                            type="color"
+                            value={form.badgeTextColor?.startsWith('#') ? form.badgeTextColor : '#FFFFFF'}
+                            onChange={e => setForm(f => ({ ...f, badgeTextColor: e.target.value }))}
+                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
+                          />
+                          <input
+                            type="text"
+                            value={form.badgeTextColor}
+                            onChange={e => setForm(f => ({ ...f, badgeTextColor: e.target.value }))}
+                            className="flex-1 text-xs border rounded px-2 py-1"
+                            placeholder="#FFFFFF"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Inline preview */}
+                  <div className="flex items-center gap-3 bg-gray-900 rounded-lg p-3">
+                    <span className="text-[10px] text-gray-400">Preview:</span>
+                    <span
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', width: 'fit-content',
+                        padding: '6px 16px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600,
+                        backgroundColor: form.ctaBgColor || '#E91E63', color: form.ctaTextColor || '#FFFFFF',
+                        border: form.ctaBorderColor ? `1px solid ${form.ctaBorderColor}` : 'none',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {form.ctaText || 'Shop Now'}
+                    </span>
+                    {form.badgeText?.trim() && (
+                      <span
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', width: 'fit-content',
+                          padding: '3px 10px', borderRadius: '9999px', fontSize: '10px', fontWeight: 600,
+                          backgroundColor: form.badgeBgColor || 'rgba(255,255,255,0.2)',
+                          color: form.badgeTextColor || '#FFFFFF', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {form.badgeText}
+                      </span>
+                    )}
                   </div>
                 </div>
 

@@ -30,6 +30,11 @@ interface Banner {
   heroY?: number
   heroW?: number
   heroH?: number
+  ctaBgColor?: string | null
+  ctaTextColor?: string | null
+  ctaBorderColor?: string | null
+  badgeBgColor?: string | null
+  badgeTextColor?: string | null
 }
 
 // ---- Sizing maps ----
@@ -240,7 +245,12 @@ export default function HeroBanner() {
             const isNone = banner.overlayStyle === 'none'
             const light = isLightOverlay(banner.overlayStyle)
             const textColor = isNone ? '#ffffff' : light ? '#1a1a1a' : '#ffffff'
-            const badgeBg = isNone ? 'rgba(255,255,255,0.2)' : light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
+            const defaultBadgeBg = isNone ? 'rgba(255,255,255,0.2)' : light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
+            const ctaBgColor = banner.ctaBgColor || undefined
+            const ctaTextColor = banner.ctaTextColor || undefined
+            const ctaBorderColor = banner.ctaBorderColor || undefined
+            const badgeBg = banner.badgeBgColor || defaultBadgeBg
+            const badgeTextClr = banner.badgeTextColor || textColor
             const titleFontSize = TITLE_SIZE_MAP[banner.titleSize ?? 'lg'] ?? '2.25rem'
             const subtitleFontSize = SUBTITLE_SIZE_MAP[banner.subtitleSize ?? 'sm'] ?? '0.875rem'
             const padding = PADDING_MAP[banner.contentPadding ?? 'normal'] ?? '2rem'
@@ -335,8 +345,20 @@ export default function HeroBanner() {
               >
                 {banner.badgeText && (
                   <span
-                    className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-2 backdrop-blur-sm"
-                    style={{ color: textColor, backgroundColor: badgeBg }}
+                    className="backdrop-blur-sm"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      width: 'fit-content',
+                      padding: '4px 12px',
+                      borderRadius: '9999px',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: badgeBg,
+                      color: badgeTextClr,
+                      whiteSpace: 'nowrap' as const,
+                      marginBottom: '0.5rem',
+                    }}
                   >
                     {banner.badgeText}
                   </span>
@@ -356,11 +378,20 @@ export default function HeroBanner() {
                 <div className="mt-3">
                   <Link
                     href={banner.ctaLink}
-                    className={`inline-block font-semibold text-sm px-5 py-2 rounded-full transition-colors ${
-                      light && !isNone
-                        ? 'bg-gray-900 text-white hover:bg-gray-800'
-                        : 'bg-white text-gray-900 hover:bg-gray-100'
-                    }`}
+                    className="transition-colors hover:opacity-90"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      width: 'fit-content',
+                      padding: '10px 24px',
+                      borderRadius: '9999px',
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      backgroundColor: ctaBgColor || (light && !isNone ? '#111827' : '#ffffff'),
+                      color: ctaTextColor || (light && !isNone ? '#ffffff' : '#111827'),
+                      border: ctaBorderColor ? `1px solid ${ctaBorderColor}` : 'none',
+                      whiteSpace: 'nowrap' as const,
+                    }}
                   >
                     {banner.ctaText}
                   </Link>
@@ -372,8 +403,19 @@ export default function HeroBanner() {
                 <div className="max-w-[85%]">
                   {banner.badgeText && (
                     <span
-                      className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-1"
-                      style={{ color: textColor, backgroundColor: badgeBg }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        width: 'fit-content',
+                        padding: '2px 8px',
+                        borderRadius: '9999px',
+                        fontSize: '10px',
+                        fontWeight: 600,
+                        backgroundColor: badgeBg,
+                        color: badgeTextClr,
+                        whiteSpace: 'nowrap' as const,
+                        marginBottom: '0.25rem',
+                      }}
                     >
                       {banner.badgeText}
                     </span>
@@ -393,11 +435,20 @@ export default function HeroBanner() {
                   <div className="mt-2">
                     <Link
                       href={banner.ctaLink}
-                      className={`inline-block font-semibold text-xs px-4 py-1.5 rounded-full transition-colors ${
-                        light && !isNone
-                          ? 'bg-gray-900 text-white hover:bg-gray-800'
-                          : 'bg-white text-gray-900 hover:bg-gray-100'
-                      }`}
+                      className="transition-colors hover:opacity-90"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        width: 'fit-content',
+                        padding: '6px 16px',
+                        borderRadius: '9999px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        backgroundColor: ctaBgColor || (light && !isNone ? '#111827' : '#ffffff'),
+                        color: ctaTextColor || (light && !isNone ? '#ffffff' : '#111827'),
+                        border: ctaBorderColor ? `1px solid ${ctaBorderColor}` : 'none',
+                        whiteSpace: 'nowrap' as const,
+                      }}
                     >
                       {banner.ctaText}
                     </Link>

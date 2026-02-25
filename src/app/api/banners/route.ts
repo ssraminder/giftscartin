@@ -60,6 +60,11 @@ export async function GET(request: NextRequest) {
       heroY: b.hero_y ?? 10,
       heroW: b.hero_w ?? 40,
       heroH: b.hero_h ?? 85,
+      ctaBgColor: b.cta_bg_color ?? null,
+      ctaTextColor: b.cta_text_color ?? null,
+      ctaBorderColor: b.cta_border_color ?? null,
+      badgeBgColor: b.badge_bg_color ?? null,
+      badgeTextColor: b.badge_text_color ?? null,
     }))
 
     return NextResponse.json({ success: true, data: mapped }, {
