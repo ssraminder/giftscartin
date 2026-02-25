@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('platform_settings')
         .upsert(
-          { key: 'site_name', value: siteName.trim(), updatedBy: session.id, updatedAt: new Date().toISOString() },
+          { key: 'site_name', value: siteName.trim(), updated_by: session.id, updated_at: new Date().toISOString() },
           { onConflict: 'key' }
         )
     }
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('platform_settings')
         .upsert(
-          { key: 'favicon_url', value: faviconUrl || null, updatedBy: session.id, updatedAt: new Date().toISOString() },
+          { key: 'favicon_url', value: faviconUrl || null, updated_by: session.id, updated_at: new Date().toISOString() },
           { onConflict: 'key' }
         )
     }
