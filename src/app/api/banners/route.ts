@@ -66,6 +66,8 @@ export async function GET(request: NextRequest) {
       badgeBgColor: b.badge_bg_color ?? null,
       badgeTextColor: b.badge_text_color ?? null,
       layers: b.layers ?? [],
+      layout: b.layout ?? '16:9',
+      mobileOnly: b.mobile_only ?? false,
     }))
 
     return NextResponse.json({ success: true, data: mapped }, {

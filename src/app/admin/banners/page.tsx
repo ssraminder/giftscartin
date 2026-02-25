@@ -13,6 +13,8 @@ import {
   Loader2,
   RefreshCw,
   Image as ImageIcon,
+  Monitor,
+  Smartphone,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -98,6 +100,8 @@ interface Banner {
   updatedAt: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   layers?: any[]
+  layout?: string
+  mobileOnly?: boolean
 }
 
 const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
@@ -126,7 +130,8 @@ export default function AdminBannersPage() {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview'>('edit')
   const [snapToGrid, setSnapToGrid] = useState(false)
-  const [previewRatio, setPreviewRatio] = useState('16/9')
+  const [formLayout, setFormLayout] = useState<'16:9' | '4:3'>('16:9')
+  const [formMobileOnly, setFormMobileOnly] = useState(false)
 
   // Auto-compose state
   const [autoComposing, setAutoComposing] = useState(false)
@@ -241,6 +246,8 @@ export default function AdminBannersPage() {
     setFormLayers(defaultLayers)
     setSelectedLayerId(null)
     setCanvasMode('edit')
+    setFormLayout('16:9')
+    setFormMobileOnly(false)
     setModalOpen(true)
   }
 
@@ -259,6 +266,8 @@ export default function AdminBannersPage() {
     setSelectedLayerId(null)
     setEditingBanner(banner)
     setCanvasMode('edit')
+    setFormLayout((banner.layout === '4:3' ? '4:3' : '16:9') as '16:9' | '4:3')
+    setFormMobileOnly(banner.mobileOnly ?? false)
     setModalOpen(true)
   }
 
@@ -376,6 +385,8 @@ export default function AdminBannersPage() {
         overlayStyle: formLayers.some(l => l.type === 'shape') ? 'dark-left' : 'none',
         textPosition: 'left',
         isActive: editingBanner?.isActive ?? true,
+        layout: formLayout,
+        mobileOnly: formLayout === '4:3' ? formMobileOnly : false,
       }
 
       const url = editingBanner?.id
@@ -443,6 +454,8 @@ export default function AdminBannersPage() {
         overlayStyle: banner.overlayStyle,
         textPosition: banner.textPosition,
         theme: banner.theme,
+        layout: banner.layout ?? '16:9',
+        mobileOnly: banner.mobileOnly ?? false,
       }
 
       const res = await fetch('/api/admin/banners', {
@@ -568,6 +581,14 @@ export default function AdminBannersPage() {
                   />
                 )}
                 <div className="mt-1 flex flex-wrap gap-1">
+                  <Badge variant="secondary" className="text-[10px]">
+                    {banner.layout === '4:3' ? '4:3 Mobile' : '16:9 Desktop'}
+                  </Badge>
+                  {banner.mobileOnly && (
+                    <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700">
+                      Mobile only
+                    </Badge>
+                  )}
                   {banner.layers && Array.isArray(banner.layers) && banner.layers.length > 0 && (
                     <Badge variant="secondary" className="text-[10px]">
                       {banner.layers.length} layers
@@ -651,9 +672,48 @@ export default function AdminBannersPage() {
 
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
-            <h2 className="text-lg font-semibold text-slate-900">
-              {editingBanner ? 'Edit Banner' : 'Create New Banner'}
-            </h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-lg font-semibold text-slate-900">
+                {editingBanner ? 'Edit Banner' : 'Create New Banner'}
+              </h2>
+              {/* Layout selector */}
+              <div className="flex items-center gap-1 border rounded-lg p-0.5 bg-gray-100">
+                <button
+                  type="button"
+                  onClick={() => { setFormLayout('16:9'); setFormMobileOnly(false) }}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    formLayout === '16:9'
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Monitor className="w-3.5 h-3.5" />
+                  16:9
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormLayout('4:3')}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    formLayout === '4:3'
+                      ? 'bg-white text-gray-800 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  4:3
+                </button>
+              </div>
+              {/* Mobile only toggle — only for 4:3 layout */}
+              {formLayout === '4:3' && (
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <Switch
+                    checked={formMobileOnly}
+                    onCheckedChange={setFormMobileOnly}
+                  />
+                  Mobile only
+                </label>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setModalOpen(false)}>
                 Cancel
@@ -701,8 +761,8 @@ export default function AdminBannersPage() {
                 onModeChange={setCanvasMode}
                 snapToGrid={snapToGrid}
                 onSnapToGridChange={setSnapToGrid}
-                aspectRatio={previewRatio}
-                onAspectRatioChange={setPreviewRatio}
+                aspectRatio={formLayout === '4:3' ? '4/3' : '16/9'}
+                onAspectRatioChange={() => {}}
               />
             </div>
 
