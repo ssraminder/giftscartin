@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Sparkles, Loader2, X, RotateCcw, Check } from 'lucide-react'
 
 interface BannerTextStylerProps {
+  target: 'title' | 'subtitle' | 'both'
   titleHtml: string
   subtitleHtml: string
   ctaText?: string
@@ -16,7 +17,7 @@ interface BannerTextStylerProps {
 
 type StylerState = 'idle' | 'generating' | 'result' | 'error'
 
-const QUICK_STYLES = [
+const QUICK_STYLES_BOTH = [
   {
     label: 'Pink & Gold',
     instruction: 'Use hot pink (#E91E63) for emphasis words with gold (#FFD700) accents on key phrases. White base text.',
@@ -43,7 +44,60 @@ const QUICK_STYLES = [
   },
 ]
 
+const QUICK_STYLES_TITLE = [
+  {
+    label: 'Bold & Large',
+    instruction: 'Make the title bold, large, and impactful. Use strong emphasis on key words.',
+  },
+  {
+    label: 'Pink Gradient',
+    instruction: 'Style the title with hot pink (#E91E63) on emphasis words, white base. Dramatic and eye-catching.',
+  },
+  {
+    label: 'Gold Accent',
+    instruction: 'Use gold (#FFD700) for the most important word, white for the rest. Premium feel.',
+  },
+  {
+    label: 'Two-tone',
+    instruction: 'Alternate between two complementary colors for different parts of the title. Bold and dynamic.',
+  },
+  {
+    label: 'Reset Title',
+    instruction: 'Remove all inline styles from the title, keep only <strong> and <br/> tags.',
+  },
+]
+
+const QUICK_STYLES_SUBTITLE = [
+  {
+    label: 'Subtle & Clean',
+    instruction: 'Make the subtitle subtle and readable. Light opacity, smaller feel, complementary to a bold title.',
+  },
+  {
+    label: 'Highlighted Key',
+    instruction: 'Highlight the most important phrase in the subtitle with a contrasting color.',
+  },
+  {
+    label: 'Italic Elegant',
+    instruction: 'Wrap the subtitle in italic styling, use a softer color that complements the banner.',
+  },
+  {
+    label: 'Bold CTA',
+    instruction: 'Make the subtitle act as a supporting call-to-action, with bold emphasis on action words.',
+  },
+  {
+    label: 'Reset Subtitle',
+    instruction: 'Remove all inline styles from the subtitle, keep only basic formatting tags.',
+  },
+]
+
+const HEADER_LABELS: Record<string, string> = {
+  title: 'AI Title Styler',
+  subtitle: 'AI Subtitle Styler',
+  both: 'AI Text Styler',
+}
+
 export function BannerTextStyler({
+  target,
   titleHtml,
   subtitleHtml,
   ctaText,
@@ -62,12 +116,26 @@ export function BannerTextStyler({
     suggestedColors: string[]
   } | null>(null)
 
+  const quickStyles = target === 'title'
+    ? QUICK_STYLES_TITLE
+    : target === 'subtitle'
+    ? QUICK_STYLES_SUBTITLE
+    : QUICK_STYLES_BOTH
+
   async function handleApply() {
     if (!instruction.trim()) return
 
     setState('generating')
     setError(null)
     setResult(null)
+
+    // Build target-specific instruction prefix
+    let targetPrefix = ''
+    if (target === 'title') {
+      targetPrefix = 'Style ONLY the titleHtml field. Keep subtitleHtml EXACTLY as provided. '
+    } else if (target === 'subtitle') {
+      targetPrefix = 'Style ONLY the subtitleHtml field. Keep titleHtml EXACTLY as provided. '
+    }
 
     try {
       const res = await fetch('/api/admin/banners/style-text', {
@@ -77,9 +145,10 @@ export function BannerTextStyler({
           titleHtml,
           subtitleHtml,
           ctaText,
-          styleInstruction: instruction,
+          styleInstruction: targetPrefix + instruction,
           backgroundImageUrl,
           overlayStyle,
+          target,
         }),
       })
 
@@ -103,7 +172,12 @@ export function BannerTextStyler({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-purple-600" />
-          <span className="text-sm font-medium text-purple-900">AI Text Styler</span>
+          <span className="text-sm font-medium text-purple-900">{HEADER_LABELS[target]}</span>
+          {target !== 'both' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-200 text-purple-700">
+              {target} only
+            </span>
+          )}
         </div>
         <button
           type="button"
@@ -121,7 +195,13 @@ export function BannerTextStyler({
           rows={2}
           value={instruction}
           onChange={e => setInstruction(e.target.value)}
-          placeholder="Change text color palette to pink, matching the background. Make the title bolder."
+          placeholder={
+            target === 'title'
+              ? 'e.g. Make the title bolder with pink highlights on key words'
+              : target === 'subtitle'
+              ? 'e.g. Make the subtitle subtle and complementary to the title'
+              : 'Change text color palette to pink, matching the background. Make the title bolder.'
+          }
           className="w-full rounded-md border px-3 py-2 text-sm focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
         />
       </div>
@@ -130,7 +210,7 @@ export function BannerTextStyler({
       <div>
         <span className="text-xs text-gray-500 mb-1.5 block">Quick styles:</span>
         <div className="flex flex-wrap gap-1.5">
-          {QUICK_STYLES.map(qs => (
+          {quickStyles.map(qs => (
             <button
               key={qs.label}
               type="button"
@@ -172,16 +252,18 @@ export function BannerTextStyler({
       {/* Result */}
       {state === 'result' && result && (
         <div className="space-y-3 border-t border-purple-200 pt-3">
-          {/* Title preview */}
-          <div>
-            <span className="text-[11px] text-gray-500 mb-1 block">Title preview:</span>
-            <div className="rounded bg-gray-900 px-3 py-2 text-lg font-bold leading-tight text-white max-h-20 overflow-hidden">
-              <span dangerouslySetInnerHTML={{ __html: result.titleHtml }} />
+          {/* Title preview — show unless target is subtitle */}
+          {target !== 'subtitle' && (
+            <div>
+              <span className="text-[11px] text-gray-500 mb-1 block">Title preview:</span>
+              <div className="rounded bg-gray-900 px-3 py-2 text-lg font-bold leading-tight text-white max-h-20 overflow-hidden">
+                <span dangerouslySetInnerHTML={{ __html: result.titleHtml }} />
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Subtitle preview */}
-          {result.subtitleHtml && (
+          {/* Subtitle preview — show unless target is title */}
+          {target !== 'title' && result.subtitleHtml && (
             <div>
               <span className="text-[11px] text-gray-500 mb-1 block">Subtitle preview:</span>
               <div className="rounded bg-gray-900 px-2 py-1.5 text-sm text-white/80 max-h-16 overflow-hidden">
