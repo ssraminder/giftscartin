@@ -112,20 +112,22 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   }, [])
 
   const realCount = banners.length
+  // Clone count can't exceed actual banner count
+  const cloneCount = Math.min(CLONE_COUNT, realCount)
 
   // Reset carousel index when filtered banner set changes
   useEffect(() => {
-    setCurrentIndex(CLONE_COUNT)
+    setCurrentIndex(cloneCount)
     setIsTransitioning(false)
-  }, [realCount])
+  }, [realCount, cloneCount])
 
   // Build extended slides: [last N clones] + [real slides] + [first N clones]
   const extendedSlides = useMemo(() => {
     if (realCount === 0) return []
-    const before = banners.slice(-CLONE_COUNT)
-    const after = banners.slice(0, CLONE_COUNT)
+    const before = banners.slice(-cloneCount)
+    const after = banners.slice(0, cloneCount)
     return [...before, ...banners, ...after]
-  }, [banners, realCount])
+  }, [banners, realCount, cloneCount])
 
   const goTo = useCallback((index: number) => {
     setIsTransitioning(true)
@@ -144,15 +146,15 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   const handleTransitionEnd = useCallback(() => {
     setIsTransitioning(false)
     setCurrentIndex((prev) => {
-      if (prev >= CLONE_COUNT + realCount) {
-        return CLONE_COUNT + (prev - CLONE_COUNT - realCount)
+      if (prev >= cloneCount + realCount) {
+        return cloneCount + (prev - cloneCount - realCount)
       }
-      if (prev < CLONE_COUNT) {
-        return CLONE_COUNT + realCount - (CLONE_COUNT - prev)
+      if (prev < cloneCount) {
+        return cloneCount + realCount - (cloneCount - prev)
       }
       return prev
     })
-  }, [realCount])
+  }, [realCount, cloneCount])
 
   // Auto-play
   useEffect(() => {
@@ -184,7 +186,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
 
   const activeDot =
     realCount > 0
-      ? ((currentIndex - CLONE_COUNT) % realCount + realCount) % realCount
+      ? ((currentIndex - cloneCount) % realCount + realCount) % realCount
       : 0
   const translateX = -(currentIndex * (slideWidth + gap))
 
@@ -225,7 +227,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
               >
                 <BannerLayerRenderer
                   layers={banner.resolvedLayers}
-                  priority={idx >= CLONE_COUNT && idx < CLONE_COUNT + 2}
+                  priority={idx >= cloneCount && idx < cloneCount + 2}
                   className="w-full h-full"
                 />
               </div>
@@ -274,7 +276,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
           {banners.map((_, i) => (
             <button
               key={i}
-              onClick={() => goTo(CLONE_COUNT + i)}
+              onClick={() => goTo(cloneCount + i)}
               aria-label={`Go to slide ${i + 1}`}
               className="transition-all duration-300 rounded-full"
               style={{
