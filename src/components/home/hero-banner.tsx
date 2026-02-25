@@ -105,7 +105,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   if (loading) {
     return (
       <div className="px-4 md:px-6 lg:px-8 py-2">
-        <div className="w-full aspect-[4/3] md:aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+        <div className="w-full aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
@@ -119,7 +119,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       onMouseLeave={() => setIsPaused(false)}
     >
       <div
-        className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9]"
+        className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px]"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
