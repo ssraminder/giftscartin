@@ -120,6 +120,7 @@ function renderTextLayer(layer: TextLayer) {
           layer.verticalAlign === 'top' ? 'flex-start'
           : layer.verticalAlign === 'bottom' ? 'flex-end'
           : 'center',
+        color: layer.color || '#111827',
         fontFamily: `'${layer.fontFamily}', sans-serif`,
         fontSize: `${layer.fontSize}px`,
         fontWeight: layer.fontWeight,
