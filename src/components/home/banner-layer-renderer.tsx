@@ -288,12 +288,16 @@ export function BannerLayerRenderer({
       >
         <div
           className="absolute inset-0"
-          style={{
-            transform: `scale(${scale})`,
-            transformOrigin: 'top left',
-            width: `${100 / scale}%`,
-            height: `${100 / scale}%`,
-          }}
+          style={
+            scale < 1
+              ? {
+                  transform: `scale(${scale})`,
+                  transformOrigin: 'top left',
+                  width: `${100 / scale}%`,
+                  height: `${100 / scale}%`,
+                }
+              : undefined
+          }
         >
           {sortedLayers.map(renderLayer)}
         </div>
