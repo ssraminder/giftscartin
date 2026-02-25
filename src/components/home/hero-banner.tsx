@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -31,6 +31,31 @@ const FALLBACK_BANNERS: Banner[] = [
     badgeText: null,
   },
 ]
+
+// ---- Overlay helpers ----
+
+function getOverlayCss(overlayStyle: string): React.CSSProperties {
+  switch (overlayStyle) {
+    case 'dark-left':
+      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
+    case 'dark-right':
+      return { background: 'linear-gradient(to left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
+    case 'full-dark':
+      return { background: 'rgba(0,0,0,0.6)' }
+    case 'light-left':
+      return { background: 'linear-gradient(to right, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
+    case 'light-right':
+      return { background: 'linear-gradient(to left, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
+    case 'full-light':
+      return { background: 'rgba(255,255,255,0.75)' }
+    default:
+      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
+  }
+}
+
+function isLightOverlay(style: string): boolean {
+  return style.startsWith('light-') || style === 'full-light'
+}
 
 export default function HeroBanner() {
   const [banners, setBanners] = useState<Banner[]>([])
@@ -231,26 +256,32 @@ export default function HeroBanner() {
               {/* Layer 2: gradient overlay */}
               {banner.subjectImageUrl ? (
                 <>
+                  {/* Desktop: use overlayStyle */}
                   <div
                     className="absolute inset-0 z-[2] hidden md:block"
-                    style={{
-                      background: 'linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 35%, rgba(0,0,0,0.1) 60%, transparent 100%)',
-                    }}
+                    style={getOverlayCss(banner.overlayStyle)}
                   />
+                  {/* Mobile: bottom-to-top gradient matching light/dark */}
                   <div
                     className="absolute inset-0 z-[2] md:hidden"
                     style={{
-                      background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 65%, transparent 100%)',
+                      background: isLightOverlay(banner.overlayStyle)
+                        ? 'linear-gradient(to top, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 40%, rgba(255,255,255,0.1) 65%, transparent 100%)'
+                        : 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 40%, rgba(0,0,0,0.1) 65%, transparent 100%)',
                     }}
                   />
                 </>
               ) : (
-                <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/30 to-transparent z-[2]" />
+                <div className="absolute inset-0 z-[2]" style={getOverlayCss(banner.overlayStyle)} />
               )}
 
               {/* Badge */}
               {banner.badgeText && (
-                <span className="absolute top-4 right-4 z-10 bg-white/20 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1 rounded-full">
+                <span className={`absolute top-4 right-4 z-10 backdrop-blur-sm text-xs font-semibold px-3 py-1 rounded-full ${
+                  isLightOverlay(banner.overlayStyle)
+                    ? 'bg-black/10 text-gray-900'
+                    : 'bg-white/20 text-white'
+                }`}>
                   {banner.badgeText}
                 </span>
               )}
@@ -264,19 +295,27 @@ export default function HeroBanner() {
                 }`}
               >
                 <h2
-                  className="text-xl md:text-3xl font-bold text-white leading-tight line-clamp-2"
+                  className={`text-xl md:text-3xl font-bold leading-tight line-clamp-2 ${
+                    isLightOverlay(banner.overlayStyle) ? 'text-gray-900' : 'text-white'
+                  }`}
                   dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
                 />
                 {banner.subtitleHtml && (
                   <p
-                    className="text-sm md:text-base text-white/80 line-clamp-2"
+                    className={`text-sm md:text-base line-clamp-2 ${
+                      isLightOverlay(banner.overlayStyle) ? 'text-gray-700' : 'text-white/80'
+                    }`}
                     dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
                   />
                 )}
                 <div className="mt-1">
                   <Link
                     href={banner.ctaLink}
-                    className="inline-block bg-white text-gray-900 font-semibold text-sm px-5 py-2 rounded-full hover:bg-gray-100 transition-colors"
+                    className={`inline-block font-semibold text-sm px-5 py-2 rounded-full transition-colors ${
+                      isLightOverlay(banner.overlayStyle)
+                        ? 'bg-gray-900 text-white hover:bg-gray-800'
+                        : 'bg-white text-gray-900 hover:bg-gray-100'
+                    }`}
                   >
                     {banner.ctaText}
                   </Link>
