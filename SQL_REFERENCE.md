@@ -8,57 +8,62 @@
 
 | Table | Model Name | Key Columns | Relations |
 |-------|-------------|-------------|-----------|
-| `users` | User | id, phone, email, name, role, walletBalance, isActive | → addresses, orders, reviews, cart_items |
-| `otp_verifications` | OtpVerification | id, email, otp, expiresAt, verified, attempts | (standalone) |
-| `addresses` | Address | id, userId, name, phone, address, city, state, pincode | → users, orders |
-| `cities` | City | id, name, slug, state, isActive, lat, lng, baseDeliveryCharge | → city_zones, vendors, city_delivery_configs, delivery_holidays |
-| `city_zones` | CityZone | id, cityId, name, pincodes[], extraCharge | → cities, vendor_zones |
-| `delivery_slots` | DeliverySlot | id, name, slug, startTime, endTime, baseCharge, cutoffHours, cutoffTime, slotGroup | → city_delivery_configs, vendor_slots |
-| `city_delivery_configs` | CityDeliveryConfig | id, cityId, slotId, isAvailable, chargeOverride | → cities, delivery_slots |
-| `delivery_holidays` | DeliveryHoliday | id, date, cityId, reason, customerMessage, mode (FULL_BLOCK/STANDARD_ONLY/CUSTOM), slotOverrides (JSONB) | → cities |
-| `delivery_surcharges` | DeliverySurcharge | id, name, startDate, endDate, amount, appliesTo | (standalone) |
-| `vendors` | Vendor | id, userId, businessName, cityId, status, commissionRate, rating | → cities, vendor_products, orders, vendor_working_hours, vendor_slots, vendor_holidays, vendor_pincodes, vendor_zones, vendor_capacity, vendor_payouts, vendor_product_variations |
-| `vendor_working_hours` | VendorWorkingHours | id, vendorId, dayOfWeek, openTime, closeTime, isClosed | → vendors |
-| `vendor_slots` | VendorSlot | id, vendorId, slotId, isEnabled, customCharge | → vendors, delivery_slots |
-| `vendor_holidays` | VendorHoliday | id, vendorId, date, blockedSlots[], reason | → vendors |
-| `vendor_pincodes` | VendorPincode | id, vendorId, pincode, deliveryCharge, isActive | → vendors |
-| `vendor_zones` | VendorZone | id, vendorId, zoneId, deliveryCharge, minOrder | → vendors, city_zones |
-| `vendor_capacity` | VendorCapacity | id, vendorId, date, slotId, maxOrders, bookedOrders | → vendors |
-| `categories` | Category | id, name, slug, description, image, parentId, sortOrder, metaTitle, metaDescription | → self (parent/children), products, category_addon_templates |
-| `products` | Product | id, name, slug, categoryId, basePrice, productType, metaTitle, metaDescription, images[], tags[], occasion[], minLeadTimeHours, leadTimeNote | → categories, vendor_products, order_items, cart_items, reviews, product_addons, product_attributes, product_variations, product_addon_groups, product_upsells |
-| `product_addons` | ProductAddon | id, productId, name, price, image | → products (legacy — being replaced by product_addon_groups) |
-| `product_attributes` | ProductAttribute | id, productId, name, slug, isForVariations | → products, product_attribute_options |
-| `product_attribute_options` | ProductAttributeOption | id, attributeId, value, sortOrder | → product_attributes |
-| `product_variations` | ProductVariation | id, productId, attributes (JSONB), price, salePrice, isActive | → products, vendor_product_variations |
-| `product_addon_groups` | ProductAddonGroup | id, productId, name, type, required, templateGroupId, isOverridden | → products, product_addon_options |
-| `product_addon_options` | ProductAddonOption | id, groupId, label, price, isDefault | → product_addon_groups |
-| `product_upsells` | ProductUpsell | id, productId, upsellProductId, sortOrder | → products (×2) |
-| `vendor_product_variations` | VendorProductVariation | id, vendorId, productId, variationId, costPrice, isAvailable | → vendors, product_variations |
-| `vendor_products` | VendorProduct | id, vendorId, productId, costPrice, sellingPrice, isAvailable | → vendors, products |
-| `orders` | Order | id, orderNumber, userId, vendorId, partnerId, addressId, deliveryDate, status, total | → users, vendors, partners, addresses, order_items, payments, order_status_history |
-| `order_items` | OrderItem | id, orderId, productId, name, quantity, price, addons, variationId, variationLabel | → orders, products |
-| `order_status_history` | OrderStatusHistory | id, orderId, status, note, changedBy | → orders |
-| `payments` | Payment | id, orderId, amount, currency, gateway, razorpayOrderId, razorpayPaymentId, razorpaySignature, stripeSessionId, stripePaymentIntentId, paypalOrderId, paypalCaptureId, method, status | → orders |
-| `vendor_payouts` | VendorPayout | id, vendorId, amount, period, orderCount, netAmount, status | → vendors |
-| `partners` | Partner | id, name, refCode, subdomain, customDomain, commissionPercent | → orders, partner_earnings |
-| `partner_earnings` | PartnerEarning | id, partnerId, orderId, amount, status | → partners |
-| `cart_items` | CartItem | id, userId, productId, quantity, addons, variationId, deliveryDate, deliverySlot | → users, products |
-| `coupons` | Coupon | id, code, discountType, discountValue, minOrderAmount, validFrom, validUntil | (standalone) |
-| `reviews` | Review | id, userId, productId, orderId, rating, comment, images[] | → users, products |
-| `category_addon_templates` | CategoryAddonTemplate | id, categoryId, name, type, required | → categories, category_addon_template_options |
-| `category_addon_template_options` | CategoryAddonTemplateOption | id, templateId, label, price, isDefault | → category_addon_templates |
-| `seo_settings` | SeoSettings | id, siteName, siteDescription, defaultOgImage, robotsTxt | singleton — always 1 row |
+| `users` | User | id, phone, email, name, passwordHash, role, walletBalance, isActive | -> addresses, orders, reviews, cart_items |
+| `otp_verifications` | OtpVerification | id, phone, email, otp, expiresAt, verified, attempts | (standalone) |
+| `addresses` | Address | id, userId, name, phone, address, landmark, city, state, pincode, lat, lng, isDefault | -> users, orders |
+| `cities` | City | id, name, slug, state, isActive, lat, lng, baseDeliveryCharge, freeDeliveryAbove, aliases[], is_coming_soon, notify_count, display_name, pincode_prefix[] | -> city_zones, vendors, city_delivery_configs, delivery_holidays, city_slot_cutoff, service_areas |
+| `city_zones` | CityZone | id, cityId, name, pincodes[], extraCharge, isActive | -> cities, vendor_zones |
+| `delivery_slots` | DeliverySlot | id, name, slug, startTime, endTime, baseCharge, isActive, cutoffHours, cutoffTime, slotGroup | -> city_delivery_configs, vendor_slots, city_slot_cutoff |
+| `city_delivery_configs` | CityDeliveryConfig | id, cityId, slotId, isAvailable, chargeOverride | -> cities, delivery_slots |
+| `delivery_holidays` | DeliveryHoliday | id, date, cityId, reason, customerMessage, mode (FULL_BLOCK/STANDARD_ONLY/CUSTOM), slotOverrides (JSONB) | -> cities |
+| `delivery_surcharges` | DeliverySurcharge | id, name, startDate, endDate, amount, appliesTo, isActive | (standalone) |
+| `vendors` | Vendor | id, userId, businessName, ownerName, phone, email, cityId, address, lat, lng, categories[], status, commissionRate, rating, totalOrders, isOnline, autoAccept, vacationStart, vacationEnd, panNumber, gstNumber, fssaiNumber, bankAccountNo, bankIfsc, bankName, delivery_radius_km, coverage_method, coverage_radius_km | -> cities, vendor_products, orders, vendor_working_hours, vendor_slots, vendor_holidays, vendor_pincodes, vendor_zones, vendor_capacity, vendor_payouts, vendor_product_variations |
+| `vendor_working_hours` | VendorWorkingHours | id, vendorId, dayOfWeek, openTime, closeTime, isClosed | -> vendors |
+| `vendor_slots` | VendorSlot | id, vendorId, slotId, isEnabled, customCharge | -> vendors, delivery_slots |
+| `vendor_holidays` | VendorHoliday | id, vendorId, date, blockedSlots[], reason | -> vendors |
+| `vendor_pincodes` | VendorPincode | id, vendorId, pincode, deliveryCharge, isActive | -> vendors |
+| `vendor_zones` | VendorZone | id, vendorId, zoneId, deliveryCharge, minOrder | -> vendors, city_zones |
+| `vendor_capacity` | VendorCapacity | id, vendorId, date, slotId, maxOrders, bookedOrders | -> vendors |
+| `categories` | Category | id, name, slug, description, image, parentId, sortOrder, isActive, metaTitle, metaDescription, metaKeywords[], ogImage | -> self (parent/children), products, category_addon_templates |
+| `products` | Product | id, name, slug, description, shortDesc, categoryId, basePrice, images[], tags[], occasion[], weight, isVeg, isActive, avgRating, totalReviews, productType, metaTitle, metaDescription, metaKeywords[], ogImage, canonicalUrl, aiImagePrompt, minLeadTimeHours, leadTimeNote, isSameDayEligible | -> categories, vendor_products, order_items, cart_items, reviews, product_addons, product_attributes, product_variations, product_addon_groups, product_upsells |
+| `product_addons` | ProductAddon | id, productId, name, price, image, isActive | -> products (legacy -- being replaced by product_addon_groups) |
+| `product_attributes` | ProductAttribute | id, productId, name, slug, isForVariations | -> products, product_attribute_options |
+| `product_attribute_options` | ProductAttributeOption | id, attributeId, value, sortOrder | -> product_attributes |
+| `product_variations` | ProductVariation | id, productId, type, label, value, price, sku, sortOrder, isDefault, isActive, attributes (JSONB), salePrice, saleFrom, saleTo, image, stockQty | -> products, vendor_product_variations |
+| `product_addon_groups` | ProductAddonGroup | id, productId, name, type, required, templateGroupId, isOverridden | -> products, product_addon_options |
+| `product_addon_options` | ProductAddonOption | id, groupId, label, price, isDefault | -> product_addon_groups |
+| `product_upsells` | ProductUpsell | id, productId, upsellProductId, sortOrder | -> products (x2) |
+| `vendor_product_variations` | VendorProductVariation | id, vendorId, productId, variationId, costPrice, sellingPrice, isAvailable | -> vendors, product_variations |
+| `vendor_products` | VendorProduct | id, vendorId, productId, costPrice, sellingPrice, isAvailable, preparationTime, dailyLimit, isSameDayEligible, isExpressEligible | -> vendors, products |
+| `orders` | Order | id, orderNumber, userId, vendorId, partnerId, addressId, deliveryDate, deliverySlot, deliveryCharge, subtotal, discount, surcharge, total, status, paymentStatus, paymentMethod, giftMessage, specialInstructions, couponCode, businessModel, vendorCost, commissionAmount, senderName, senderPhone, senderEmail, occasion, guestEmail, guestPhone | -> users, vendors, partners, addresses, order_items, payments, order_status_history |
+| `order_items` | OrderItem | id, orderId, productId, name, quantity, price, addons, variationId, variationLabel | -> orders, products |
+| `order_status_history` | OrderStatusHistory | id, orderId, status, note, changedBy | -> orders |
+| `payments` | Payment | id, orderId, amount, currency, razorpayOrderId, razorpayPaymentId, razorpaySignature, method, status, gateway, stripeSessionId, stripePaymentIntentId, paypalOrderId, paypalCaptureId, paidAt | -> orders |
+| `vendor_payouts` | VendorPayout | id, vendorId, amount, period, orderCount, deductions, tdsAmount, netAmount, status, transactionRef, paidAt | -> vendors |
+| `partners` | Partner | id, name, refCode, subdomain, customDomain, logoUrl, primaryColor, secondaryColor, showPoweredBy, commissionPercent, isActive, default_city_id, default_vendor_id | -> orders, partner_earnings |
+| `partner_earnings` | PartnerEarning | id, partnerId, orderId, amount, status | -> partners |
+| `cart_items` | CartItem | id, userId, productId, quantity, addons, deliveryDate, deliverySlot, variationId | -> users, products |
+| `coupons` | Coupon | id, code, description, discountType, discountValue, minOrderAmount, maxDiscount, usageLimit, usedCount, perUserLimit, validFrom, validUntil, isActive, applicableOn[] | (standalone) |
+| `reviews` | Review | id, userId, productId, orderId, rating, comment, images[], isVerified | -> users, products |
+| `category_addon_templates` | CategoryAddonTemplate | id, categoryId, name, type, required | -> categories, category_addon_template_options |
+| `category_addon_template_options` | CategoryAddonTemplateOption | id, templateId, label, price, isDefault | -> category_addon_templates |
+| `seo_settings` | SeoSettings | id, siteName, siteDescription, defaultOgImage, robotsTxt | singleton -- always 1 row |
 | `currency_configs` | CurrencyConfig | id, code, name, symbol, symbolPosition, exchangeRate, markup, rounding, roundTo, locale, countries[], isDefault, isActive | (standalone) |
-| `audit_logs` | AuditLog | id, adminId, adminRole, actionType, entityType, entityId, reason | (standalone) |
-| `pincode_city_map` | PincodeCityMap | id, pincode (unique), cityId, areaName, isActive | → cities |
-| `city_notifications` | CityNotification | id, email, phone, cityName | (standalone) |
-| `product_relations` | ProductRelation | id, productId, relatedProductId, relationType, sortOrder, isActive | → products (×2), unique(productId, relatedProductId, relationType) |
-| `image_generation_jobs` | ImageGenerationJob | id, productId, imageIndex, imageType, status, promptUsed, storageUrl, retryCount | → products, unique(productId, imageIndex) |
-| `catalog_imports` | CatalogImport | id, adminId, fileName, status, categoriesCount, productsCount | (standalone) |
+| `audit_logs` | AuditLog | id, adminId, adminRole, actionType, entityType, entityId, fieldChanged, oldValue (JSONB), newValue (JSONB), reason, ipAddress | (standalone) |
+| `pincode_city_map` | PincodeCityMap | id, pincode, city_id, area_name, is_active | -> cities |
+| `city_notifications` | CityNotification | id, email, phone, city_name | (standalone) |
+| `product_relations` | ProductRelation | id, product_id, related_product_id, relation_type, sort_order, is_active | -> products (x2), unique(product_id, related_product_id, relation_type) |
+| `image_generation_jobs` | ImageGenerationJob | id, product_id, image_index, image_type, status, prompt_used, openai_generation_id, storage_url, retry_count, error_message, started_at, completed_at | -> products, unique(product_id, image_index) |
+| `catalog_imports` | CatalogImport | id, admin_id, file_name, status, categories_count, products_count, addons_count, relations_count, skipped_count, errors_json (JSONB), completed_at | (standalone) |
 | `payment_methods` | PaymentMethod | id, name, slug (unique), description, isActive, sortOrder | (standalone) |
-| `banners` | Banner | id, title_html, subtitle_html, image_url, cta_text, cta_link, text_position, overlay_style, badge_text, is_active, sort_order, valid_from, valid_until, target_city_slug | (standalone) |
+| `banners` | Banner | id, title_html, subtitle_html, image_url, cta_text, cta_link, secondary_cta_text, secondary_cta_link, text_position, overlay_style, badge_text, is_active, sort_order, valid_from, valid_until, target_city_slug, theme, subject_image_url, content_width, title_size, subtitle_size, vertical_align, hero_size, content_padding, content_x/y/w/h, hero_x/y/w/h, content_lock_ratio, hero_lock_ratio, cta_bg_color, cta_text_color, cta_border_color, badge_bg_color, badge_text_color, layers (JSONB), layout, mobile_only | (standalone) |
+| `banner_generation_jobs` | BannerGenerationJob | id, status, theme, result (JSONB), error | (standalone) |
+| `city_slot_cutoff` | CitySlotCutoff | id, city_id, slot_id, slot_name, slot_slug, slot_start, slot_end, cutoff_hours, base_charge, min_vendors, is_available | -> cities, delivery_slots |
+| `menu_items` | MenuItem | id, parentId, label, slug, href, icon, sortOrder, isVisible, itemType | -> self (parent/children) |
+| `platform_settings` | PlatformSetting | id, key (unique), value, updated_at, updated_by, updatedAt, updatedBy | (standalone) |
+| `service_areas` | ServiceArea | id, name, pincode, city_id, city_name, state, lat, lng, is_active, altNames[] | -> cities |
 
-**Total: 49 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods + 1 banners)
+**Total: 54 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods + 1 banners + 5 new)
 
 ---
 
@@ -66,15 +71,28 @@
 
 | Script | Purpose | Status |
 |--------|---------|--------|
-| Prisma `db push` | Phase 1 schema creation (all 31 tables) | ✅ Executed |
-| `prisma/seed.ts` | Phase 1 seed data (cities, categories, products, vendor) | ✅ Executed |
-| Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | ✅ Executed |
-| Migration 002 — Schema sync | order_items: +variationId, +variationLabel; payments: +gateway (PaymentGateway enum), +stripe/paypal columns; cart_items: +variationId; currency_configs table | ⏳ **PENDING — Run `prisma/migrations/002_sync_schema.sql` in Supabase SQL Editor** |
-| Sprint 1 migration | pincode_city_map, city_notifications, product_relations (RelationType enum), image_generation_jobs (ImageJobStatus, ImageType enums), catalog_imports (ImportStatus enum). Cities table: +aliases, +display_name, +is_coming_soon, +notify_count, +pincode_prefix. | ✅ Executed (pre-run in Supabase) |
-| Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | ⏳ **PENDING — Run in Supabase SQL Editor** |
-| Delivery Slot System — Prompt 7 | Added min_lead_time_hours + lead_time_note to products; cutoff_hours + cutoff_time + slot_group to delivery_slots; replaced blocked_slots[] with mode + slot_overrides on delivery_holidays; seeded 6 fixed windows + Chandigarh city configs + example holidays | ⏳ **PENDING — Run `prisma/migrations/prompt7_delivery_slot_system.sql` in Supabase SQL Editor** |
-| ALTER TABLE products ADD COLUMN "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false | Add same-day eligible flag | ✅ Executed |
-| Migration 003 — Banners table | CREATE TABLE banners with 5 seed rows (3 active, 2 inactive). Supports homepage slider management with HTML content, CTA buttons, date-range visibility, and city targeting. | ✅ Executed |
+| Prisma `db push` | Phase 1 schema creation (all 31 tables) | Done |
+| `prisma/seed.ts` | Phase 1 seed data (cities, categories, products, vendor) | Done |
+| Phase A schema migration | product_attributes, product_variations (migrated to JSONB), addon groups, upsells, vendor_product_variations, category templates, SEO fields on products/categories, seo_settings singleton | Done |
+| Migration 002 -- Schema sync | order_items: +variationId, +variationLabel; payments: +gateway (PaymentGateway enum), +stripe/paypal columns; cart_items: +variationId; currency_configs table | Done |
+| Sprint 1 migration | pincode_city_map, city_notifications, product_relations (RelationType enum), image_generation_jobs (ImageJobStatus, ImageType enums), catalog_imports (ImportStatus enum). Cities table: +aliases, +display_name, +is_coming_soon, +notify_count, +pincode_prefix. | Done |
+| Payment methods table | payment_methods table with 7 default methods (Cash, UPI, Bank Transfer, Razorpay, Cheque, Credit Card, Wallet) | Done |
+| Delivery Slot System -- Prompt 7 | Added min_lead_time_hours + lead_time_note to products; cutoff_hours + cutoff_time + slot_group to delivery_slots; replaced blocked_slots[] with mode + slot_overrides on delivery_holidays; seeded 6 fixed windows + Chandigarh city configs + example holidays | Done |
+| ALTER TABLE products ADD COLUMN "isSameDayEligible" | Add same-day eligible flag | Done |
+| Migration 003 -- Banners table | CREATE TABLE banners with seed rows. Supports homepage slider management with HTML content, CTA buttons, date-range visibility, and city targeting. | Done |
+| Banners v2 -- Extended columns | Added theme, subject_image_url, content_width, title_size, subtitle_size, vertical_align, hero_size, content_padding, content/hero positioning columns (x/y/w/h), lock ratios, CTA colors, badge colors, layers (JSONB), layout, mobile_only | Done |
+| banner_generation_jobs table | AI banner generation job tracking with status, theme, result JSONB, error | Done |
+| city_slot_cutoff table | Per-city per-slot cutoff and availability configuration | Done |
+| menu_items table | Dynamic navigation menu with parent/child hierarchy, camelCase columns | Done |
+| platform_settings table | Key-value platform settings with mixed snake_case/camelCase columns | Done |
+| service_areas table | Service area pincode mapping with geolocation and city references | Done |
+| Vendors: delivery radius columns | Added delivery_radius_km, coverage_method, coverage_radius_km to vendors | Done |
+| Orders: guest & sender columns | Added senderName, senderPhone, senderEmail, occasion, guestEmail, guestPhone to orders | Done |
+| Payments: paidAt column | Added paidAt timestamp to payments | Done |
+| Partners: default city/vendor | Added default_city_id, default_vendor_id to partners | Done |
+| Users: VENDOR_STAFF/ACCOUNTANT/CITY_MANAGER/OPERATIONS roles | Extended UserRole enum with 4 new roles | Done |
+| vendor_products: eligibility flags | Added isSameDayEligible, isExpressEligible to vendor_products | Done |
+| product_variations: type/label/value columns | Added type, label, value, isDefault columns to product_variations | Done |
 
 > Phase A migration executed block-by-block in Supabase SQL Editor (2026-02-19).
 > Sprint 1 migration pre-run in Supabase SQL Editor (2026-02-20).
@@ -122,7 +140,14 @@ UNION ALL SELECT 'pincode_city_map', count(*) FROM pincode_city_map
 UNION ALL SELECT 'city_notifications', count(*) FROM city_notifications
 UNION ALL SELECT 'product_relations', count(*) FROM product_relations
 UNION ALL SELECT 'image_generation_jobs', count(*) FROM image_generation_jobs
-UNION ALL SELECT 'catalog_imports', count(*) FROM catalog_imports;
+UNION ALL SELECT 'catalog_imports', count(*) FROM catalog_imports
+UNION ALL SELECT 'payment_methods', count(*) FROM payment_methods
+UNION ALL SELECT 'banners', count(*) FROM banners
+UNION ALL SELECT 'banner_generation_jobs', count(*) FROM banner_generation_jobs
+UNION ALL SELECT 'city_slot_cutoff', count(*) FROM city_slot_cutoff
+UNION ALL SELECT 'menu_items', count(*) FROM menu_items
+UNION ALL SELECT 'platform_settings', count(*) FROM platform_settings
+UNION ALL SELECT 'service_areas', count(*) FROM service_areas;
 ```
 
 ### All Users with Roles
@@ -253,10 +278,11 @@ Standard procedure for any database changes:
 For development, you can use `npx prisma db push` which syncs the schema directly. **Do not use in production** as it may cause data loss.
 
 ### Notes
-- Prisma uses `camelCase` field names → PostgreSQL uses `snake_case` column names (auto-mapped)
+- Prisma uses `camelCase` field names -> PostgreSQL uses `snake_case` column names (auto-mapped)
 - The `@@map("table_name")` directive controls the PostgreSQL table name
 - The `@map("column_name")` directive (if used) controls individual column names
-- Prisma auto-maps `createdAt` → `created_at`, `userId` → `user_id`, etc.
+- Prisma auto-maps `createdAt` -> `created_at`, `userId` -> `user_id`, etc.
+- Some tables use camelCase columns directly (menu_items, platform_settings, currency_configs, payment_methods, payments, order_items) -- these bypass Prisma's snake_case mapping
 
 ---
 
@@ -265,7 +291,7 @@ For development, you can use `npx prisma db push` which syncs the schema directl
 ### Enums
 
 ```sql
-CREATE TYPE "UserRole" AS ENUM ('CUSTOMER', 'VENDOR', 'ADMIN', 'SUPER_ADMIN');
+CREATE TYPE "UserRole" AS ENUM ('CUSTOMER', 'VENDOR', 'ADMIN', 'SUPER_ADMIN', 'VENDOR_STAFF', 'ACCOUNTANT', 'CITY_MANAGER', 'OPERATIONS');
 CREATE TYPE "VendorStatus" AS ENUM ('PENDING', 'APPROVED', 'SUSPENDED', 'TERMINATED');
 CREATE TYPE "OrderStatus" AS ENUM ('PENDING', 'CONFIRMED', 'PREPARING', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED', 'REFUNDED');
 CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PAID', 'FAILED', 'REFUNDED');
@@ -275,9 +301,14 @@ CREATE TYPE "ProductType" AS ENUM ('SIMPLE', 'VARIABLE');
 CREATE TYPE "AddonType" AS ENUM ('CHECKBOX', 'RADIO', 'SELECT', 'TEXT_INPUT', 'TEXTAREA', 'FILE_UPLOAD');
 CREATE TYPE "PaymentGateway" AS ENUM ('RAZORPAY', 'STRIPE', 'PAYPAL', 'COD');
 CREATE TYPE "HolidayMode" AS ENUM ('FULL_BLOCK', 'STANDARD_ONLY', 'CUSTOM');
+CREATE TYPE "RelationType" AS ENUM ('UPSELL', 'CROSS_SELL');
+CREATE TYPE "ImageJobStatus" AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED', 'SKIPPED');
+CREATE TYPE "ImageType" AS ENUM ('HERO', 'LIFESTYLE', 'DETAIL');
+CREATE TYPE "ImportStatus" AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
 ```
 
 ### Users & Auth
+-- NOTE: users, otp_verifications, addresses use camelCase column names via Prisma mapping
 
 ```sql
 CREATE TABLE users (
@@ -285,28 +316,29 @@ CREATE TABLE users (
     phone TEXT NOT NULL UNIQUE,
     email TEXT UNIQUE,
     name TEXT,
-    password_hash TEXT,
+    "passwordHash" TEXT,
     role "UserRole" NOT NULL DEFAULT 'CUSTOMER',
-    wallet_balance DECIMAL(10,2) NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    "walletBalance" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 CREATE TABLE otp_verifications (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    email TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
     otp TEXT NOT NULL,
-    expires_at TIMESTAMP(3) NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
     verified BOOLEAN NOT NULL DEFAULT false,
     attempts INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX otp_verifications_email_otp_idx ON otp_verifications(email, otp);
 
 CREATE TABLE addresses (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     phone TEXT NOT NULL,
     address TEXT NOT NULL,
@@ -316,13 +348,14 @@ CREATE TABLE addresses (
     pincode TEXT NOT NULL,
     lat DECIMAL(10,7),
     lng DECIMAL(10,7),
-    is_default BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 ```
 
 ### Location
+-- NOTE: cities uses camelCase column names via Prisma mapping
 
 ```sql
 CREATE TABLE cities (
@@ -330,53 +363,54 @@ CREATE TABLE cities (
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
     state TEXT NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
     lat DECIMAL(10,7) NOT NULL,
     lng DECIMAL(10,7) NOT NULL,
-    base_delivery_charge DECIMAL(10,2) NOT NULL DEFAULT 49,
-    free_delivery_above DECIMAL(10,2) NOT NULL DEFAULT 499,
+    "baseDeliveryCharge" DECIMAL(10,2) NOT NULL DEFAULT 49,
+    "freeDeliveryAbove" DECIMAL(10,2) NOT NULL DEFAULT 499,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
     aliases TEXT[] NOT NULL DEFAULT '{}',
-    display_name TEXT,
     is_coming_soon BOOLEAN NOT NULL DEFAULT false,
     notify_count INTEGER NOT NULL DEFAULT 0,
-    pincode_prefix TEXT[] NOT NULL DEFAULT '{}',
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    display_name TEXT,
+    pincode_prefix TEXT[]
 );
 
 CREATE TABLE city_zones (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    city_id TEXT NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
+    "cityId" TEXT NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     pincodes TEXT[] NOT NULL,
-    extra_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT true
+    "extraCharge" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true
 );
 ```
 
 ### Delivery Configuration
+-- NOTE: delivery_slots uses camelCase; delivery_holidays, delivery_surcharges use snake_case
 
 ```sql
 CREATE TABLE delivery_slots (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    base_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
-    cutoff_hours INTEGER NOT NULL DEFAULT 4,
-    cutoff_time TEXT,
-    slot_group TEXT NOT NULL DEFAULT 'standard',
-    is_active BOOLEAN NOT NULL DEFAULT true
+    "startTime" TEXT NOT NULL,
+    "endTime" TEXT NOT NULL,
+    "baseCharge" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "cutoffHours" INTEGER NOT NULL DEFAULT 4,
+    "cutoffTime" TEXT,
+    "slotGroup" TEXT NOT NULL DEFAULT 'standard'
 );
 
 CREATE TABLE city_delivery_configs (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    city_id TEXT NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
-    slot_id TEXT NOT NULL REFERENCES delivery_slots(id) ON DELETE CASCADE,
-    is_available BOOLEAN NOT NULL DEFAULT true,
-    charge_override DECIMAL(10,2),
-    UNIQUE(city_id, slot_id)
+    "cityId" TEXT NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
+    "slotId" TEXT NOT NULL REFERENCES delivery_slots(id) ON DELETE CASCADE,
+    "isAvailable" BOOLEAN NOT NULL DEFAULT true,
+    "chargeOverride" DECIMAL(10,2),
+    UNIQUE("cityId", "slotId")
 );
 
 CREATE TABLE delivery_holidays (
@@ -392,104 +426,109 @@ CREATE TABLE delivery_holidays (
 CREATE TABLE delivery_surcharges (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     name TEXT NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
+    "startDate" DATE NOT NULL,
+    "endDate" DATE NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
-    applies_to TEXT NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true
+    "appliesTo" TEXT NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true
 );
 ```
 
 ### Vendors
+-- NOTE: vendors use snake_case; vendor sub-tables use snake_case
 
 ```sql
 CREATE TABLE vendors (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id TEXT NOT NULL UNIQUE,
-    business_name TEXT NOT NULL,
-    owner_name TEXT NOT NULL,
+    "userId" TEXT NOT NULL UNIQUE,
+    "businessName" TEXT NOT NULL,
+    "ownerName" TEXT NOT NULL,
     phone TEXT NOT NULL,
     email TEXT,
-    city_id TEXT NOT NULL REFERENCES cities(id),
+    "cityId" TEXT NOT NULL REFERENCES cities(id),
     address TEXT NOT NULL,
     lat DECIMAL(10,7),
     lng DECIMAL(10,7),
     categories TEXT[] NOT NULL,
     status "VendorStatus" NOT NULL DEFAULT 'PENDING',
-    commission_rate DECIMAL(5,2) NOT NULL DEFAULT 12,
+    "commissionRate" DECIMAL(5,2) NOT NULL DEFAULT 12,
     rating DECIMAL(3,2) NOT NULL DEFAULT 0,
-    total_orders INTEGER NOT NULL DEFAULT 0,
-    is_online BOOLEAN NOT NULL DEFAULT false,
-    auto_accept BOOLEAN NOT NULL DEFAULT false,
-    vacation_start TIMESTAMP(3),
-    vacation_end TIMESTAMP(3),
-    pan_number TEXT,
-    gst_number TEXT,
-    fssai_number TEXT,
-    bank_account_no TEXT,
-    bank_ifsc TEXT,
-    bank_name TEXT,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    "totalOrders" INTEGER NOT NULL DEFAULT 0,
+    "isOnline" BOOLEAN NOT NULL DEFAULT false,
+    "autoAccept" BOOLEAN NOT NULL DEFAULT false,
+    "vacationStart" TIMESTAMP(3),
+    "vacationEnd" TIMESTAMP(3),
+    "panNumber" TEXT,
+    "gstNumber" TEXT,
+    "fssaiNumber" TEXT,
+    "bankAccountNo" TEXT,
+    "bankIfsc" TEXT,
+    "bankName" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    delivery_radius_km DECIMAL(10,2) DEFAULT 10,
+    coverage_method TEXT DEFAULT 'pincode',
+    coverage_radius_km DECIMAL(10,2)
 );
 
 CREATE TABLE vendor_working_hours (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    day_of_week INTEGER NOT NULL,
-    open_time TEXT NOT NULL,
-    close_time TEXT NOT NULL,
-    is_closed BOOLEAN NOT NULL DEFAULT false,
-    UNIQUE(vendor_id, day_of_week)
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "dayOfWeek" INTEGER NOT NULL,
+    "openTime" TEXT NOT NULL,
+    "closeTime" TEXT NOT NULL,
+    "isClosed" BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE("vendorId", "dayOfWeek")
 );
 
 CREATE TABLE vendor_slots (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    slot_id TEXT NOT NULL REFERENCES delivery_slots(id) ON DELETE CASCADE,
-    is_enabled BOOLEAN NOT NULL DEFAULT true,
-    custom_charge DECIMAL(10,2),
-    UNIQUE(vendor_id, slot_id)
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "slotId" TEXT NOT NULL REFERENCES delivery_slots(id) ON DELETE CASCADE,
+    "isEnabled" BOOLEAN NOT NULL DEFAULT true,
+    "customCharge" DECIMAL(10,2),
+    UNIQUE("vendorId", "slotId")
 );
 
 CREATE TABLE vendor_holidays (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
     date DATE NOT NULL,
-    blocked_slots TEXT[] NOT NULL,
+    "blockedSlots" TEXT[] NOT NULL,
     reason TEXT
 );
 
 CREATE TABLE vendor_pincodes (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
     pincode TEXT NOT NULL,
-    delivery_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    UNIQUE(vendor_id, pincode)
+    "deliveryCharge" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    UNIQUE("vendorId", pincode)
 );
 
 CREATE TABLE vendor_zones (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    zone_id TEXT NOT NULL REFERENCES city_zones(id) ON DELETE CASCADE,
-    delivery_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
-    min_order DECIMAL(10,2) NOT NULL DEFAULT 0,
-    UNIQUE(vendor_id, zone_id)
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "zoneId" TEXT NOT NULL REFERENCES city_zones(id) ON DELETE CASCADE,
+    "deliveryCharge" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "minOrder" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    UNIQUE("vendorId", "zoneId")
 );
 
 CREATE TABLE vendor_capacity (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
     date DATE NOT NULL,
-    slot_id TEXT NOT NULL,
-    max_orders INTEGER NOT NULL,
-    booked_orders INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(vendor_id, date, slot_id)
+    "slotId" TEXT NOT NULL,
+    "maxOrders" INTEGER NOT NULL,
+    "bookedOrders" INTEGER NOT NULL DEFAULT 0,
+    UNIQUE("vendorId", date, "slotId")
 );
 ```
 
 ### Products
+-- NOTE: categories, products use snake_case via Prisma mapping
 
 ```sql
 CREATE TABLE categories (
@@ -498,14 +537,14 @@ CREATE TABLE categories (
     slug TEXT NOT NULL UNIQUE,
     description TEXT,
     image TEXT,
-    parent_id TEXT REFERENCES categories(id),
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    meta_title TEXT,
-    meta_description TEXT,
-    meta_keywords TEXT[] NOT NULL DEFAULT '{}',
-    og_image TEXT
+    "parentId" TEXT REFERENCES categories(id),
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "metaTitle" TEXT,
+    "metaDescription" TEXT,
+    "metaKeywords" TEXT[] NOT NULL DEFAULT '{}',
+    "ogImage" TEXT
 );
 
 CREATE TABLE products (
@@ -513,36 +552,38 @@ CREATE TABLE products (
     name TEXT NOT NULL,
     slug TEXT NOT NULL UNIQUE,
     description TEXT,
-    short_desc TEXT,
-    category_id TEXT NOT NULL REFERENCES categories(id),
-    base_price DECIMAL(10,2) NOT NULL,
+    "shortDesc" TEXT,
+    "categoryId" TEXT NOT NULL REFERENCES categories(id),
+    "basePrice" DECIMAL(10,2) NOT NULL,
     images TEXT[] NOT NULL,
     tags TEXT[] NOT NULL,
     occasion TEXT[] NOT NULL,
     weight TEXT,
-    is_veg BOOLEAN NOT NULL DEFAULT true,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    avg_rating DECIMAL(3,2) NOT NULL DEFAULT 0,
-    total_reviews INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL,
-    product_type "ProductType" NOT NULL DEFAULT 'SIMPLE',
-    meta_title TEXT,
-    meta_description TEXT,
-    meta_keywords TEXT[] NOT NULL DEFAULT '{}',
-    og_image TEXT,
-    canonical_url TEXT,
-    ai_image_prompt TEXT,
+    "isVeg" BOOLEAN NOT NULL DEFAULT true,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "avgRating" DECIMAL(3,2) NOT NULL DEFAULT 0,
+    "totalReviews" INTEGER NOT NULL DEFAULT 0,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "productType" "ProductType" NOT NULL DEFAULT 'SIMPLE',
+    "metaTitle" TEXT,
+    "metaDescription" TEXT,
+    "metaKeywords" TEXT[] NOT NULL DEFAULT '{}',
+    "ogImage" TEXT,
+    "canonicalUrl" TEXT,
+    "aiImagePrompt" TEXT,
+    "minLeadTimeHours" INTEGER NOT NULL DEFAULT 2,
+    "leadTimeNote" TEXT,
     "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false
 );
 
 CREATE TABLE product_addons (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    "productId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     price DECIMAL(10,2) NOT NULL,
     image TEXT,
-    is_active BOOLEAN NOT NULL DEFAULT true
+    "isActive" BOOLEAN NOT NULL DEFAULT true
 );
 
 CREATE TABLE product_attributes (
@@ -566,21 +607,25 @@ CREATE TABLE product_attribute_options (
 
 CREATE TABLE product_variations (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    attributes JSONB NOT NULL,
-    sku TEXT,
+    "productId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    type TEXT,
+    label TEXT,
+    value TEXT,
     price DECIMAL(10,2) NOT NULL,
-    sale_price DECIMAL(10,2),
-    sale_from TIMESTAMP(3),
-    sale_to TIMESTAMP(3),
+    sku TEXT,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    "isDefault" BOOLEAN NOT NULL DEFAULT false,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    attributes JSONB NOT NULL DEFAULT '{}',
+    "salePrice" DECIMAL(10,2),
+    "saleFrom" TIMESTAMP(3),
+    "saleTo" TIMESTAMP(3),
     image TEXT,
-    stock_qty INTEGER,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "stockQty" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX product_variations_product_id_idx ON product_variations(product_id);
+CREATE INDEX product_variations_product_id_idx ON product_variations("productId");
 
 CREATE TABLE product_addon_groups (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -615,76 +660,81 @@ CREATE TABLE product_addon_options (
 
 CREATE TABLE product_upsells (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    upsell_product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(product_id, upsell_product_id)
+    "productId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    "upsellProductId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
+    UNIQUE("productId", "upsellProductId")
 );
 
 CREATE TABLE vendor_product_variations (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    variation_id TEXT NOT NULL REFERENCES product_variations(id) ON DELETE CASCADE,
-    cost_price DECIMAL(10,2) NOT NULL,
-    selling_price DECIMAL(10,2),
-    is_available BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(vendor_id, variation_id)
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "productId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    "variationId" TEXT NOT NULL REFERENCES product_variations(id) ON DELETE CASCADE,
+    "costPrice" DECIMAL(10,2) NOT NULL,
+    "sellingPrice" DECIMAL(10,2),
+    "isAvailable" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE("vendorId", "variationId")
 );
-CREATE INDEX vpv_vendor_id_idx ON vendor_product_variations(vendor_id);
-CREATE INDEX vpv_variation_id_idx ON vendor_product_variations(variation_id);
+CREATE INDEX vpv_vendor_id_idx ON vendor_product_variations("vendorId");
+CREATE INDEX vpv_variation_id_idx ON vendor_product_variations("variationId");
 
 CREATE TABLE vendor_products (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
-    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    cost_price DECIMAL(10,2) NOT NULL,
-    selling_price DECIMAL(10,2),
-    is_available BOOLEAN NOT NULL DEFAULT true,
-    preparation_time INTEGER NOT NULL DEFAULT 120,
-    daily_limit INTEGER,
-    UNIQUE(vendor_id, product_id)
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+    "productId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    "costPrice" DECIMAL(10,2) NOT NULL,
+    "sellingPrice" DECIMAL(10,2),
+    "isAvailable" BOOLEAN NOT NULL DEFAULT true,
+    "preparationTime" INTEGER NOT NULL DEFAULT 120,
+    "dailyLimit" INTEGER,
+    "isSameDayEligible" BOOLEAN NOT NULL DEFAULT false,
+    "isExpressEligible" BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE("vendorId", "productId")
 );
 ```
 
 ### Orders
+-- NOTE: orders use snake_case via Prisma; order_items uses camelCase columns
 
 ```sql
 CREATE TABLE orders (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    order_number TEXT NOT NULL UNIQUE,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    vendor_id TEXT REFERENCES vendors(id),
-    partner_id TEXT REFERENCES partners(id),
-    address_id TEXT NOT NULL REFERENCES addresses(id),
-    delivery_date DATE NOT NULL,
-    delivery_slot TEXT NOT NULL,
-    delivery_charge DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "orderNumber" TEXT NOT NULL UNIQUE,
+    "userId" TEXT NOT NULL REFERENCES users(id),
+    "vendorId" TEXT REFERENCES vendors(id),
+    "partnerId" TEXT REFERENCES partners(id),
+    "addressId" TEXT NOT NULL REFERENCES addresses(id),
+    "deliveryDate" DATE NOT NULL,
+    "deliverySlot" TEXT NOT NULL,
+    "deliveryCharge" DECIMAL(10,2) NOT NULL DEFAULT 0,
     subtotal DECIMAL(10,2) NOT NULL,
     discount DECIMAL(10,2) NOT NULL DEFAULT 0,
     surcharge DECIMAL(10,2) NOT NULL DEFAULT 0,
     total DECIMAL(10,2) NOT NULL,
     status "OrderStatus" NOT NULL DEFAULT 'PENDING',
-    payment_status "PaymentStatus" NOT NULL DEFAULT 'PENDING',
-    payment_method TEXT,
-    sender_name TEXT,
-    sender_phone TEXT,
-    sender_email TEXT,
+    "paymentStatus" "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "paymentMethod" TEXT,
+    "giftMessage" TEXT,
+    "specialInstructions" TEXT,
+    "couponCode" TEXT,
+    "businessModel" "BusinessModel" NOT NULL DEFAULT 'MODEL_A',
+    "vendorCost" DECIMAL(10,2),
+    "commissionAmount" DECIMAL(10,2),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "senderName" TEXT,
+    "senderPhone" TEXT,
+    "senderEmail" TEXT,
     occasion TEXT,
-    gift_message TEXT,
-    special_instructions TEXT,
-    coupon_code TEXT,
-    business_model "BusinessModel" NOT NULL DEFAULT 'MODEL_A',
-    vendor_cost DECIMAL(10,2),
-    commission_amount DECIMAL(10,2),
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    "guestEmail" TEXT,
+    "guestPhone" TEXT
 );
-CREATE INDEX orders_user_id_idx ON orders(user_id);
-CREATE INDEX orders_vendor_id_idx ON orders(vendor_id);
-CREATE INDEX orders_order_number_idx ON orders(order_number);
+CREATE INDEX orders_user_id_idx ON orders("userId");
+CREATE INDEX orders_vendor_id_idx ON orders("vendorId");
+CREATE INDEX orders_order_number_idx ON orders("orderNumber");
 
 CREATE TABLE order_items (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -700,51 +750,51 @@ CREATE TABLE order_items (
 
 CREATE TABLE order_status_history (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    "orderId" TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     status "OrderStatus" NOT NULL,
     note TEXT,
-    changed_by TEXT,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "changedBy" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 ### Payments
+-- NOTE: payments uses camelCase columns
 
 ```sql
-CREATE TYPE "PaymentGateway" AS ENUM ('RAZORPAY', 'STRIPE', 'PAYPAL', 'COD');
-
 CREATE TABLE payments (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     "orderId" TEXT NOT NULL UNIQUE REFERENCES orders(id),
     amount DECIMAL(10,2) NOT NULL,
     currency TEXT NOT NULL DEFAULT 'INR',
-    gateway "PaymentGateway" NOT NULL DEFAULT 'RAZORPAY',
     "razorpayOrderId" TEXT,
     "razorpayPaymentId" TEXT,
     "razorpaySignature" TEXT,
+    method TEXT,
+    status "PaymentStatus" NOT NULL DEFAULT 'PENDING',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    gateway "PaymentGateway" NOT NULL DEFAULT 'RAZORPAY',
     "stripeSessionId" TEXT,
     "stripePaymentIntentId" TEXT,
     "paypalOrderId" TEXT,
     "paypalCaptureId" TEXT,
-    method TEXT,
-    status "PaymentStatus" NOT NULL DEFAULT 'PENDING',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL
+    "paidAt" TIMESTAMP(3)
 );
 
 CREATE TABLE vendor_payouts (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    vendor_id TEXT NOT NULL REFERENCES vendors(id),
+    "vendorId" TEXT NOT NULL REFERENCES vendors(id),
     amount DECIMAL(10,2) NOT NULL,
     period TEXT NOT NULL,
-    order_count INTEGER NOT NULL,
+    "orderCount" INTEGER NOT NULL,
     deductions DECIMAL(10,2) NOT NULL DEFAULT 0,
-    tds_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-    net_amount DECIMAL(10,2) NOT NULL,
+    "tdsAmount" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "netAmount" DECIMAL(10,2) NOT NULL,
     status "PayoutStatus" NOT NULL DEFAULT 'PENDING',
-    transaction_ref TEXT,
-    paid_at TIMESTAMP(3),
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "transactionRef" TEXT,
+    "paidAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -754,26 +804,28 @@ CREATE TABLE vendor_payouts (
 CREATE TABLE partners (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     name TEXT NOT NULL,
-    ref_code TEXT NOT NULL UNIQUE,
+    "refCode" TEXT NOT NULL UNIQUE,
     subdomain TEXT UNIQUE,
-    custom_domain TEXT UNIQUE,
-    logo_url TEXT,
-    primary_color TEXT NOT NULL DEFAULT '#E91E63',
-    secondary_color TEXT NOT NULL DEFAULT '#9C27B0',
-    show_powered_by BOOLEAN NOT NULL DEFAULT true,
-    commission_percent DECIMAL(5,2) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL
+    "customDomain" TEXT UNIQUE,
+    "logoUrl" TEXT,
+    "primaryColor" TEXT NOT NULL DEFAULT '#E91E63',
+    "secondaryColor" TEXT NOT NULL DEFAULT '#9C27B0',
+    "showPoweredBy" BOOLEAN NOT NULL DEFAULT true,
+    "commissionPercent" DECIMAL(5,2) NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    default_city_id TEXT,
+    default_vendor_id TEXT
 );
 
 CREATE TABLE partner_earnings (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    partner_id TEXT NOT NULL REFERENCES partners(id),
-    order_id TEXT NOT NULL,
+    "partnerId" TEXT NOT NULL REFERENCES partners(id),
+    "orderId" TEXT NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -782,15 +834,16 @@ CREATE TABLE partner_earnings (
 ```sql
 CREATE TABLE cart_items (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "productId" TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     quantity INTEGER NOT NULL DEFAULT 1,
     addons JSONB,
-    delivery_date DATE,
-    delivery_slot TEXT,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP(3) NOT NULL,
-    UNIQUE(user_id, product_id)
+    "deliveryDate" DATE,
+    "deliverySlot" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "variationId" TEXT,
+    UNIQUE("userId", "productId")
 );
 ```
 
@@ -801,18 +854,18 @@ CREATE TABLE coupons (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     code TEXT NOT NULL UNIQUE,
     description TEXT,
-    discount_type TEXT NOT NULL,
-    discount_value DECIMAL(10,2) NOT NULL,
-    min_order_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
-    max_discount DECIMAL(10,2),
-    usage_limit INTEGER,
-    used_count INTEGER NOT NULL DEFAULT 0,
-    per_user_limit INTEGER NOT NULL DEFAULT 1,
-    valid_from TIMESTAMP(3) NOT NULL,
-    valid_until TIMESTAMP(3) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    applicable_on TEXT[] NOT NULL,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "discountType" TEXT NOT NULL,
+    "discountValue" DECIMAL(10,2) NOT NULL,
+    "minOrderAmount" DECIMAL(10,2) NOT NULL DEFAULT 0,
+    "maxDiscount" DECIMAL(10,2),
+    "usageLimit" INTEGER,
+    "usedCount" INTEGER NOT NULL DEFAULT 0,
+    "perUserLimit" INTEGER NOT NULL DEFAULT 1,
+    "validFrom" TIMESTAMP(3) NOT NULL,
+    "validUntil" TIMESTAMP(3) NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "applicableOn" TEXT[] NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -821,14 +874,14 @@ CREATE TABLE coupons (
 ```sql
 CREATE TABLE reviews (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    product_id TEXT NOT NULL REFERENCES products(id),
-    order_id TEXT,
+    "userId" TEXT NOT NULL REFERENCES users(id),
+    "productId" TEXT NOT NULL REFERENCES products(id),
+    "orderId" TEXT,
     rating INTEGER NOT NULL,
     comment TEXT,
     images TEXT[] NOT NULL,
-    is_verified BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -880,6 +933,7 @@ CREATE TABLE seo_settings (
 ```
 
 ### Currency Configs
+-- NOTE: currency_configs uses camelCase columns
 
 ```sql
 CREATE TABLE currency_configs (
@@ -906,37 +960,38 @@ CREATE TABLE currency_configs (
 ```sql
 CREATE TABLE audit_logs (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    admin_id TEXT NOT NULL,
-    admin_role TEXT NOT NULL,
-    action_type TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id TEXT NOT NULL,
-    field_changed TEXT,
-    old_value JSONB,
-    new_value JSONB,
+    "adminId" TEXT NOT NULL,
+    "adminRole" TEXT NOT NULL,
+    "actionType" TEXT NOT NULL,
+    "entityType" TEXT NOT NULL,
+    "entityId" TEXT NOT NULL,
+    "fieldChanged" TEXT,
+    "oldValue" JSONB,
+    "newValue" JSONB,
     reason TEXT NOT NULL,
-    ip_address TEXT,
-    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "ipAddress" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX audit_logs_entity_type_entity_id_idx ON audit_logs(entity_type, entity_id);
-CREATE INDEX audit_logs_admin_id_idx ON audit_logs(admin_id);
+CREATE INDEX audit_logs_entity_type_entity_id_idx ON audit_logs("entityType", "entityId");
+CREATE INDEX audit_logs_admin_id_idx ON audit_logs("adminId");
 ```
 
-### Sprint 1 — City-First UX Tables
+### Sprint 1 -- City-First UX Tables
+-- NOTE: These 5 tables use snake_case column names (not Prisma-mapped camelCase)
 
 ```sql
--- Enums
-CREATE TYPE "RelationType" AS ENUM ('UPSELL', 'CROSS_SELL');
-CREATE TYPE "ImageJobStatus" AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED', 'SKIPPED');
-CREATE TYPE "ImageType" AS ENUM ('HERO', 'LIFESTYLE', 'DETAIL');
-CREATE TYPE "ImportStatus" AS ENUM ('PENDING', 'PROCESSING', 'DONE', 'FAILED');
+-- Enums (defined above in Enums section)
+-- "RelationType": 'UPSELL', 'CROSS_SELL'
+-- "ImageJobStatus": 'PENDING', 'PROCESSING', 'DONE', 'FAILED', 'SKIPPED'
+-- "ImageType": 'HERO', 'LIFESTYLE', 'DETAIL'
+-- "ImportStatus": 'PENDING', 'PROCESSING', 'DONE', 'FAILED'
 
--- Cities table alterations (already run)
-ALTER TABLE cities ADD COLUMN aliases TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE cities ADD COLUMN display_name TEXT;
-ALTER TABLE cities ADD COLUMN is_coming_soon BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE cities ADD COLUMN notify_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE cities ADD COLUMN pincode_prefix TEXT[] NOT NULL DEFAULT '{}';
+-- Cities table alterations (already applied)
+-- ALTER TABLE cities ADD COLUMN aliases TEXT[] NOT NULL DEFAULT '{}';
+-- ALTER TABLE cities ADD COLUMN display_name TEXT;
+-- ALTER TABLE cities ADD COLUMN is_coming_soon BOOLEAN NOT NULL DEFAULT false;
+-- ALTER TABLE cities ADD COLUMN notify_count INTEGER NOT NULL DEFAULT 0;
+-- ALTER TABLE cities ADD COLUMN pincode_prefix TEXT[] NOT NULL DEFAULT '{}';
 
 CREATE TABLE pincode_city_map (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -1000,6 +1055,7 @@ CREATE TABLE catalog_imports (
 ```
 
 ### Payment Methods
+-- NOTE: payment_methods uses camelCase columns
 
 ```sql
 CREATE TABLE payment_methods (
@@ -1024,6 +1080,7 @@ INSERT INTO payment_methods (id, name, slug, description, "sortOrder") VALUES
 ```
 
 ### Banners
+-- NOTE: banners uses ALL snake_case column names
 
 ```sql
 CREATE TABLE banners (
@@ -1035,16 +1092,130 @@ CREATE TABLE banners (
   cta_link TEXT NOT NULL DEFAULT '/',
   secondary_cta_text TEXT,
   secondary_cta_link TEXT,
-  text_position TEXT NOT NULL DEFAULT 'left',     -- 'left' | 'right'
-  overlay_style TEXT NOT NULL DEFAULT 'dark-left', -- 'dark-left' | 'dark-right' | 'full-dark'
+  text_position TEXT NOT NULL DEFAULT 'left',
+  overlay_style TEXT NOT NULL DEFAULT 'dark-left',
   badge_text TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  valid_from DATE,                                 -- null = always show
-  valid_until DATE,                                -- null = always show
-  target_city_slug TEXT,                           -- null = all cities
+  valid_from DATE,
+  valid_until DATE,
+  target_city_slug TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  theme TEXT NOT NULL DEFAULT 'blush',
+  subject_image_url TEXT,
+  content_width TEXT NOT NULL DEFAULT 'medium',
+  title_size TEXT NOT NULL DEFAULT 'lg',
+  subtitle_size TEXT NOT NULL DEFAULT 'sm',
+  vertical_align TEXT NOT NULL DEFAULT 'center',
+  hero_size TEXT NOT NULL DEFAULT 'md',
+  content_padding TEXT NOT NULL DEFAULT 'normal',
+  content_x NUMERIC NOT NULL DEFAULT 5,
+  content_y NUMERIC NOT NULL DEFAULT 50,
+  content_w NUMERIC NOT NULL DEFAULT 55,
+  content_h NUMERIC NOT NULL DEFAULT 80,
+  hero_x NUMERIC NOT NULL DEFAULT 55,
+  hero_y NUMERIC NOT NULL DEFAULT 10,
+  hero_w NUMERIC NOT NULL DEFAULT 40,
+  hero_h NUMERIC NOT NULL DEFAULT 85,
+  content_lock_ratio BOOLEAN NOT NULL DEFAULT false,
+  hero_lock_ratio BOOLEAN NOT NULL DEFAULT false,
+  cta_bg_color TEXT NOT NULL DEFAULT '#E91E63',
+  cta_text_color TEXT NOT NULL DEFAULT '#FFFFFF',
+  cta_border_color TEXT,
+  badge_bg_color TEXT NOT NULL DEFAULT 'rgba(255,255,255,0.2)',
+  badge_text_color TEXT NOT NULL DEFAULT '#FFFFFF',
+  layers JSONB NOT NULL DEFAULT '[]',
+  layout TEXT NOT NULL DEFAULT '16:9',
+  mobile_only BOOLEAN NOT NULL DEFAULT false
+);
+```
+
+### Banner Generation Jobs
+-- NOTE: banner_generation_jobs uses snake_case column names
+
+```sql
+CREATE TABLE banner_generation_jobs (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  status TEXT NOT NULL DEFAULT 'pending',
+  theme TEXT NOT NULL,
+  result JSONB,
+  error TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### City Slot Cutoff
+-- NOTE: city_slot_cutoff uses snake_case column names
+
+```sql
+CREATE TABLE city_slot_cutoff (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  city_id TEXT NOT NULL,
+  slot_id TEXT NOT NULL,
+  slot_name TEXT NOT NULL,
+  slot_slug TEXT NOT NULL,
+  slot_start TEXT NOT NULL,
+  slot_end TEXT NOT NULL,
+  cutoff_hours INTEGER NOT NULL,
+  base_charge NUMERIC NOT NULL DEFAULT 0,
+  min_vendors INTEGER NOT NULL DEFAULT 0,
+  is_available BOOLEAN NOT NULL DEFAULT false,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Menu Items
+-- NOTE: menu_items uses camelCase column names
+
+```sql
+CREATE TABLE menu_items (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "parentId" TEXT,
+  label TEXT NOT NULL,
+  slug TEXT,
+  href TEXT,
+  icon TEXT,
+  "sortOrder" INTEGER NOT NULL DEFAULT 0,
+  "isVisible" BOOLEAN NOT NULL DEFAULT true,
+  "itemType" TEXT NOT NULL DEFAULT 'link',
+  "createdAt" TIMESTAMP,
+  "updatedAt" TIMESTAMP
+);
+```
+
+### Platform Settings
+-- NOTE: platform_settings has MIXED naming -- both snake_case and camelCase duplicate columns
+
+```sql
+CREATE TABLE platform_settings (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  key TEXT NOT NULL UNIQUE,
+  value TEXT,
+  updated_at TIMESTAMP,
+  updated_by TEXT,
+  "updatedAt" TIMESTAMP,
+  "updatedBy" TEXT
+);
+```
+
+### Service Areas
+-- NOTE: service_areas uses snake_case column names, with one camelCase column (altNames)
+
+```sql
+CREATE TABLE service_areas (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name TEXT NOT NULL,
+  pincode TEXT NOT NULL,
+  city_id TEXT NOT NULL,
+  city_name TEXT NOT NULL,
+  state TEXT NOT NULL,
+  lat NUMERIC NOT NULL,
+  lng NUMERIC NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "altNames" TEXT[] DEFAULT '{}'
 );
 ```
 
@@ -1084,4 +1255,7 @@ ORDER BY notify_count DESC;
 - `TEXT[]` = PostgreSQL text array type
 - `JSONB` = PostgreSQL binary JSON type
 - Prisma auto-generates `_prisma_migrations` table for tracking schema state
-- Column names use `snake_case` in PostgreSQL (Prisma maps `camelCase` automatically)
+- Column naming conventions vary by table:
+  - **camelCase columns** (via Prisma): users, addresses, cities, delivery_slots, vendors, products, categories, orders, payments, order_items, currency_configs, payment_methods, menu_items, cart_items, coupons, reviews, vendor_payouts, partners, partner_earnings, order_status_history, audit_logs, product_variations, vendor_products, vendor_product_variations, product_addons, product_upsells, delivery_surcharges, city_zones, city_delivery_configs, vendor_working_hours, vendor_slots, vendor_holidays, vendor_pincodes, vendor_zones, vendor_capacity, otp_verifications
+  - **snake_case columns** (direct SQL): banners, banner_generation_jobs, city_slot_cutoff, pincode_city_map, city_notifications, product_relations, image_generation_jobs, catalog_imports, delivery_holidays, seo_settings, category_addon_templates, category_addon_template_options, product_attributes, product_attribute_options, product_addon_groups, product_addon_options, service_areas
+  - **Mixed columns**: platform_settings (has both snake_case and camelCase duplicates for updated_at/updatedAt and updated_by/updatedBy)

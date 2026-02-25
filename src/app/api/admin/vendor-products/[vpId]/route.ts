@@ -53,7 +53,7 @@ export async function PATCH(
       )
     }
 
-    const data: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+    const data: Record<string, unknown> = {}
     if (parsed.data.costPrice !== undefined) data.costPrice = parsed.data.costPrice
     if (parsed.data.preparationTime !== undefined) data.preparationTime = parsed.data.preparationTime
     if (parsed.data.dailyLimit !== undefined) data.dailyLimit = parsed.data.dailyLimit
