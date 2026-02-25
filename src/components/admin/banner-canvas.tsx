@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useRef, useEffect } from 'react'
-import { Pencil, Eye } from 'lucide-react'
+import { Pencil, Eye, Monitor, Smartphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { DraggableResizable } from '@/components/admin/draggable-resizable'
 import { loadGoogleFont } from '@/lib/banner-layers'
 import type { Layer, LayerType, BackgroundLayer, ImageLayer, TextLayer, ShapeLayer, BadgeLayer, ButtonLayer } from '@/lib/banner-layers'
@@ -298,17 +299,34 @@ export function BannerCanvas({
         </div>
 
         <div className="flex items-center gap-3">
-          <select
-            value={aspectRatio}
-            onChange={(e) => onAspectRatioChange(e.target.value)}
-            className="text-xs border rounded px-2 py-1"
-          >
-            <option value="16/5">Banner 16:5</option>
-            <option value="16/4">Wide 16:4</option>
-            <option value="16/6">Tall 16:6</option>
-            <option value="1/1">Square 1:1</option>
-            <option value="9/16">Mobile 9:16</option>
-          </select>
+          <div className="flex items-center gap-1 border rounded-lg p-0.5 bg-gray-100">
+            <button
+              type="button"
+              onClick={() => onAspectRatioChange('16/9')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                aspectRatio === '16/9'
+                  ? 'bg-white text-gray-800 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              Desktop 16:9
+            </button>
+            <button
+              type="button"
+              onClick={() => onAspectRatioChange('4/3')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors',
+                aspectRatio === '4/3'
+                  ? 'bg-white text-gray-800 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              Mobile 4:3
+            </button>
+          </div>
 
           <label className="flex items-center gap-1 text-xs text-gray-500">
             <input
@@ -325,7 +343,7 @@ export function BannerCanvas({
       <div
         ref={canvasRef}
         className="relative w-full overflow-hidden rounded-xl bg-gray-100"
-        style={{ aspectRatio, maxHeight: '400px', userSelect: 'none' }}
+        style={{ aspectRatio, userSelect: 'none' }}
         onClick={(e) => {
           if (e.target === e.currentTarget) onSelectLayer(null)
         }}

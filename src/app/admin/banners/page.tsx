@@ -125,7 +125,7 @@ export default function AdminBannersPage() {
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview'>('edit')
   const [snapToGrid, setSnapToGrid] = useState(false)
-  const [previewRatio, setPreviewRatio] = useState('16/5')
+  const [previewRatio, setPreviewRatio] = useState('16/9')
 
   // Auto-compose state
   const [autoComposing, setAutoComposing] = useState(false)
@@ -645,7 +645,7 @@ export default function AdminBannersPage() {
             </div>
 
             {/* Center: Canvas */}
-            <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
+            <div className="flex-1 p-4 overflow-y-auto bg-gray-50 min-w-0">
               <BannerCanvas
                 layers={formLayers}
                 selectedId={selectedLayerId}

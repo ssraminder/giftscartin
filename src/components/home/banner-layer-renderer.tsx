@@ -17,7 +17,6 @@ import {
 
 interface BannerLayerRendererProps {
   layers: Layer[]
-  aspectRatio?: string    // default '16/5'
   className?: string
   priority?: boolean      // for next/image priority loading
 }
@@ -240,7 +239,6 @@ function renderButtonLayer(layer: ButtonLayer) {
 
 export function BannerLayerRenderer({
   layers,
-  aspectRatio,
   className,
   priority,
 }: BannerLayerRendererProps) {
@@ -286,8 +284,7 @@ export function BannerLayerRenderer({
       )}
       <div
         ref={containerRef}
-        className={cn('relative w-full overflow-hidden', className)}
-        style={{ aspectRatio: aspectRatio ?? '16/5' }}
+        className={cn('relative w-full h-full overflow-hidden', className)}
       >
         <div
           className="absolute inset-0"

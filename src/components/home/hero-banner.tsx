@@ -153,7 +153,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   if (loading) {
     return (
       <div className="px-4 md:px-6 lg:px-8 py-2">
-        <div className="w-full h-[232px] md:h-[335px] lg:h-[400px] xl:h-[437px] 2xl:h-[451px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
+        <div className="w-full aspect-[4/3] md:aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
@@ -164,11 +164,13 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   if (banners.length === 1) {
     return (
       <div className="px-4 md:px-6 lg:px-8 py-2">
-        <BannerLayerRenderer
-          layers={banners[0].resolvedLayers}
-          priority={true}
-          className="w-full rounded-2xl"
-        />
+        <div className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9]">
+          <BannerLayerRenderer
+            layers={banners[0].resolvedLayers}
+            priority={true}
+            className="absolute inset-0 w-full h-full"
+          />
+        </div>
       </div>
     )
   }
@@ -212,11 +214,13 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
               key={`${banner.id}-${i}`}
               className="relative flex-shrink-0 w-[87vw] sm:w-[80vw] md:w-[67vw] lg:w-[50vw] xl:w-[45vw] 2xl:w-[41vw]"
             >
-              <BannerLayerRenderer
-                layers={banner.resolvedLayers}
-                priority={i === 0}
-                className="rounded-2xl"
-              />
+              <div className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9]">
+                <BannerLayerRenderer
+                  layers={banner.resolvedLayers}
+                  priority={i === 0}
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
             </div>
           ))}
         </div>
