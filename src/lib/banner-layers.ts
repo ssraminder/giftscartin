@@ -38,6 +38,7 @@ export interface ImageLayer extends BaseLayer {
 export interface TextLayer extends BaseLayer {
   type: 'text'
   html: string
+  color: string           // base text color, default '#111827'
   fontFamily: string
   fontSize: number        // px
   fontWeight: number      // 300/400/500/600/700/800/900
@@ -182,6 +183,7 @@ export function createTextLayer(overrides?: Partial<TextLayer>): TextLayer {
     x: 5, y: 20, w: 50, h: 60,
     rotation: 0, opacity: 100, zIndex: 30,
     html: 'Your text here',
+    color: '#111827',
     fontFamily: 'Poppins', fontSize: 48, fontWeight: 700,
     lineHeight: 1.2, letterSpacing: 0,
     textAlign: 'left', verticalAlign: 'center',

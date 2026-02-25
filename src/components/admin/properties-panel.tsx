@@ -25,11 +25,16 @@ const PRESET_COLORS = [
   '#E91E63', '#FF1493', '#FFD700', '#FF6B00', '#C0392B', '#7C3AED',
 ]
 
+const TEXT_COLOR_PRESETS = [
+  '#111827', '#1F2937', '#374151', '#FFFFFF', '#F9FAFB', '#E91E63',
+  '#C2185B', '#FF6B00', '#FFD700', '#1565C0', '#2E7D32', '#6A1B9A',
+]
+
 function ColorPickerField({
-  label, value, onChange, showTransparency = false,
+  label, value, onChange, showTransparency = false, presets,
 }: {
   label: string; value: string; onChange: (v: string) => void
-  showTransparency?: boolean
+  showTransparency?: boolean; presets?: string[]
 }) {
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(value)
@@ -52,7 +57,7 @@ function ColorPickerField({
       {open && (
         <div className="absolute top-full left-0 z-50 bg-white border rounded-lg shadow-xl p-3 w-56 mt-1">
           <div className="grid grid-cols-6 gap-1 mb-2">
-            {PRESET_COLORS.map(c => (
+            {(presets ?? PRESET_COLORS).map(c => (
               <button
                 key={c}
                 type="button"
@@ -544,6 +549,13 @@ function TextProperties({ layer, allLayers, onUpdate }: { layer: TextLayer; allL
           />
         </div>
       </div>
+
+      <ColorPickerField
+        label="Text Color"
+        value={(layer as TextLayer).color || '#111827'}
+        onChange={(v) => onUpdate({ color: v })}
+        presets={TEXT_COLOR_PRESETS}
+      />
 
       <FontWeightSelector value={layer.fontWeight} onChange={(v) => onUpdate({ fontWeight: v })} />
 
