@@ -22,6 +22,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { BannerImageGenerator } from '@/components/admin/banner-image-generator'
+import { BannerTextStyler } from '@/components/admin/banner-text-styler'
+import { PositionEditor } from '@/components/admin/position-editor'
 import {
   Dialog,
   DialogContent,
@@ -68,6 +70,16 @@ interface Banner {
   verticalAlign: string
   heroSize: string
   contentPadding: string
+  contentX: number
+  contentY: number
+  contentW: number
+  contentH: number
+  heroX: number
+  heroY: number
+  heroW: number
+  heroH: number
+  contentLockRatio: boolean
+  heroLockRatio: boolean
   createdAt: string
   updatedAt: string
 }
@@ -95,6 +107,16 @@ interface BannerFormData {
   verticalAlign: string
   heroSize: string
   contentPadding: string
+  contentX: number
+  contentY: number
+  contentW: number
+  contentH: number
+  heroX: number
+  heroY: number
+  heroW: number
+  heroH: number
+  contentLockRatio: boolean
+  heroLockRatio: boolean
 }
 
 const EMPTY_FORM: BannerFormData = {
@@ -120,6 +142,16 @@ const EMPTY_FORM: BannerFormData = {
   verticalAlign: 'center',
   heroSize: 'md',
   contentPadding: 'normal',
+  contentX: 5,
+  contentY: 50,
+  contentW: 55,
+  contentH: 80,
+  heroX: 55,
+  heroY: 10,
+  heroW: 40,
+  heroH: 85,
+  contentLockRatio: false,
+  heroLockRatio: false,
 }
 
 const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
@@ -140,6 +172,7 @@ const CITY_OPTIONS = [
 ]
 
 const OVERLAY_OPTIONS = [
+  { value: 'none', label: 'No Overlay', helper: 'Text sits directly on the image — ensure image has natural contrast' },
   { value: 'dark-left', label: 'Dark Left', helper: 'Dark gradient on left, white text' },
   { value: 'dark-right', label: 'Dark Right', helper: 'Dark gradient on right, white text' },
   { value: 'full-dark', label: 'Full Dark', helper: 'Dark overlay across full banner, white text' },
@@ -150,17 +183,16 @@ const OVERLAY_OPTIONS = [
 
 // ==================== Sizing Maps ====================
 
-const CONTENT_WIDTH_MAP: Record<string, string> = { narrow: '40%', medium: '55%', wide: '70%', full: '100%' }
 const TITLE_SIZE_MAP: Record<string, string> = { sm: '1.25rem', md: '1.75rem', lg: '2.25rem', xl: '2.75rem', '2xl': '3.5rem' }
 const SUBTITLE_SIZE_MAP: Record<string, string> = { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.25rem' }
-const VERTICAL_ALIGN_MAP: Record<string, string> = { top: 'flex-start', center: 'center', bottom: 'flex-end' }
-const HERO_SIZE_MAP: Record<string, string> = { sm: '35%', md: '45%', lg: '55%', xl: '65%' }
 const PADDING_MAP: Record<string, string> = { tight: '1rem', normal: '2rem', spacious: '3rem' }
 
 // ==================== Overlay Helpers ====================
 
-function getOverlayCss(overlayStyle: string): React.CSSProperties {
+function getOverlayCss(overlayStyle: string): React.CSSProperties | null {
   switch (overlayStyle) {
+    case 'none':
+      return null
     case 'dark-left':
       return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
     case 'dark-right':
@@ -184,26 +216,21 @@ function isLightOverlay(style: string): boolean {
 
 // ==================== Banner Preview ====================
 
-function BannerPreview({ form }: { form: BannerFormData }) {
+function BannerPreview({ form, showGuides }: { form: BannerFormData; showGuides?: boolean }) {
   const [heroError, setHeroError] = useState(false)
+  const isNone = form.overlayStyle === 'none'
   const light = isLightOverlay(form.overlayStyle)
-  const textColor = light ? '#1a1a1a' : '#ffffff'
+  const textColor = isNone ? '#ffffff' : light ? '#1a1a1a' : '#ffffff'
   const badgeBg = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
   const hasImage = form.imageUrl?.trim()
   const hasHero = form.subjectImageUrl?.trim() && !heroError
 
-  const contentWidth = CONTENT_WIDTH_MAP[form.contentWidth] || '55%'
   const titleSize = TITLE_SIZE_MAP[form.titleSize] || '2.25rem'
   const subtitleSize = SUBTITLE_SIZE_MAP[form.subtitleSize] || '0.875rem'
-  const verticalAlign = VERTICAL_ALIGN_MAP[form.verticalAlign] || 'center'
-  const heroWidth = HERO_SIZE_MAP[form.heroSize] || '45%'
   const padding = PADDING_MAP[form.contentPadding] || '2rem'
 
   // Reset hero error when URL changes
   useEffect(() => { setHeroError(false) }, [form.subjectImageUrl])
-
-  // Hero on opposite side of text
-  const heroOnLeft = form.textPosition === 'right'
 
   return (
     <div
@@ -223,7 +250,9 @@ function BannerPreview({ form }: { form: BannerFormData }) {
       )}
 
       {/* Layer 2: Overlay */}
-      <div className="absolute inset-0" style={getOverlayCss(form.overlayStyle)} />
+      {getOverlayCss(form.overlayStyle) && (
+        <div className="absolute inset-0" style={getOverlayCss(form.overlayStyle)!} />
+      )}
 
       {/* Layer 3: Hero image */}
       {hasHero && (
@@ -234,10 +263,10 @@ function BannerPreview({ form }: { form: BannerFormData }) {
           onError={() => setHeroError(true)}
           style={{
             position: 'absolute',
-            bottom: 0,
-            [heroOnLeft ? 'left' : 'right']: 0,
-            width: heroWidth,
-            height: '100%',
+            left: `${form.heroX}%`,
+            top: `${form.heroY}%`,
+            width: `${form.heroW}%`,
+            height: `${form.heroH}%`,
             objectFit: 'contain',
             objectPosition: 'bottom center',
             zIndex: 3,
@@ -247,49 +276,80 @@ function BannerPreview({ form }: { form: BannerFormData }) {
 
       {/* Layer 4: Content */}
       <div
-        className="absolute inset-0 z-10 flex flex-col"
+        className="absolute z-10 flex flex-col justify-center overflow-hidden"
         style={{
-          justifyContent: verticalAlign,
-          padding,
-          alignItems: form.textPosition === 'right' ? 'flex-end' : form.textPosition === 'center' ? 'center' : 'flex-start',
+          left: `${form.contentX}%`,
+          top: `${form.contentY}%`,
+          width: `${form.contentW}%`,
+          height: `${form.contentH}%`,
+          padding: padding,
+          textAlign: form.textPosition === 'right' ? 'right' : form.textPosition === 'center' ? 'center' : 'left',
         }}
       >
-        <div style={{ width: contentWidth, textAlign: form.textPosition === 'right' ? 'right' : form.textPosition === 'center' ? 'center' : 'left' }}>
-          {/* Badge */}
-          {form.badgeText?.trim() && (
-            <span
-              className="inline-block text-[9px] font-semibold px-2 py-0.5 rounded-full mb-1"
-              style={{ color: textColor, backgroundColor: badgeBg }}
-            >
-              {form.badgeText}
-            </span>
-          )}
+        {/* Badge */}
+        {form.badgeText?.trim() && (
+          <span
+            className="inline-block text-[9px] font-semibold px-2 py-0.5 rounded-full mb-1"
+            style={{ color: textColor, backgroundColor: badgeBg }}
+          >
+            {form.badgeText}
+          </span>
+        )}
 
+        <div
+          className="font-bold leading-tight"
+          style={{ color: textColor, fontSize: titleSize }}
+          dangerouslySetInnerHTML={{
+            __html: form.titleHtml?.trim()
+              ? form.titleHtml
+              : `<span style="opacity:0.5">Your headline here</span>`,
+          }}
+        />
+        {form.subtitleHtml?.trim() && (
           <div
-            className="font-bold leading-tight"
-            style={{ color: textColor, fontSize: titleSize }}
-            dangerouslySetInnerHTML={{
-              __html: form.titleHtml?.trim()
-                ? form.titleHtml
-                : `<span style="opacity:0.5">Your headline here</span>`,
-            }}
+            className="mt-1 leading-tight"
+            style={{ color: textColor, opacity: 0.75, fontSize: subtitleSize }}
+            dangerouslySetInnerHTML={{ __html: form.subtitleHtml }}
           />
-          {form.subtitleHtml?.trim() && (
-            <div
-              className="mt-1 leading-tight"
-              style={{ color: textColor, opacity: 0.75, fontSize: subtitleSize }}
-              dangerouslySetInnerHTML={{ __html: form.subtitleHtml }}
-            />
-          )}
-          {form.ctaText?.trim() && (
-            <span
-              className="inline-block mt-2 bg-pink-500 text-white text-[10px] font-semibold px-3 py-1 rounded-full"
-            >
-              {form.ctaText}
-            </span>
-          )}
-        </div>
+        )}
+        {form.ctaText?.trim() && (
+          <span
+            className="inline-block mt-2 bg-pink-500 text-white text-[10px] font-semibold px-3 py-1 rounded-full"
+          >
+            {form.ctaText}
+          </span>
+        )}
       </div>
+
+      {/* Guide overlays */}
+      {showGuides && (
+        <>
+          <div
+            className="absolute z-20 border-2 border-dashed border-pink-400 rounded"
+            style={{
+              left: `${form.contentX}%`,
+              top: `${form.contentY}%`,
+              width: `${form.contentW}%`,
+              height: `${form.contentH}%`,
+              backgroundColor: 'rgba(233,30,99,0.08)',
+            }}
+          >
+            <span className="absolute top-0.5 left-0.5 text-[8px] bg-pink-500 text-white px-1 rounded">Content</span>
+          </div>
+          <div
+            className="absolute z-20 border-2 border-dashed border-blue-400 rounded"
+            style={{
+              left: `${form.heroX}%`,
+              top: `${form.heroY}%`,
+              width: `${form.heroW}%`,
+              height: `${form.heroH}%`,
+              backgroundColor: 'rgba(59,130,246,0.08)',
+            }}
+          >
+            <span className="absolute top-0.5 left-0.5 text-[8px] bg-blue-500 text-white px-1 rounded">Hero</span>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -328,6 +388,12 @@ export default function AdminBannersPage() {
   // AI image regeneration panels
   const [showBgAiGen, setShowBgAiGen] = useState(false)
   const [showHeroAiGen, setShowHeroAiGen] = useState(false)
+
+  // AI text styler
+  const [showTextStyler, setShowTextStyler] = useState(false)
+
+  // Preview guides
+  const [showGuides, setShowGuides] = useState(false)
 
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -459,6 +525,16 @@ export default function AdminBannersPage() {
       verticalAlign: banner.verticalAlign || 'center',
       heroSize: banner.heroSize || 'md',
       contentPadding: banner.contentPadding || 'normal',
+      contentX: banner.contentX ?? 5,
+      contentY: banner.contentY ?? 50,
+      contentW: banner.contentW ?? 55,
+      contentH: banner.contentH ?? 80,
+      heroX: banner.heroX ?? 55,
+      heroY: banner.heroY ?? 10,
+      heroW: banner.heroW ?? 40,
+      heroH: banner.heroH ?? 85,
+      contentLockRatio: banner.contentLockRatio ?? false,
+      heroLockRatio: banner.heroLockRatio ?? false,
     })
     setFormErrors({})
     setModalOpen(true)
@@ -501,6 +577,16 @@ export default function AdminBannersPage() {
         verticalAlign: form.verticalAlign || 'center',
         heroSize: form.heroSize || 'md',
         contentPadding: form.contentPadding || 'normal',
+        contentX: form.contentX,
+        contentY: form.contentY,
+        contentW: form.contentW,
+        contentH: form.contentH,
+        heroX: form.heroX,
+        heroY: form.heroY,
+        heroW: form.heroW,
+        heroH: form.heroH,
+        contentLockRatio: form.contentLockRatio,
+        heroLockRatio: form.heroLockRatio,
       }
 
       const url = editingBanner
@@ -1086,12 +1172,24 @@ export default function AdminBannersPage() {
                 <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
                   {/* Title HTML */}
                   <div>
-                    <label className="mb-1 block text-sm font-medium">
-                      Title HTML{' '}
-                      <span className="font-normal text-slate-400">
-                        (&lt;strong&gt;, &lt;em&gt;, &lt;br/&gt;, &lt;span style=&apos;color:...&apos;&gt;)
-                      </span>
-                    </label>
+                    <div className="mb-1 flex items-center gap-2">
+                      <label className="block text-sm font-medium">
+                        Title HTML{' '}
+                        <span className="font-normal text-slate-400">
+                          (&lt;strong&gt;, &lt;em&gt;, &lt;br/&gt;, &lt;span style=&apos;color:...&apos;&gt;)
+                        </span>
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowTextStyler(v => !v)}
+                        className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        Style with AI
+                      </Button>
+                    </div>
                     <textarea
                       rows={3}
                       value={form.titleHtml}
@@ -1132,6 +1230,22 @@ export default function AdminBannersPage() {
                     )}
                   </div>
 
+                  {/* AI Text Styler Panel */}
+                  {showTextStyler && (
+                    <BannerTextStyler
+                      titleHtml={form.titleHtml}
+                      subtitleHtml={form.subtitleHtml}
+                      ctaText={form.ctaText}
+                      backgroundImageUrl={form.imageUrl || undefined}
+                      overlayStyle={form.overlayStyle}
+                      onAccept={(newTitle, newSubtitle) => {
+                        setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
+                        setShowTextStyler(false)
+                      }}
+                      onClose={() => setShowTextStyler(false)}
+                    />
+                  )}
+
                   {/* Badge Text — full width */}
                   <div>
                     <label className="mb-1 block text-sm font-medium">Badge Text <span className="font-normal text-slate-400">(optional)</span></label>
@@ -1151,8 +1265,9 @@ export default function AdminBannersPage() {
                 {/* ---- Section 3: Layout & Sizing ---- */}
                 <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
                   <p className="text-sm font-semibold text-slate-700">Layout &amp; Sizing</p>
-                  <div className="grid grid-cols-3 gap-4">
-                    {/* Text Position */}
+
+                  {/* Row 1: Text Position, Overlay Style, Title Size, Subtitle Size */}
+                  <div className="grid grid-cols-4 gap-4">
                     <div>
                       <label className="mb-1 block text-sm font-medium">Text Position</label>
                       <select
@@ -1166,22 +1281,24 @@ export default function AdminBannersPage() {
                       </select>
                     </div>
 
-                    {/* Content Width */}
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Content Width</label>
+                      <label className="mb-1 block text-sm font-medium">Overlay Style</label>
                       <select
-                        value={form.contentWidth}
-                        onChange={e => setForm(f => ({ ...f, contentWidth: e.target.value }))}
+                        value={form.overlayStyle}
+                        onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
                         className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                       >
-                        <option value="narrow">Narrow (40%)</option>
-                        <option value="medium">Medium (55%)</option>
-                        <option value="wide">Wide (70%)</option>
-                        <option value="full">Full (100%)</option>
+                        {OVERLAY_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
                       </select>
+                      {form.overlayStyle === 'none' && (
+                        <p className="mt-1 text-xs text-amber-600">
+                          &#9888;&#65039; Ensure your background image has sufficient contrast for text readability
+                        </p>
+                      )}
                     </div>
 
-                    {/* Title Size */}
                     <div>
                       <label className="mb-1 block text-sm font-medium">Title Size</label>
                       <select
@@ -1197,7 +1314,6 @@ export default function AdminBannersPage() {
                       </select>
                     </div>
 
-                    {/* Subtitle Size */}
                     <div>
                       <label className="mb-1 block text-sm font-medium">Subtitle Size</label>
                       <select
@@ -1211,37 +1327,10 @@ export default function AdminBannersPage() {
                         <option value="lg">Large</option>
                       </select>
                     </div>
+                  </div>
 
-                    {/* Vertical Align */}
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Vertical Align</label>
-                      <select
-                        value={form.verticalAlign}
-                        onChange={e => setForm(f => ({ ...f, verticalAlign: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="top">Top</option>
-                        <option value="center">Center</option>
-                        <option value="bottom">Bottom</option>
-                      </select>
-                    </div>
-
-                    {/* Hero Size */}
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Hero Size</label>
-                      <select
-                        value={form.heroSize}
-                        onChange={e => setForm(f => ({ ...f, heroSize: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="sm">Small (35%)</option>
-                        <option value="md">Medium (45%)</option>
-                        <option value="lg">Large (55%)</option>
-                        <option value="xl">Extra Large (65%)</option>
-                      </select>
-                    </div>
-
-                    {/* Content Padding */}
+                  {/* Row 2: Padding only */}
+                  <div className="grid grid-cols-4 gap-4">
                     <div>
                       <label className="mb-1 block text-sm font-medium">Padding</label>
                       <select
@@ -1254,20 +1343,60 @@ export default function AdminBannersPage() {
                         <option value="spacious">Spacious</option>
                       </select>
                     </div>
+                  </div>
 
-                    {/* Overlay Style */}
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Overlay Style</label>
-                      <select
-                        value={form.overlayStyle}
-                        onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        {OVERLAY_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
+                  {/* Position Editors */}
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <PositionEditor
+                      label="Content Block"
+                      x={form.contentX}
+                      y={form.contentY}
+                      w={form.contentW}
+                      h={form.contentH}
+                      lockRatio={form.contentLockRatio}
+                      color="pink"
+                      presets={[
+                        { label: 'Top Left', x: 3, y: 5, w: 50, h: 75 },
+                        { label: 'Center', x: 25, y: 10, w: 50, h: 80 },
+                        { label: 'Top Right', x: 47, y: 5, w: 50, h: 75 },
+                      ]}
+                      defaults={{ x: 5, y: 50, w: 55, h: 80 }}
+                      onChange={vals =>
+                        setForm(f => ({
+                          ...f,
+                          contentX: vals.x,
+                          contentY: vals.y,
+                          contentW: vals.w,
+                          contentH: vals.h,
+                          contentLockRatio: vals.lockRatio,
+                        }))
+                      }
+                    />
+                    <PositionEditor
+                      label="Hero Image"
+                      x={form.heroX}
+                      y={form.heroY}
+                      w={form.heroW}
+                      h={form.heroH}
+                      lockRatio={form.heroLockRatio}
+                      color="blue"
+                      presets={[
+                        { label: 'Right Side', x: 55, y: 5, w: 40, h: 88 },
+                        { label: 'Left Side', x: 5, y: 5, w: 40, h: 88 },
+                        { label: 'Full Right', x: 50, y: 0, w: 50, h: 100 },
+                      ]}
+                      defaults={{ x: 55, y: 10, w: 40, h: 85 }}
+                      onChange={vals =>
+                        setForm(f => ({
+                          ...f,
+                          heroX: vals.x,
+                          heroY: vals.y,
+                          heroW: vals.w,
+                          heroH: vals.h,
+                          heroLockRatio: vals.lockRatio,
+                        }))
+                      }
+                    />
                   </div>
                 </div>
 
@@ -1389,9 +1518,24 @@ export default function AdminBannersPage() {
 
                 {/* ---- Live Preview (bottom, full-width) ---- */}
                 <div className="border-t border-gray-100 pt-4 mt-2">
-                  <p className="text-sm font-semibold text-slate-700 mb-0.5">Live Preview</p>
-                  <p className="text-xs text-gray-400 mb-3">Updates as you type</p>
-                  <BannerPreview form={form} />
+                  <div className="flex items-center justify-between mb-0.5">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">Live Preview</p>
+                      <p className="text-xs text-gray-400">Updates as you type</p>
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showGuides}
+                        onChange={e => setShowGuides(e.target.checked)}
+                        className="rounded border-gray-300"
+                      />
+                      Show guides
+                    </label>
+                  </div>
+                  <div className="mt-2">
+                    <BannerPreview form={form} showGuides={showGuides} />
+                  </div>
                 </div>
               </div>
 

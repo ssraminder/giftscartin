@@ -45,6 +45,16 @@ export async function PATCH(
       verticalAlign: 'vertical_align',
       heroSize: 'hero_size',
       contentPadding: 'content_padding',
+      contentX: 'content_x',
+      contentY: 'content_y',
+      contentW: 'content_w',
+      contentH: 'content_h',
+      heroX: 'hero_x',
+      heroY: 'hero_y',
+      heroW: 'hero_w',
+      heroH: 'hero_h',
+      contentLockRatio: 'content_lock_ratio',
+      heroLockRatio: 'hero_lock_ratio',
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {
@@ -89,6 +99,16 @@ export async function PATCH(
       verticalAlign: data.vertical_align ?? 'center',
       heroSize: data.hero_size ?? 'md',
       contentPadding: data.content_padding ?? 'normal',
+      contentX: data.content_x ?? 5,
+      contentY: data.content_y ?? 50,
+      contentW: data.content_w ?? 55,
+      contentH: data.content_h ?? 80,
+      heroX: data.hero_x ?? 55,
+      heroY: data.hero_y ?? 10,
+      heroW: data.hero_w ?? 40,
+      heroH: data.hero_h ?? 85,
+      contentLockRatio: data.content_lock_ratio ?? false,
+      heroLockRatio: data.hero_lock_ratio ?? false,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

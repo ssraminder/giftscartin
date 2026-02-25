@@ -46,6 +46,16 @@ export async function GET(request: NextRequest) {
       verticalAlign: b.vertical_align ?? 'center',
       heroSize: b.hero_size ?? 'md',
       contentPadding: b.content_padding ?? 'normal',
+      contentX: b.content_x ?? 5,
+      contentY: b.content_y ?? 50,
+      contentW: b.content_w ?? 55,
+      contentH: b.content_h ?? 80,
+      heroX: b.hero_x ?? 55,
+      heroY: b.hero_y ?? 10,
+      heroW: b.hero_w ?? 40,
+      heroH: b.hero_h ?? 85,
+      contentLockRatio: b.content_lock_ratio ?? false,
+      heroLockRatio: b.hero_lock_ratio ?? false,
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }))
@@ -104,6 +114,16 @@ export async function POST(request: NextRequest) {
     if (body.verticalAlign !== undefined) insertData.vertical_align = body.verticalAlign
     if (body.heroSize !== undefined) insertData.hero_size = body.heroSize
     if (body.contentPadding !== undefined) insertData.content_padding = body.contentPadding
+    if (body.contentX !== undefined) insertData.content_x = body.contentX
+    if (body.contentY !== undefined) insertData.content_y = body.contentY
+    if (body.contentW !== undefined) insertData.content_w = body.contentW
+    if (body.contentH !== undefined) insertData.content_h = body.contentH
+    if (body.heroX !== undefined) insertData.hero_x = body.heroX
+    if (body.heroY !== undefined) insertData.hero_y = body.heroY
+    if (body.heroW !== undefined) insertData.hero_w = body.heroW
+    if (body.heroH !== undefined) insertData.hero_h = body.heroH
+    if (body.contentLockRatio !== undefined) insertData.content_lock_ratio = body.contentLockRatio
+    if (body.heroLockRatio !== undefined) insertData.hero_lock_ratio = body.heroLockRatio
 
     const { data, error } = await supabase
       .from('banners')
@@ -140,6 +160,16 @@ export async function POST(request: NextRequest) {
       verticalAlign: data.vertical_align ?? 'center',
       heroSize: data.hero_size ?? 'md',
       contentPadding: data.content_padding ?? 'normal',
+      contentX: data.content_x ?? 5,
+      contentY: data.content_y ?? 50,
+      contentW: data.content_w ?? 55,
+      contentH: data.content_h ?? 80,
+      heroX: data.hero_x ?? 55,
+      heroY: data.hero_y ?? 10,
+      heroW: data.hero_w ?? 40,
+      heroH: data.hero_h ?? 85,
+      contentLockRatio: data.content_lock_ratio ?? false,
+      heroLockRatio: data.hero_lock_ratio ?? false,
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

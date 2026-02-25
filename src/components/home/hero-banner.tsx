@@ -22,15 +22,20 @@ interface Banner {
   verticalAlign?: string
   heroSize?: string
   contentPadding?: string
+  contentX?: number
+  contentY?: number
+  contentW?: number
+  contentH?: number
+  heroX?: number
+  heroY?: number
+  heroW?: number
+  heroH?: number
 }
 
 // ---- Sizing maps ----
 
-const CONTENT_WIDTH_MAP: Record<string, string> = { narrow: '40%', medium: '55%', wide: '70%', full: '100%' }
 const TITLE_SIZE_MAP: Record<string, string> = { sm: '1.25rem', md: '1.75rem', lg: '2.25rem', xl: '2.75rem', '2xl': '3.5rem' }
 const SUBTITLE_SIZE_MAP: Record<string, string> = { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.25rem' }
-const VERTICAL_ALIGN_MAP: Record<string, string> = { top: 'flex-start', center: 'center', bottom: 'flex-end' }
-const HERO_SIZE_MAP: Record<string, string> = { sm: '35%', md: '45%', lg: '55%', xl: '65%' }
 const PADDING_MAP: Record<string, string> = { tight: '1rem', normal: '2rem', spacious: '3rem' }
 
 const FALLBACK_BANNERS: Banner[] = [
@@ -49,8 +54,10 @@ const FALLBACK_BANNERS: Banner[] = [
 
 // ---- Overlay helpers ----
 
-function getOverlayCss(overlayStyle: string): React.CSSProperties {
+function getOverlayCss(overlayStyle: string): React.CSSProperties | null {
   switch (overlayStyle) {
+    case 'none':
+      return null
     case 'dark-left':
       return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
     case 'dark-right':
@@ -230,16 +237,25 @@ export default function HeroBanner() {
           onTouchEnd={handleTouchEnd}
         >
           {displayBanners.map((banner, i) => {
+            const isNone = banner.overlayStyle === 'none'
             const light = isLightOverlay(banner.overlayStyle)
-            const textColor = light ? '#1a1a1a' : '#ffffff'
-            const badgeBg = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
-            const contentWidth = CONTENT_WIDTH_MAP[banner.contentWidth ?? 'medium'] ?? '55%'
+            const textColor = isNone ? '#ffffff' : light ? '#1a1a1a' : '#ffffff'
+            const badgeBg = isNone ? 'rgba(255,255,255,0.2)' : light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
             const titleFontSize = TITLE_SIZE_MAP[banner.titleSize ?? 'lg'] ?? '2.25rem'
             const subtitleFontSize = SUBTITLE_SIZE_MAP[banner.subtitleSize ?? 'sm'] ?? '0.875rem'
-            const vAlign = VERTICAL_ALIGN_MAP[banner.verticalAlign ?? 'center'] ?? 'center'
-            const heroWidth = HERO_SIZE_MAP[banner.heroSize ?? 'md'] ?? '45%'
             const padding = PADDING_MAP[banner.contentPadding ?? 'normal'] ?? '2rem'
-            const heroOnLeft = banner.textPosition === 'right'
+
+            // Coordinate-based positioning (fallback to legacy values)
+            const cX = banner.contentX ?? 5
+            const cY = banner.contentY ?? 50
+            const cW = banner.contentW ?? 55
+            const cH = banner.contentH ?? 80
+            const hX = banner.heroX ?? 55
+            const hY = banner.heroY ?? 10
+            const hW = banner.heroW ?? 40
+            const hH = banner.heroH ?? 85
+
+            const overlayCss = getOverlayCss(banner.overlayStyle)
 
             return (
             <div
@@ -257,20 +273,23 @@ export default function HeroBanner() {
               )}
 
               {/* Layer 2: gradient overlay */}
-              <div className="absolute inset-0 z-[2]" style={getOverlayCss(banner.overlayStyle)} />
+              {overlayCss && (
+                <div className="absolute inset-0 z-[2]" style={overlayCss} />
+              )}
 
-              {/* Layer 3: Hero/subject image */}
+              {/* Layer 3: Hero/subject image (desktop — coordinate positioned) */}
               {banner.subjectImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={banner.subjectImageUrl}
                   alt=""
                   onError={(e) => { e.currentTarget.style.display = 'none' }}
-                  className="absolute bottom-0 hidden md:block"
+                  className="absolute hidden md:block"
                   style={{
-                    [heroOnLeft ? 'left' : 'right']: 0,
-                    width: heroWidth,
-                    height: '100%',
+                    left: `${hX}%`,
+                    top: `${hY}%`,
+                    width: `${hW}%`,
+                    height: `${hH}%`,
                     objectFit: 'contain',
                     objectPosition: 'bottom center',
                     zIndex: 3,
@@ -291,7 +310,7 @@ export default function HeroBanner() {
               )}
 
               {/* Mobile: bottom-to-top gradient for readability */}
-              {banner.subjectImageUrl && (
+              {banner.subjectImageUrl && !isNone && (
                 <div
                   className="absolute inset-0 z-[4] md:hidden"
                   style={{
@@ -302,48 +321,49 @@ export default function HeroBanner() {
                 />
               )}
 
-              {/* Layer 4: text content (desktop) */}
+              {/* Layer 4: text content (desktop — coordinate positioned) */}
               <div
-                className="absolute inset-0 z-10 hidden md:flex flex-col"
+                className="absolute z-10 hidden md:flex flex-col justify-center overflow-hidden"
                 style={{
-                  justifyContent: vAlign,
+                  left: `${cX}%`,
+                  top: `${cY}%`,
+                  width: `${cW}%`,
+                  height: `${cH}%`,
                   padding,
-                  alignItems: banner.textPosition === 'right' ? 'flex-end' : banner.textPosition === 'center' ? 'center' : 'flex-start',
+                  textAlign: banner.textPosition === 'right' ? 'right' : banner.textPosition === 'center' ? 'center' : 'left',
                 }}
               >
-                <div style={{ width: contentWidth, textAlign: banner.textPosition === 'right' ? 'right' : banner.textPosition === 'center' ? 'center' : 'left' }}>
-                  {banner.badgeText && (
-                    <span
-                      className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-2 backdrop-blur-sm"
-                      style={{ color: textColor, backgroundColor: badgeBg }}
-                    >
-                      {banner.badgeText}
-                    </span>
-                  )}
-                  <h2
-                    className="font-bold leading-tight line-clamp-2"
-                    style={{ color: textColor, fontSize: titleFontSize }}
-                    dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
+                {banner.badgeText && (
+                  <span
+                    className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-2 backdrop-blur-sm"
+                    style={{ color: textColor, backgroundColor: badgeBg }}
+                  >
+                    {banner.badgeText}
+                  </span>
+                )}
+                <h2
+                  className="font-bold leading-tight line-clamp-2"
+                  style={{ color: textColor, fontSize: titleFontSize }}
+                  dangerouslySetInnerHTML={{ __html: banner.titleHtml ?? '' }}
+                />
+                {banner.subtitleHtml && (
+                  <p
+                    className="mt-2 line-clamp-2"
+                    style={{ color: textColor, opacity: 0.75, fontSize: subtitleFontSize }}
+                    dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
                   />
-                  {banner.subtitleHtml && (
-                    <p
-                      className="mt-2 line-clamp-2"
-                      style={{ color: textColor, opacity: 0.75, fontSize: subtitleFontSize }}
-                      dangerouslySetInnerHTML={{ __html: banner.subtitleHtml }}
-                    />
-                  )}
-                  <div className="mt-3">
-                    <Link
-                      href={banner.ctaLink}
-                      className={`inline-block font-semibold text-sm px-5 py-2 rounded-full transition-colors ${
-                        light
-                          ? 'bg-gray-900 text-white hover:bg-gray-800'
-                          : 'bg-white text-gray-900 hover:bg-gray-100'
-                      }`}
-                    >
-                      {banner.ctaText}
-                    </Link>
-                  </div>
+                )}
+                <div className="mt-3">
+                  <Link
+                    href={banner.ctaLink}
+                    className={`inline-block font-semibold text-sm px-5 py-2 rounded-full transition-colors ${
+                      light && !isNone
+                        ? 'bg-gray-900 text-white hover:bg-gray-800'
+                        : 'bg-white text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    {banner.ctaText}
+                  </Link>
                 </div>
               </div>
 
@@ -374,7 +394,7 @@ export default function HeroBanner() {
                     <Link
                       href={banner.ctaLink}
                       className={`inline-block font-semibold text-xs px-4 py-1.5 rounded-full transition-colors ${
-                        light
+                        light && !isNone
                           ? 'bg-gray-900 text-white hover:bg-gray-800'
                           : 'bg-white text-gray-900 hover:bg-gray-100'
                       }`}
