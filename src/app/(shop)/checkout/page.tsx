@@ -210,6 +210,8 @@ export default function CheckoutPage() {
     deliverySlotSlug: null as string | null,
     deliveryWindow: null as string | null,
     slotCharge: 0,
+    extraDeliveryCharge: 0,   // vendor-pincode area surcharge
+    surchargeAmount: 0,       // date-based festival surcharge
     giftMessage: "",
     specialInstructions: "",
 
@@ -313,6 +315,10 @@ export default function CheckoutPage() {
               selectedAddressId: defaultAddr.id,
               showNewAddressForm: false,
             }))
+            // Fetch area surcharge for default address pincode
+            if (defaultAddr.pincode) {
+              checkPincode(defaultAddr.pincode)
+            }
           }
         }
       })
@@ -368,9 +374,16 @@ export default function CheckoutPage() {
       const res = await fetch(`/api/delivery/slots?${params}`)
       const json = await res.json()
       if (!json.success) throw new Error(json.error)
-      setSlotsApiData(json.data as SlotsApiData)
+      const slotsData = json.data as SlotsApiData
+      setSlotsApiData(slotsData)
+      // Capture date-based surcharge amount for total calculation
+      setFormData((prev) => ({
+        ...prev,
+        surchargeAmount: slotsData.surcharge ? Number(slotsData.surcharge.amount) : 0,
+      }))
     } catch {
       setSlotsApiData(null)
+      setFormData((prev) => ({ ...prev, surchargeAmount: 0 }))
     } finally {
       setSlotsLoading(false)
     }
@@ -576,14 +589,15 @@ export default function CheckoutPage() {
       const data = await res.json()
 
       if (data.success && data.data?.isServiceable) {
-        setFormData((prev) => ({ ...prev, pincodeStatus: "valid" }))
+        const extra = Number(data.data.extraDeliveryCharge) || 0
+        setFormData((prev) => ({ ...prev, pincodeStatus: "valid", extraDeliveryCharge: extra }))
         setFormErrors((prev) => {
           const next = { ...prev }
           delete next.pincode
           return next
         })
       } else {
-        setFormData((prev) => ({ ...prev, pincodeStatus: "invalid" }))
+        setFormData((prev) => ({ ...prev, pincodeStatus: "invalid", extraDeliveryCharge: 0 }))
       }
     } catch {
       setFormData((prev) => ({ ...prev, pincodeStatus: "invalid" }))
@@ -594,7 +608,7 @@ export default function CheckoutPage() {
 
   function handleEditPincode() {
     setPincodeEditMode(true)
-    setFormData((prev) => ({ ...prev, pincodeStatus: "idle", pincode: "" }))
+    setFormData((prev) => ({ ...prev, pincodeStatus: "idle", pincode: "", extraDeliveryCharge: 0 }))
   }
 
   // ─── Form Helpers ───
@@ -621,7 +635,12 @@ export default function CheckoutPage() {
       showNewAddressForm: false,
     }))
     setFormErrors({})
-  }, [])
+    // Fetch area surcharge for the saved address pincode
+    const addr = savedAddresses.find((a) => a.id === addressId)
+    if (addr?.pincode) {
+      checkPincode(addr.pincode)
+    }
+  }, [savedAddresses, checkPincode])
 
   const showNewForm = useCallback(() => {
     setFormData((prev) => ({
@@ -1049,7 +1068,9 @@ export default function CheckoutPage() {
   const subtotal = getSubtotal()
   // Delivery charge = slot charge (standard free/₹39, or specialized slot price)
   const deliveryCharge = formData.slotCharge
-  const total = subtotal + deliveryCharge + codFee - formData.couponDiscount
+  const areaSurcharge = formData.extraDeliveryCharge
+  const festivalSurcharge = formData.surchargeAmount
+  const total = subtotal + deliveryCharge + areaSurcharge + festivalSurcharge + codFee - formData.couponDiscount
 
   const isNewAddressFormVisible =
     formData.showNewAddressForm || savedAddresses.length === 0
@@ -2142,6 +2163,18 @@ export default function CheckoutPage() {
                     </span>
                     <span>{deliveryCharge === 0 ? <span className="text-green-600">Free</span> : formatPrice(deliveryCharge)}</span>
                   </div>
+                  {areaSurcharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Area delivery surcharge</span>
+                      <span>+{formatPrice(areaSurcharge)}</span>
+                    </div>
+                  )}
+                  {festivalSurcharge > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Festival surcharge</span>
+                      <span>+{formatPrice(festivalSurcharge)}</span>
+                    </div>
+                  )}
                   {formData.couponDiscount > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
                       <span>Coupon</span>
@@ -2299,6 +2332,22 @@ export default function CheckoutPage() {
                     <span className="text-gray-800">{formatPrice(deliveryCharge)}</span>
                   )}
                 </div>
+
+                {/* Area delivery surcharge */}
+                {areaSurcharge > 0 && (
+                  <div className="flex justify-between text-sm mt-1.5">
+                    <span className="text-gray-600">Area surcharge</span>
+                    <span className="text-gray-800">+{formatPrice(areaSurcharge)}</span>
+                  </div>
+                )}
+
+                {/* Festival surcharge */}
+                {festivalSurcharge > 0 && (
+                  <div className="flex justify-between text-sm mt-1.5">
+                    <span className="text-gray-600">Festival surcharge</span>
+                    <span className="text-gray-800">+{formatPrice(festivalSurcharge)}</span>
+                  </div>
+                )}
 
                 {/* Coupon discount */}
                 {formData.couponDiscount > 0 && (
