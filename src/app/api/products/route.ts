@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
       maxPrice,
       isVeg,
       occasion,
+      sameDay,
       sortBy,
       search,
     } = parsed.data
@@ -168,6 +169,34 @@ export async function GET(request: NextRequest) {
       filteredProductIds = productIdsInCity
     } else if (productIdsByVendor !== null) {
       filteredProductIds = productIdsByVendor
+    }
+
+    // Apply sameDay filter: find products where any vendor has isSameDayEligible = true
+    if (sameDay) {
+      const { data: eligibleVPs } = await supabase
+        .from('vendor_products')
+        .select('productId')
+        .eq('isSameDayEligible', true)
+        .eq('isAvailable', true)
+
+      const eligibleProductIds = Array.from(
+        new Set((eligibleVPs ?? []).map((vp: { productId: string }) => vp.productId))
+      )
+
+      if (eligibleProductIds.length === 0) {
+        return NextResponse.json(
+          { success: true, data: { items: [], total: 0, page, pageSize } },
+          { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } }
+        )
+      }
+
+      // Intersect with existing filtered IDs if present
+      if (filteredProductIds !== null) {
+        const sameDaySet = new Set(eligibleProductIds)
+        filteredProductIds = filteredProductIds.filter((id) => sameDaySet.has(id))
+      } else {
+        filteredProductIds = eligibleProductIds
+      }
     }
 
     // If filtered product IDs is an empty array, return empty result

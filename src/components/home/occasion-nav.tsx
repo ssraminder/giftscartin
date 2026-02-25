@@ -1,51 +1,158 @@
-import Link from "next/link"
-import { Clock } from "lucide-react"
+'use client'
 
-const OCCASIONS: { label: string; slug: string; gradient: string; emoji: string; isSameDay?: boolean }[] = [
-  { label: "Same Day", slug: "_same-day", gradient: "from-rose-500 to-pink-600", emoji: "", isSameDay: true },
-  { label: "Birthday", slug: "birthday", gradient: "from-pink-400 to-pink-500", emoji: "🎂" },
-  { label: "Anniversary", slug: "anniversary", gradient: "from-amber-400 to-amber-500", emoji: "💍" },
-  { label: "Valentine's", slug: "valentines-day", gradient: "from-red-400 to-red-500", emoji: "❤️" },
-  { label: "Wedding", slug: "wedding", gradient: "from-yellow-300 to-amber-400", emoji: "💒" },
-  { label: "Diwali", slug: "diwali", gradient: "from-orange-400 to-orange-500", emoji: "🪔" },
-  { label: "Thank You", slug: "thank-you", gradient: "from-green-400 to-green-500", emoji: "🙏" },
+import Link from 'next/link'
+
+// Update these dates each season or eventually pull from DB/delivery_surcharges table
+const UPCOMING_OCCASIONS: Record<string, string> = {
+  holi: 'Mar 14',
+  'womens-day': '8th Mar',
+  'mothers-day': 'May 11',
+  'fathers-day': 'Jun 15',
+}
+
+const occasions = [
+  {
+    id: 'same-day',
+    label: 'Same Day',
+    href: '/products?sameDay=true',
+    emoji: '🛵',
+    iconBg: 'bg-amber-100',
+    highlight: true,
+  },
+  {
+    id: 'birthday',
+    label: 'Birthday',
+    href: '/products?occasion=birthday',
+    emoji: '🎂',
+    iconBg: 'bg-pink-100',
+  },
+  {
+    id: 'anniversary',
+    label: 'Anniversary',
+    href: '/products?occasion=anniversary',
+    emoji: '💍',
+    iconBg: 'bg-rose-100',
+  },
+  {
+    id: 'holi',
+    label: 'Holi',
+    href: '/products?occasion=holi',
+    emoji: '🎨',
+    iconBg: 'bg-purple-100',
+    badge: UPCOMING_OCCASIONS['holi'],
+  },
+  {
+    id: 'womens-day',
+    label: "Women's Day",
+    href: '/products?occasion=womens-day',
+    emoji: '💜',
+    iconBg: 'bg-violet-100',
+    badge: UPCOMING_OCCASIONS['womens-day'],
+  },
+  {
+    id: 'wedding',
+    label: 'Wedding',
+    href: '/products?occasion=wedding',
+    emoji: '💒',
+    iconBg: 'bg-orange-100',
+  },
+  {
+    id: 'graduation',
+    label: 'Graduation',
+    href: '/products?occasion=graduation',
+    emoji: '🎓',
+    iconBg: 'bg-blue-100',
+  },
+  {
+    id: 'new-baby',
+    label: 'New Baby',
+    href: '/products?occasion=new-baby',
+    emoji: '🍼',
+    iconBg: 'bg-sky-100',
+  },
+  {
+    id: 'cakes',
+    label: 'Cakes',
+    href: '/category/cakes',
+    emoji: '🎂',
+    iconBg: 'bg-amber-100',
+  },
+  {
+    id: 'flowers',
+    label: 'Flowers',
+    href: '/category/flowers',
+    emoji: '💐',
+    iconBg: 'bg-green-100',
+  },
+  {
+    id: 'plants',
+    label: 'Plants',
+    href: '/category/plants',
+    emoji: '🌿',
+    iconBg: 'bg-emerald-100',
+  },
+  {
+    id: 'corporate',
+    label: 'Corporate',
+    href: '/products?occasion=corporate',
+    emoji: '💼',
+    iconBg: 'bg-slate-200',
+  },
 ]
 
 export function OccasionNav() {
   return (
-    <section className="py-12 md:py-16 bg-gradient-to-b from-white to-[#FFF5F0]">
-      <div className="container mx-auto px-4">
-        <div className="text-center mb-10">
-          <h2 className="section-title">Shop by Occasion</h2>
-          <p className="mt-4 text-muted-foreground">
-            The perfect gift for every moment
-          </p>
-        </div>
-
-        <div className="grid grid-cols-4 gap-3 sm:gap-4 md:grid-cols-7 max-w-5xl mx-auto">
-          {OCCASIONS.map((occasion) => (
+    <section className="w-full py-4 md:py-6">
+      {/* Full bleed — no max-width wrapper, padding only on sides */}
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory px-4">
+        {occasions.map((item) => (
             <Link
-              key={occasion.slug}
-              href={occasion.isSameDay ? '/same-day' : `/category/gifts?occasion=${occasion.slug}`}
-              className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover-lift"
+              key={item.id}
+              href={item.href}
+              className="flex-shrink-0 snap-start group"
             >
-              <div
-                className={`bg-gradient-to-br ${occasion.gradient} p-4 sm:p-5 text-center`}
-              >
-                {occasion.isSameDay ? (
-                  <Clock className="h-7 w-7 sm:h-8 sm:w-8 text-white mx-auto mb-2" />
-                ) : (
-                  <span className="text-2xl sm:text-3xl block mb-2">
-                    {occasion.emoji}
+              <div className="flex flex-col items-center gap-1.5 w-[72px] md:w-[80px]">
+                {/* Card */}
+                <div
+                  className={`
+                    relative w-[64px] h-[64px] md:w-[72px] md:h-[72px]
+                    rounded-2xl flex items-center justify-center
+                    ${item.iconBg}
+                    transition-all duration-200
+                    group-hover:scale-105 group-hover:shadow-md
+                    ${item.highlight ? 'ring-2 ring-pink-400 ring-offset-1' : ''}
+                  `}
+                >
+                  <span className="text-[28px] md:text-[32px] select-none leading-none">
+                    {item.emoji}
                   </span>
-                )}
-                <span className="text-xs sm:text-sm font-semibold text-white">
-                  {occasion.label}
+
+                  {/* Upcoming date badge */}
+                  {item.badge && (
+                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                      <span className="bg-pink-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full shadow-sm">
+                        {item.badge}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Fast badge for same-day */}
+                  {item.highlight && (
+                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
+                      <span className="bg-amber-400 text-amber-900 text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm whitespace-nowrap uppercase tracking-wide">
+                        Fast
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Label */}
+                <span className="text-[11px] md:text-xs text-center text-gray-600 font-medium leading-tight line-clamp-2 group-hover:text-pink-600 transition-colors">
+                  {item.label}
                 </span>
               </div>
             </Link>
           ))}
-        </div>
       </div>
     </section>
   )

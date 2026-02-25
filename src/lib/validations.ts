@@ -59,6 +59,7 @@ export const productListSchema = paginationSchema.extend({
   maxPrice: z.coerce.number().min(0).optional(),
   isVeg: z.coerce.boolean().optional(),
   occasion: z.string().optional(),
+  sameDay: z.coerce.boolean().optional(),
   sortBy: z.enum(['price_asc', 'price_desc', 'rating', 'newest']).default('newest'),
   search: z.string().max(200).optional(),
 })
