@@ -284,7 +284,7 @@ export default function VendorProductsPage() {
   const fetchAssigned = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/vendors/${vendorId}/products`)
+      const res = await fetch(`/api/admin/vendors/${vendorId}/products`, { cache: "no-store" })
       const json = await res.json()
       if (json.success) {
         setVendor(json.data.vendor)

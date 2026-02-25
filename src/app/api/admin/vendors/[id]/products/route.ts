@@ -51,7 +51,7 @@ export async function GET(
       .eq('vendorId', id)
       .order('dayOfWeek', { ascending: true })
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         vendor: {
@@ -67,7 +67,7 @@ export async function GET(
           preparationTime: vp.preparationTime,
           dailyLimit: vp.dailyLimit,
           isAvailable: vp.isAvailable,
-          isSameDayEligible: vp.isSameDayEligible,
+          isSameDayEligible: vp.isSameDayEligible ?? false,
           isExpressEligible: vp.isExpressEligible ?? false,
           product: vp.products ? (() => {
             const prod = vp.products as Record<string, unknown>
@@ -88,6 +88,8 @@ export async function GET(
         })),
       },
     })
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    return response
   } catch (error) {
     console.error('Admin vendor products GET error:', error)
     return NextResponse.json(
