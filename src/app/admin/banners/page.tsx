@@ -127,6 +127,9 @@ export default function AdminBannersPage() {
   const [snapToGrid, setSnapToGrid] = useState(false)
   const [previewRatio, setPreviewRatio] = useState('16/5')
 
+  // Auto-compose state
+  const [autoComposing, setAutoComposing] = useState(false)
+
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -315,6 +318,31 @@ export default function AdminBannersPage() {
     setFormLayers(prev =>
       prev.map(l => l.id === id ? { ...l, locked: !l.locked } : l)
     )
+  }
+
+  // ==================== Auto-compose ====================
+
+  const handleAutoCompose = async (brief: string) => {
+    setAutoComposing(true)
+    try {
+      const res = await fetch('/api/admin/banners/auto-compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brief }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.layers) {
+        setFormLayers(json.data.layers as Layer[])
+        setSelectedLayerId(null)
+        showToast('success', json.data.explanation || 'Banner composed!')
+      } else {
+        showToast('error', json.error || 'Auto-compose failed')
+      }
+    } catch {
+      showToast('error', 'Auto-compose failed')
+    } finally {
+      setAutoComposing(false)
+    }
   }
 
   // ==================== Save ====================
@@ -611,6 +639,8 @@ export default function AdminBannersPage() {
                 onDelete={handleDeleteLayer}
                 onDuplicate={handleDuplicateLayer}
                 onAddLayer={handleAddLayer}
+                onAutoCompose={handleAutoCompose}
+                autoComposing={autoComposing}
               />
             </div>
 
@@ -635,6 +665,7 @@ export default function AdminBannersPage() {
             <div className="w-72 flex-shrink-0 border-l overflow-y-auto">
               <PropertiesPanel
                 layer={formLayers.find(l => l.id === selectedLayerId) ?? null}
+                allLayers={formLayers}
                 onUpdate={(updates) => {
                   if (selectedLayerId) handleUpdateLayer(selectedLayerId, updates)
                 }}

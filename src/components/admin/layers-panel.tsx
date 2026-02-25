@@ -4,7 +4,9 @@ import React, { useState, useRef } from 'react'
 import {
   Eye, EyeOff, Lock, Unlock, Trash2, Copy, Plus, X,
   Image as ImageIcon, Type, Square, Tag, MousePointer, GripVertical,
+  Sparkles, Loader2,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { Layer, LayerType } from '@/lib/banner-layers'
 
 interface LayersPanelProps {
@@ -17,6 +19,8 @@ interface LayersPanelProps {
   onDelete: (id: string) => void
   onDuplicate: (id: string) => void
   onAddLayer: (type: LayerType, useAI?: boolean) => void
+  onAutoCompose?: (brief: string) => Promise<void>
+  autoComposing?: boolean
 }
 
 const TYPE_ICONS: Record<LayerType, React.ElementType> = {
@@ -38,8 +42,12 @@ export function LayersPanel({
   onDelete,
   onDuplicate,
   onAddLayer,
+  onAutoCompose,
+  autoComposing,
 }: LayersPanelProps) {
   const [showAddPicker, setShowAddPicker] = useState(false)
+  const [showAutoCompose, setShowAutoCompose] = useState(false)
+  const [composeBrief, setComposeBrief] = useState('')
   const [editingNameId, setEditingNameId] = useState<string | null>(null)
   const [editingNameVal, setEditingNameVal] = useState('')
   const dragItem = useRef<number | null>(null)
@@ -141,6 +149,50 @@ export function LayersPanel({
           </div>
         </div>
       )}
+
+      {/* Auto-compose */}
+      <div className="px-3 py-2">
+        {!showAutoCompose ? (
+          <Button
+            type="button"
+            variant="outline" size="sm"
+            className="w-full text-xs"
+            onClick={() => setShowAutoCompose(true)}
+          >
+            <Sparkles className="w-3 h-3 mr-1" /> Auto-compose Banner
+          </Button>
+        ) : (
+          <div className="border rounded-lg p-3 bg-purple-50">
+            <p className="text-xs font-medium mb-2">Describe your banner:</p>
+            <textarea
+              value={composeBrief}
+              onChange={(e) => setComposeBrief(e.target.value)}
+              placeholder="Mother's Day flower and cake promotion with midnight delivery"
+              className="w-full text-xs border rounded p-2 h-16 resize-none"
+            />
+            <div className="flex gap-2 mt-2">
+              <Button size="sm" className="flex-1 text-xs"
+                onClick={async () => {
+                  if (onAutoCompose && composeBrief.trim()) {
+                    await onAutoCompose(composeBrief.trim())
+                    setShowAutoCompose(false)
+                    setComposeBrief('')
+                  }
+                }}
+                disabled={autoComposing || !composeBrief.trim()}>
+                {autoComposing
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <><Sparkles className="w-3 h-3 mr-1" /> Compose</>
+                }
+              </Button>
+              <Button size="sm" variant="outline" className="text-xs"
+                onClick={() => { setShowAutoCompose(false); setComposeBrief('') }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Layer List */}
       <div className="flex-1 overflow-y-auto">

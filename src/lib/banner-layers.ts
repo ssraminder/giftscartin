@@ -232,6 +232,125 @@ export function createButtonLayer(overrides?: Partial<ButtonLayer>): ButtonLayer
   }
 }
 
+// ==================== Layer Context (AI Awareness) ====================
+
+export interface LayerContextSummary {
+  backgroundColors: string[]
+  backgroundImageUrl?: string
+  backgroundHasDarkTones: boolean
+  existingFonts: string[]
+  existingColors: string[]
+  textLayers: {
+    name: string
+    html: string
+    fontSize: number
+    color: string
+  }[]
+  imageLayerCount: number
+  occasionHint: string
+  dominantPalette: string[]
+}
+
+export function buildLayerContext(
+  layers: Layer[],
+  excludeLayerId: string
+): LayerContextSummary {
+  const otherLayers = layers.filter(l => l.id !== excludeLayerId)
+
+  const bgLayer = otherLayers.find(l => l.type === 'background') as BackgroundLayer | undefined
+  const textLayers = otherLayers.filter(l => l.type === 'text') as TextLayer[]
+  const imageLayers = otherLayers.filter(l => l.type === 'image')
+  const badgeLayers = otherLayers.filter(l => l.type === 'badge') as BadgeLayer[]
+  const buttonLayers = otherLayers.filter(l => l.type === 'button') as ButtonLayer[]
+
+  const existingColors: string[] = []
+  badgeLayers.forEach(l => { existingColors.push(l.bgColor, l.textColor) })
+  buttonLayers.forEach(l => { existingColors.push(l.bgColor, l.textColor) })
+
+  const colorRegex = /color\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/g
+  textLayers.forEach(l => {
+    let match
+    while ((match = colorRegex.exec(l.html)) !== null) {
+      existingColors.push(match[1])
+    }
+  })
+
+  const allText = [
+    ...textLayers.map(l => l.html.replace(/<[^>]*>/g, '')),
+    ...badgeLayers.map(l => l.text),
+    ...buttonLayers.map(l => l.text),
+  ].join(' ').toLowerCase()
+
+  const occasionKeywords = [
+    'birthday', 'anniversary', 'wedding', 'valentine', 'mother', 'diwali',
+    'christmas', 'holi', 'raksha', 'graduation', 'new year', 'midnight',
+  ]
+  const occasionHint = occasionKeywords.find(k => allText.includes(k)) || 'general gifting'
+
+  const bgColor = bgLayer?.color || '#ffffff'
+  const isDark = bgColor.startsWith('#')
+    ? parseInt(bgColor.slice(1, 3), 16) < 128
+    : bgColor.includes('0,0,0') || allText.includes('dark')
+
+  const existingFonts = [
+    ...textLayers.map(l => l.fontFamily),
+    ...badgeLayers.map(l => l.fontFamily),
+    ...buttonLayers.map(l => l.fontFamily),
+  ].filter((v, i, a) => a.indexOf(v) === i)
+
+  return {
+    backgroundColors: bgLayer?.color ? [bgLayer.color] : [],
+    backgroundImageUrl: bgLayer?.imageUrl || undefined,
+    backgroundHasDarkTones: isDark,
+    existingFonts,
+    existingColors: existingColors.filter((v, i, a) => a.indexOf(v) === i),
+    textLayers: textLayers.map(l => ({
+      name: l.name,
+      html: l.html,
+      fontSize: l.fontSize,
+      color: l.html.match(/color\s*:\s*(#[0-9a-fA-F]{3,8})/)?.[1] || (isDark ? '#ffffff' : '#111827'),
+    })),
+    imageLayerCount: imageLayers.length,
+    occasionHint,
+    dominantPalette: existingColors.slice(0, 5),
+  }
+}
+
+export function formatContextForAI(ctx: LayerContextSummary): string {
+  const parts: string[] = []
+
+  parts.push(`Occasion/theme: ${ctx.occasionHint}`)
+
+  if (ctx.backgroundHasDarkTones) {
+    parts.push('Background: dark tones — use light/white text and bright accents')
+  } else {
+    parts.push('Background: light tones — use dark text and rich accent colors')
+  }
+
+  if (ctx.backgroundImageUrl) {
+    parts.push(`Background image is present (URL: ${ctx.backgroundImageUrl.slice(0, 60)}...)`)
+  }
+
+  if (ctx.existingColors.length > 0) {
+    parts.push(`Colors already in use: ${ctx.existingColors.slice(0, 5).join(', ')}`)
+  }
+
+  if (ctx.existingFonts.length > 0) {
+    parts.push(`Fonts in use: ${ctx.existingFonts.join(', ')} — maintain consistency`)
+  }
+
+  if (ctx.dominantPalette.length > 0) {
+    parts.push(`Match or complement this palette: ${ctx.dominantPalette.join(', ')}`)
+  }
+
+  if (ctx.textLayers.length > 0) {
+    const sample = ctx.textLayers[0]
+    parts.push(`Main text: "${sample.html.replace(/<[^>]*>/g, '').slice(0, 60)}"`)
+  }
+
+  return parts.join('\n')
+}
+
 // ==================== Migration Utility ====================
 
 // Converts old banner column structure to layers array

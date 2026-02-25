@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { getSupabaseAdmin } from '@/lib/supabase'
+import type { LayerContextSummary } from '@/lib/banner-layers'
 
 interface GenerateImageRequest {
   imageType: 'background' | 'hero'
@@ -13,6 +14,7 @@ interface GenerateImageRequest {
     occasion?: string
     citySlug?: string
   }
+  layerContext?: LayerContextSummary
 }
 
 // POST — Create a job and trigger background function
@@ -70,6 +72,7 @@ export async function POST(request: NextRequest) {
         prompt: body.prompt.trim(),
         referenceImageBase64: body.referenceImageBase64,
         bannerContext: body.bannerContext,
+        layerContext: body.layerContext,
       }),
     }).catch((err) => {
       console.error('Failed to invoke image generation background function:', err)
