@@ -56,6 +56,11 @@ export async function GET(request: NextRequest) {
       heroH: b.hero_h ?? 85,
       contentLockRatio: b.content_lock_ratio ?? false,
       heroLockRatio: b.hero_lock_ratio ?? false,
+      ctaBgColor: b.cta_bg_color ?? '#E91E63',
+      ctaTextColor: b.cta_text_color ?? '#FFFFFF',
+      ctaBorderColor: b.cta_border_color ?? null,
+      badgeBgColor: b.badge_bg_color ?? 'rgba(255,255,255,0.2)',
+      badgeTextColor: b.badge_text_color ?? '#FFFFFF',
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }))
@@ -124,6 +129,11 @@ export async function POST(request: NextRequest) {
     if (body.heroH !== undefined) insertData.hero_h = body.heroH
     if (body.contentLockRatio !== undefined) insertData.content_lock_ratio = body.contentLockRatio
     if (body.heroLockRatio !== undefined) insertData.hero_lock_ratio = body.heroLockRatio
+    if (body.ctaBgColor !== undefined) insertData.cta_bg_color = body.ctaBgColor
+    if (body.ctaTextColor !== undefined) insertData.cta_text_color = body.ctaTextColor
+    if (body.ctaBorderColor !== undefined) insertData.cta_border_color = body.ctaBorderColor
+    if (body.badgeBgColor !== undefined) insertData.badge_bg_color = body.badgeBgColor
+    if (body.badgeTextColor !== undefined) insertData.badge_text_color = body.badgeTextColor
 
     const { data, error } = await supabase
       .from('banners')
@@ -170,6 +180,11 @@ export async function POST(request: NextRequest) {
       heroH: data.hero_h ?? 85,
       contentLockRatio: data.content_lock_ratio ?? false,
       heroLockRatio: data.hero_lock_ratio ?? false,
+      ctaBgColor: data.cta_bg_color ?? '#E91E63',
+      ctaTextColor: data.cta_text_color ?? '#FFFFFF',
+      ctaBorderColor: data.cta_border_color ?? null,
+      badgeBgColor: data.badge_bg_color ?? 'rgba(255,255,255,0.2)',
+      badgeTextColor: data.badge_text_color ?? '#FFFFFF',
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null
