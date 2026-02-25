@@ -120,6 +120,115 @@ const CITY_OPTIONS = [
   { value: 'patiala', label: 'Patiala' },
 ]
 
+const OVERLAY_OPTIONS = [
+  { value: 'dark-left', label: 'Dark Left', helper: 'Dark gradient on left, white text' },
+  { value: 'dark-right', label: 'Dark Right', helper: 'Dark gradient on right, white text' },
+  { value: 'full-dark', label: 'Full Dark', helper: 'Dark overlay across full banner, white text' },
+  { value: 'light-left', label: 'Light Left', helper: 'Light gradient on left, dark text' },
+  { value: 'light-right', label: 'Light Right', helper: 'Light gradient on right, dark text' },
+  { value: 'full-light', label: 'Full Light', helper: 'Light overlay across full banner, dark text' },
+]
+
+// ==================== Overlay Helpers ====================
+
+function getOverlayCss(overlayStyle: string): React.CSSProperties {
+  switch (overlayStyle) {
+    case 'dark-left':
+      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
+    case 'dark-right':
+      return { background: 'linear-gradient(to left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
+    case 'full-dark':
+      return { background: 'rgba(0,0,0,0.6)' }
+    case 'light-left':
+      return { background: 'linear-gradient(to right, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
+    case 'light-right':
+      return { background: 'linear-gradient(to left, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
+    case 'full-light':
+      return { background: 'rgba(255,255,255,0.75)' }
+    default:
+      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
+  }
+}
+
+function isLightOverlay(style: string): boolean {
+  return style.startsWith('light-') || style === 'full-light'
+}
+
+// ==================== Banner Preview ====================
+
+function BannerPreview({ form }: { form: BannerFormData }) {
+  const light = isLightOverlay(form.overlayStyle)
+  const textColor = light ? '#1a1a1a' : '#ffffff'
+  const subtitleColor = light ? 'rgba(26,26,26,0.7)' : 'rgba(255,255,255,0.8)'
+  const hasImage = form.imageUrl?.trim()
+
+  return (
+    <div
+      className="relative rounded-lg overflow-hidden w-full"
+      style={{ aspectRatio: '16/6', maxHeight: 180 }}
+    >
+      {/* Background */}
+      {hasImage ? (
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${form.imageUrl})` }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-gray-300 to-gray-500 flex items-center justify-center">
+          <span className="text-gray-100 text-sm font-medium">Banner Preview</span>
+        </div>
+      )}
+
+      {/* Overlay */}
+      <div className="absolute inset-0" style={getOverlayCss(form.overlayStyle)} />
+
+      {/* Badge */}
+      {form.badgeText?.trim() && (
+        <span
+          className="absolute z-10 text-[9px] font-semibold px-2 py-0.5 rounded-full bg-pink-500 text-white"
+          style={{
+            top: 8,
+            ...(form.textPosition === 'right' ? { right: 8 } : { left: 8 }),
+          }}
+        >
+          {form.badgeText}
+        </span>
+      )}
+
+      {/* Text content */}
+      <div
+        className={`absolute inset-0 z-10 flex flex-col justify-end p-3 ${
+          form.textPosition === 'right' ? 'items-end text-right' : 'items-start text-left'
+        }`}
+      >
+        <div className="max-w-[75%]">
+          <div
+            className="text-xs font-bold leading-tight"
+            style={{ color: textColor }}
+            dangerouslySetInnerHTML={{
+              __html: form.titleHtml?.trim()
+                ? form.titleHtml
+                : `<span style="opacity:0.5">Your headline here</span>`,
+            }}
+          />
+          {form.subtitleHtml?.trim() && (
+            <div
+              className="text-[9px] mt-0.5 leading-tight"
+              style={{ color: subtitleColor }}
+              dangerouslySetInnerHTML={{ __html: form.subtitleHtml }}
+            />
+          )}
+          {form.ctaText?.trim() && (
+            <span className="inline-block mt-1 bg-pink-500 text-white text-[8px] font-semibold px-2 py-0.5 rounded-full">
+              {form.ctaText}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ==================== Component ====================
 
 export default function AdminBannersPage() {
@@ -675,401 +784,412 @@ export default function AdminBannersPage() {
 
       {/* ==================== Create/Edit Modal ==================== */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingBanner ? 'Edit Banner' : 'Create New Banner'}</DialogTitle>
-            <DialogDescription>
-              {editingBanner
-                ? 'Update banner content and settings.'
-                : 'Add a new banner to the homepage slider.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-5">
-            {/* AI Generation Panel */}
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="w-4 h-4 text-purple-600" />
-                <span className="text-sm font-medium text-purple-900">Generate with AI</span>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
+          <div className="flex flex-col lg:flex-row max-h-[90vh]">
+            {/* ---- Form Column ---- */}
+            <div className="flex-1 min-w-0 overflow-y-auto p-6">
+              {/* Mobile preview strip */}
+              <div className="lg:hidden mb-4 rounded-lg border bg-gray-50 p-3">
+                <p className="text-xs font-medium text-gray-500 mb-1">Preview</p>
+                <p className="text-[10px] text-gray-400 mb-2">Updates as you type</p>
+                <BannerPreview form={form} />
               </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Describe the theme e.g. Birthday cakes, Midnight delivery, Flowers..."
-                  value={aiTheme}
-                  onChange={e => setAiTheme(e.target.value)}
-                  className="flex-1 text-sm"
-                />
-                <Button
-                  type="button"
-                  onClick={handleAiGenerate}
-                  disabled={aiGenerating || !aiTheme?.trim()}
-                  className="bg-purple-600 hover:bg-purple-700 text-white shrink-0"
-                >
-                  {aiGenerating
-                    ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
-                    : <><Sparkles className="w-4 h-4 mr-2" />Generate</>
-                  }
+
+              <DialogHeader>
+                <DialogTitle>{editingBanner ? 'Edit Banner' : 'Create New Banner'}</DialogTitle>
+                <DialogDescription>
+                  {editingBanner
+                    ? 'Update banner content and settings.'
+                    : 'Add a new banner to the homepage slider.'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 mt-4">
+                {/* AI Generation Panel */}
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <span className="text-sm font-medium text-purple-900">Generate with AI</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Describe the theme e.g. Birthday cakes, Midnight delivery, Flowers..."
+                      value={aiTheme}
+                      onChange={e => setAiTheme(e.target.value)}
+                      className="flex-1 text-sm"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleAiGenerate}
+                      disabled={aiGenerating || !aiTheme?.trim()}
+                      className="bg-purple-600 hover:bg-purple-700 text-white shrink-0"
+                    >
+                      {aiGenerating
+                        ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
+                        : <><Sparkles className="w-4 h-4 mr-2" />Generate</>
+                      }
+                    </Button>
+                  </div>
+                  {aiError && <p className="text-xs text-red-500 mt-2">{aiError}</p>}
+                  <p className="text-xs text-purple-600 mt-2">
+                    Generates background image, hero product image (background removed), title, subtitle, CTA and badge text automatically
+                  </p>
+                </div>
+
+                {/* Theme Picker */}
+                <div className="space-y-2">
+                  <Label>Theme</Label>
+                  <div className="flex items-center gap-3">
+                    {THEME_SWATCHES.map(s => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        title={s.label}
+                        onClick={() => setForm(f => ({ ...f, theme: s.value }))}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: '50%',
+                          backgroundColor: s.color,
+                          outline: form.theme === s.value ? '2px solid #111' : '2px solid transparent',
+                          outlineOffset: 3,
+                          border: '1px solid rgba(0,0,0,0.12)',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Selected: {THEME_SWATCHES.find(s => s.value === form.theme)?.label || form.theme}
+                  </p>
+                </div>
+
+                {/* ---- Section 1: Image ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
+                  {/* Background Image */}
+                  <div className="space-y-1">
+                    <Label>Background Image</Label>
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer shrink-0">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={handleImageUpload}
+                          disabled={uploading}
+                        />
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-pink-400 transition-colors">
+                          {uploading
+                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500" /><span className="text-xs text-gray-500">Uploading...</span></>
+                            : <><Upload className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-500">Upload</span></>
+                          }
+                        </div>
+                      </label>
+                      <span className="text-xs text-gray-400">or</span>
+                      <Input
+                        placeholder="Paste Supabase / external URL"
+                        value={form.imageUrl}
+                        onChange={e => {
+                          setForm(f => ({ ...f, imageUrl: e.target.value }))
+                          setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
+                        }}
+                        className="flex-1 text-sm"
+                      />
+                      {form.imageUrl?.trim() ? (
+                        <div className="relative w-24 h-16 rounded overflow-hidden bg-gray-100 shrink-0 border">
+                          <Image src={form.imageUrl} alt="" fill style={{ objectFit: 'cover' }} />
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, imageUrl: '' }))}
+                            className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {formErrors.imageUrl && <p className="text-xs text-red-500">{formErrors.imageUrl}</p>}
+                    {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
+                    <p className="text-[11px] text-gray-400">Landscape 1536x864px recommended.</p>
+                  </div>
+
+                  {/* Hero / Subject Image */}
+                  <div className="space-y-1">
+                    <Label>Hero Image <span className="font-normal text-gray-400">(optional, bg auto-removed)</span></Label>
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer shrink-0">
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={handleHeroImageUpload}
+                          disabled={heroUploading}
+                        />
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 transition-colors">
+                          {heroUploading
+                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" /><span className="text-xs text-gray-500">Removing bg...</span></>
+                            : <><Upload className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-500">Upload</span></>
+                          }
+                        </div>
+                      </label>
+                      <span className="text-xs text-gray-400">or</span>
+                      <Input
+                        placeholder="Paste hero image URL (transparent PNG)"
+                        value={form.subjectImageUrl}
+                        onChange={e => setForm(f => ({ ...f, subjectImageUrl: e.target.value }))}
+                        className="flex-1 text-sm"
+                      />
+                      {form.subjectImageUrl?.trim() ? (
+                        <div className="relative w-24 h-16 rounded overflow-hidden checker-bg shrink-0 border">
+                          <Image src={form.subjectImageUrl} alt="" fill style={{ objectFit: 'contain' }} />
+                          <button
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, subjectImageUrl: '' }))}
+                            className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70 z-10"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    {heroUploadError && <p className="text-xs text-red-500">{heroUploadError}</p>}
+                    <p className="text-[11px] text-gray-400">Product/subject photo. PNG preferred, max 5MB.</p>
+                  </div>
+                </div>
+
+                {/* ---- Section 2: Content ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
+                  {/* Title HTML */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">
+                      Title HTML{' '}
+                      <span className="font-normal text-slate-400">
+                        (&lt;strong&gt;, &lt;em&gt;, &lt;br/&gt;, &lt;span style=&apos;color:...&apos;&gt;)
+                      </span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={form.titleHtml}
+                      onChange={e => {
+                        setForm(f => ({ ...f, titleHtml: e.target.value }))
+                        setFormErrors(e2 => ({ ...e2, titleHtml: '' }))
+                      }}
+                      placeholder="<strong>Fresh Cakes,</strong><br/>Delivered Today"
+                      className="w-full rounded-md border px-3 py-2 font-mono text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    />
+                    {formErrors.titleHtml && (
+                      <p className="mt-1 text-xs text-red-600">{formErrors.titleHtml}</p>
+                    )}
+                    {form.titleHtml && (
+                      <div className="mt-1 rounded bg-gray-900 px-3 py-2 text-lg font-bold leading-tight text-white max-h-16 overflow-hidden">
+                        <span dangerouslySetInnerHTML={{ __html: form.titleHtml ?? '' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subtitle HTML */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">
+                      Subtitle HTML{' '}
+                      <span className="font-normal text-slate-400">(HTML allowed)</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={form.subtitleHtml}
+                      onChange={e => setForm(f => ({ ...f, subtitleHtml: e.target.value }))}
+                      placeholder="Order by <strong>6 PM</strong> for same-day delivery"
+                      className="w-full rounded-md border px-3 py-2 font-mono text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    />
+                    {form.subtitleHtml && (
+                      <div className="mt-1 rounded bg-gray-900 px-2 py-1.5 text-sm text-white/80 max-h-16 overflow-hidden">
+                        <span dangerouslySetInnerHTML={{ __html: form.subtitleHtml ?? '' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Badge Text — full width */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Badge Text <span className="font-normal text-slate-400">(optional)</span></label>
+                    <input
+                      type="text"
+                      value={form.badgeText}
+                      onChange={e => setForm(f => ({ ...f, badgeText: e.target.value }))}
+                      placeholder="&#127874; Same Day Available"
+                      className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    />
+                    <p className="mt-1 text-xs text-slate-400">
+                      Small pill shown on the banner above the title
+                    </p>
+                  </div>
+                </div>
+
+                {/* ---- Section 3: CTAs ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">CTA Text</label>
+                      <input
+                        type="text"
+                        value={form.ctaText}
+                        onChange={e => {
+                          setForm(f => ({ ...f, ctaText: e.target.value }))
+                          setFormErrors(e2 => ({ ...e2, ctaText: '' }))
+                        }}
+                        placeholder="Shop Now"
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                      {formErrors.ctaText && (
+                        <p className="mt-1 text-xs text-red-600">{formErrors.ctaText}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">CTA Link</label>
+                      <input
+                        type="text"
+                        value={form.ctaLink}
+                        onChange={e => {
+                          setForm(f => ({ ...f, ctaLink: e.target.value }))
+                          setFormErrors(e2 => ({ ...e2, ctaLink: '' }))
+                        }}
+                        placeholder="/category/cakes"
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                      {formErrors.ctaLink && (
+                        <p className="mt-1 text-xs text-red-600">{formErrors.ctaLink}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Secondary CTA Text <span className="font-normal text-slate-400">(optional)</span></label>
+                      <input
+                        type="text"
+                        value={form.secondaryCtaText}
+                        onChange={e => setForm(f => ({ ...f, secondaryCtaText: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Secondary CTA Link <span className="font-normal text-slate-400">(optional)</span></label>
+                      <input
+                        type="text"
+                        value={form.secondaryCtaLink}
+                        onChange={e => setForm(f => ({ ...f, secondaryCtaLink: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ---- Section 4: Layout ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Text Position</label>
+                      <select
+                        value={form.textPosition}
+                        onChange={e => setForm(f => ({ ...f, textPosition: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="left">Left</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Overlay Style</label>
+                      <select
+                        value={form.overlayStyle}
+                        onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        {OVERLAY_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {OVERLAY_OPTIONS.find(o => o.value === form.overlayStyle)?.helper}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ---- Section 5: Schedule ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Valid From <span className="font-normal text-slate-400">(optional)</span></label>
+                      <input
+                        type="date"
+                        value={form.validFrom}
+                        onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Valid Until <span className="font-normal text-slate-400">(optional)</span></label>
+                      <input
+                        type="date"
+                        value={form.validUntil}
+                        onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Leave empty to always show. Use for seasonal banners like Mother&apos;s Day.
+                  </p>
+
+                  {/* Target City */}
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Show in City <span className="font-normal text-slate-400">(optional)</span></label>
+                    <select
+                      value={form.targetCitySlug}
+                      onChange={e => setForm(f => ({ ...f, targetCitySlug: e.target.value }))}
+                      className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                    >
+                      {CITY_OPTIONS.map(c => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Leave as All Cities unless this banner is city-specific
+                    </p>
+                  </div>
+                </div>
+
+                {/* ---- Section 6: Status ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2">
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={form.isActive}
+                      onCheckedChange={checked => setForm(f => ({ ...f, isActive: checked }))}
+                    />
+                    <label className="text-sm font-medium">Active — show on homepage</label>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="mt-6">
+                <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
+                  Cancel
                 </Button>
-              </div>
-              {aiError && <p className="text-xs text-red-500 mt-2">{aiError}</p>}
-              <p className="text-xs text-purple-600 mt-2">
-                Generates background image, hero product image (background removed), title, subtitle, CTA and badge text automatically
-              </p>
+                <Button onClick={handleSubmit} disabled={saving} className="bg-pink-600 hover:bg-pink-700">
+                  {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {editingBanner ? 'Save Changes' : 'Create Banner'}
+                </Button>
+              </DialogFooter>
             </div>
 
-            {/* Theme Picker */}
-            <div className="space-y-2">
-              <Label>Theme</Label>
-              <div className="flex items-center gap-3">
-                {THEME_SWATCHES.map(s => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    title={s.label}
-                    onClick={() => setForm(f => ({ ...f, theme: s.value }))}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      backgroundColor: s.color,
-                      outline: form.theme === s.value ? '2px solid #111' : '2px solid transparent',
-                      outlineOffset: 3,
-                      border: '1px solid rgba(0,0,0,0.12)',
-                      cursor: 'pointer',
-                    }}
-                  />
-                ))}
-              </div>
-              <p className="text-xs text-slate-500">
-                Selected: {THEME_SWATCHES.find(s => s.value === form.theme)?.label || form.theme}
-              </p>
-            </div>
-
-            {/* 1. Background Image */}
-            <div className="space-y-2">
-              <Label>Background Image</Label>
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={handleImageUpload}
-                    disabled={uploading}
-                  />
-                  <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-pink-400 transition-colors">
-                    {uploading
-                      ? <><Loader2 className="w-4 h-4 animate-spin text-pink-500" /><span className="text-sm text-gray-500">Uploading...</span></>
-                      : <><Upload className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-500">Upload image</span></>
-                    }
-                  </div>
-                </label>
-                <span className="text-sm text-gray-400">or</span>
-                <Input
-                  placeholder="Paste Supabase / external URL"
-                  value={form.imageUrl}
-                  onChange={e => {
-                    setForm(f => ({ ...f, imageUrl: e.target.value }))
-                    setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
-                  }}
-                  className="flex-1"
-                />
-              </div>
-              {formErrors.imageUrl && (
-                <p className="text-sm text-red-500">{formErrors.imageUrl}</p>
-              )}
-              {uploadError && <p className="text-sm text-red-500">{uploadError}</p>}
-              <p className="text-xs text-gray-400">Full tile background. Landscape photos, abstract textures, or blurred scenes work best. 1536&times;864px recommended.</p>
-              {form.imageUrl && form.imageUrl?.trim() !== '' ? (
-                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-gray-100 border mt-1">
-                  <Image src={form.imageUrl} alt="Background Preview" fill style={{ objectFit: 'cover' }} />
-                  <button
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, imageUrl: '' }))}
-                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 hover:bg-black/70"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-full h-36 rounded-lg bg-gray-100 border mt-1 flex items-center justify-center">
-                  <div className="text-center text-gray-400">
-                    <ImageIcon className="w-8 h-8 mx-auto mb-1" />
-                    <p className="text-xs">No background image selected</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 1b. Hero / Subject Image */}
-            <div className="space-y-2">
-              <Label>Hero Image</Label>
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={handleHeroImageUpload}
-                    disabled={heroUploading}
-                  />
-                  <div className="flex items-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 transition-colors">
-                    {heroUploading
-                      ? <><Loader2 className="w-4 h-4 animate-spin text-purple-500" /><span className="text-sm text-gray-500">Removing background...</span></>
-                      : <><Upload className="w-4 h-4 text-gray-400" /><span className="text-sm text-gray-500">Upload hero image</span></>
-                    }
-                  </div>
-                </label>
-                <span className="text-sm text-gray-400">or</span>
-                <Input
-                  placeholder="Paste hero image URL (transparent PNG)"
-                  value={form.subjectImageUrl}
-                  onChange={e => setForm(f => ({ ...f, subjectImageUrl: e.target.value }))}
-                  className="flex-1"
-                />
-              </div>
-              {heroUploadError && <p className="text-sm text-red-500">{heroUploadError}</p>}
-              <p className="text-xs text-gray-400">Product or subject photo. Background will be auto-removed after upload. PNG preferred, max 5MB.</p>
-              {form.subjectImageUrl && form.subjectImageUrl?.trim() !== '' ? (
-                <div className="relative w-full h-36 rounded-lg overflow-hidden checker-bg border mt-1 flex items-center justify-center">
-                  <Image src={form.subjectImageUrl} alt="Hero Preview" fill style={{ objectFit: 'contain' }} />
-                  <button
-                    type="button"
-                    onClick={() => setForm(f => ({ ...f, subjectImageUrl: '' }))}
-                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1 hover:bg-black/70 z-10"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-full h-36 rounded-lg bg-gray-100 border mt-1 flex items-center justify-center">
-                  <div className="text-center text-gray-400">
-                    <ImageIcon className="w-8 h-8 mx-auto mb-1" />
-                    <p className="text-xs">No hero image (optional)</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* 2. Title HTML */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Title HTML{' '}
-                <span className="font-normal text-slate-400">
-                  (HTML allowed: &lt;strong&gt;, &lt;em&gt;, &lt;br/&gt;, &lt;span
-                  style=&apos;color:...&apos;&gt;)
-                </span>
-              </label>
-              <textarea
-                rows={4}
-                value={form.titleHtml}
-                onChange={e => {
-                  setForm(f => ({ ...f, titleHtml: e.target.value }))
-                  setFormErrors(e2 => ({ ...e2, titleHtml: '' }))
-                }}
-                placeholder="<strong>Fresh Cakes,</strong><br/>Delivered Today"
-                className="w-full rounded-md border px-3 py-2 font-mono text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-              />
-              {formErrors.titleHtml && (
-                <p className="mt-1 text-xs text-red-600">{formErrors.titleHtml}</p>
-              )}
-              {form.titleHtml && (
-                <div className="mt-2 rounded bg-gray-900 p-3 text-2xl font-bold leading-tight text-white">
-                  <span dangerouslySetInnerHTML={{ __html: form.titleHtml ?? '' }} />
-                </div>
-              )}
-            </div>
-
-            {/* 3. Subtitle HTML */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Subtitle HTML{' '}
-                <span className="font-normal text-slate-400">
-                  (HTML allowed)
-                </span>
-              </label>
-              <textarea
-                rows={3}
-                value={form.subtitleHtml}
-                onChange={e => setForm(f => ({ ...f, subtitleHtml: e.target.value }))}
-                placeholder="Order by <strong>6 PM</strong> for same-day delivery"
-                className="w-full rounded-md border px-3 py-2 font-mono text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-              />
-              {form.subtitleHtml && (
-                <div className="mt-2 rounded bg-gray-900 p-2 text-sm text-white/80">
-                  <span dangerouslySetInnerHTML={{ __html: form.subtitleHtml ?? '' }} />
-                </div>
-              )}
-            </div>
-
-            {/* 4. CTA Button */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">CTA Text</label>
-                <input
-                  type="text"
-                  value={form.ctaText}
-                  onChange={e => {
-                    setForm(f => ({ ...f, ctaText: e.target.value }))
-                    setFormErrors(e2 => ({ ...e2, ctaText: '' }))
-                  }}
-                  placeholder="Shop Now"
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-                {formErrors.ctaText && (
-                  <p className="mt-1 text-xs text-red-600">{formErrors.ctaText}</p>
-                )}
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">CTA Link</label>
-                <input
-                  type="text"
-                  value={form.ctaLink}
-                  onChange={e => {
-                    setForm(f => ({ ...f, ctaLink: e.target.value }))
-                    setFormErrors(e2 => ({ ...e2, ctaLink: '' }))
-                  }}
-                  placeholder="/category/cakes"
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-                {formErrors.ctaLink && (
-                  <p className="mt-1 text-xs text-red-600">{formErrors.ctaLink}</p>
-                )}
-              </div>
-            </div>
-
-            {/* 5. Secondary CTA */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Secondary CTA Text (optional)</label>
-                <input
-                  type="text"
-                  value={form.secondaryCtaText}
-                  onChange={e => setForm(f => ({ ...f, secondaryCtaText: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Secondary CTA Link (optional)</label>
-                <input
-                  type="text"
-                  value={form.secondaryCtaLink}
-                  onChange={e => setForm(f => ({ ...f, secondaryCtaLink: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-              </div>
-            </div>
-
-            {/* 6. Badge Text */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Badge Text (optional)</label>
-              <input
-                type="text"
-                value={form.badgeText}
-                onChange={e => setForm(f => ({ ...f, badgeText: e.target.value }))}
-                placeholder="&#127874; Same Day Available"
-                className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-              />
-              <p className="mt-1 text-xs text-slate-400">
-                Small pill shown on the banner above the title
-              </p>
-            </div>
-
-            {/* 7. Layout */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Text Position</label>
-                <select
-                  value={form.textPosition}
-                  onChange={e => setForm(f => ({ ...f, textPosition: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                >
-                  <option value="left">left</option>
-                  <option value="right">right</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Overlay Style</label>
-                <select
-                  value={form.overlayStyle}
-                  onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                >
-                  <option value="dark-left">dark-left</option>
-                  <option value="dark-right">dark-right</option>
-                  <option value="full-dark">full-dark</option>
-                </select>
-                <p className="mt-1 text-xs text-slate-400">
-                  {form.overlayStyle === 'dark-left' && 'Dark gradient on left (use when text is left)'}
-                  {form.overlayStyle === 'dark-right' && 'Dark gradient on right (use when text is right)'}
-                  {form.overlayStyle === 'full-dark' && 'Semi-transparent full overlay (for dark scene images)'}
-                </p>
-              </div>
-            </div>
-
-            {/* 8. Visibility */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Valid From (optional)</label>
-                <input
-                  type="date"
-                  value={form.validFrom}
-                  onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Valid Until (optional)</label>
-                <input
-                  type="date"
-                  value={form.validUntil}
-                  onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
-                  className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-              </div>
-            </div>
-            <p className="text-xs text-slate-400">
-              Leave empty to always show. Use for seasonal banners like Mother&apos;s Day.
-            </p>
-
-            {/* 9. Target City */}
-            <div>
-              <label className="mb-1 block text-sm font-medium">Show in City (optional)</label>
-              <select
-                value={form.targetCitySlug}
-                onChange={e => setForm(f => ({ ...f, targetCitySlug: e.target.value }))}
-                className="w-full rounded-md border px-3 py-2 text-base text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-              >
-                {CITY_OPTIONS.map(c => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-400">
-                Leave as All Cities unless this banner is city-specific
-              </p>
-            </div>
-
-            {/* 10. Active Toggle */}
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={form.isActive}
-                onCheckedChange={checked => setForm(f => ({ ...f, isActive: checked }))}
-              />
-              <label className="text-sm font-medium">Active — show on homepage</label>
+            {/* ---- Desktop Preview Column ---- */}
+            <div className="hidden lg:flex lg:flex-col w-[340px] shrink-0 border-l bg-gray-50 p-4 overflow-y-auto">
+              <p className="text-sm font-medium mb-0.5">Preview</p>
+              <p className="text-xs text-gray-400 mb-3">Updates as you type</p>
+              <BannerPreview form={form} />
             </div>
           </div>
-
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={saving} className="bg-pink-600 hover:bg-pink-700">
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingBanner ? 'Save Changes' : 'Create Banner'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
