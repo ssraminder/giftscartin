@@ -59,12 +59,13 @@ export function BannerCanvas({
       const step = e.shiftKey ? 2.5 : 0.5
       const updates: Partial<Layer> = {}
 
+      const isImage = layer.type === 'image'
       switch (e.key) {
         case 'ArrowLeft':  updates.x = Math.max(0, layer.x - step); break
         case 'ArrowRight': updates.x = Math.min(100 - layer.w, layer.x + step); break
-        case 'ArrowUp':    updates.y = Math.max(0, layer.y - step); break
-        case 'ArrowDown':  updates.y = Math.min(100 - layer.h, layer.y + step); break
-        case '+': case '=': updates.w = Math.min(100 - layer.x, layer.w + step); break
+        case 'ArrowUp':    updates.y = Math.max(isImage ? -100 : 0, layer.y - step); break
+        case 'ArrowDown':  updates.y = Math.min(isImage ? 100 : 100 - layer.h, layer.y + step); break
+        case '+': case '=': updates.w = Math.min(isImage ? 200 : 100 - layer.x, layer.w + step); break
         case '-': updates.w = Math.max(5, layer.w - step); break
         case 'Escape': onSelectLayer(null); return
         case 'Delete':
@@ -114,8 +115,9 @@ export function BannerCanvas({
         const l = layer as TextLayer
         return (
           <div
-            className="w-full h-full pointer-events-none select-none overflow-hidden"
+            className="w-full h-full pointer-events-none select-none"
             style={{
+              overflow: 'visible',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: l.verticalAlign === 'top' ? 'flex-start'
@@ -126,6 +128,7 @@ export function BannerCanvas({
               lineHeight: l.lineHeight,
               letterSpacing: `${l.letterSpacing}px`,
               textAlign: l.textAlign,
+              paddingBottom: l.lineHeight < 1 ? '0.3em' : 0,
             }}
             dangerouslySetInnerHTML={{ __html: l.html }}
           />
@@ -262,6 +265,7 @@ export function BannerCanvas({
         rotation={layer.rotation}
         opacity={layer.opacity}
         snapToGrid={snapToGrid}
+        allowOverflow={layer.type === 'image'}
         onChange={(newX, newY, newW, newH) => onUpdateLayer(layer.id, { x: newX, y: newY, w: newW, h: newH })}
         onClick={() => onSelectLayer(layer.id)}
       >
