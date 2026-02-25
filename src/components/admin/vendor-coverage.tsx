@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, CheckSquare, Square, Loader2, Check, X } from 'lucide-react'
+import { Search, CheckSquare, Square, Loader2, Check, X, Plus } from 'lucide-react'
 
 // ==================== Types ====================
 
@@ -36,6 +36,9 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, curren
   const [search, setSearch] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [loadingAreas, setLoadingAreas] = useState(true)
+  // Manual pincode input for pincodes not yet in service_areas
+  const [manualPincode, setManualPincode] = useState('')
+  const [manualPincodes, setManualPincodes] = useState<string[]>([])
 
   // Initialize charges from currentCharges
   useEffect(() => {
@@ -63,6 +66,28 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, curren
   useEffect(() => {
     setSelected(new Set(currentPincodes))
   }, [currentPincodes])
+
+  // Detect vendor pincodes that don't exist in loaded service_areas
+  useEffect(() => {
+    if (loadingAreas) return
+    const areaPincodes = new Set(areas.map(a => a.pincode))
+    const orphaned = currentPincodes.filter(p => !areaPincodes.has(p))
+    setManualPincodes(orphaned)
+  }, [areas, currentPincodes, loadingAreas])
+
+  const handleAddManualPincode = () => {
+    const pin = manualPincode.trim()
+    if (!/^\d{6}$/.test(pin)) return
+    const areaPincodes = new Set(areas.map(a => a.pincode))
+    if (areaPincodes.has(pin) || manualPincodes.includes(pin)) return
+    setManualPincodes(prev => [...prev, pin])
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.add(pin)
+      return next
+    })
+    setManualPincode('')
+  }
 
   const filtered = areas.filter(a =>
     !search ||
@@ -121,7 +146,8 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, curren
     }
   }
 
-  const allPincodes = new Set(areas.map(a => a.pincode))
+  const areaPincodeSet = new Set(areas.map(a => a.pincode))
+  const allPincodes = new Set([...Array.from(areaPincodeSet), ...manualPincodes])
 
   // Pending charges from vendor
   const pendingCharges = (currentCharges || []).filter(pc => pc.pendingCharge !== null)
@@ -231,14 +257,86 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, curren
         </button>
       </div>
 
+      {/* Add pincode manually */}
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={manualPincode}
+          onChange={e => setManualPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          onKeyDown={e => e.key === 'Enter' && handleAddManualPincode()}
+          placeholder="Add pincode manually..."
+          className="w-44 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-pink-500"
+        />
+        <button
+          type="button"
+          onClick={handleAddManualPincode}
+          disabled={!/^\d{6}$/.test(manualPincode.trim())}
+          className="flex items-center gap-1 px-3 py-2 bg-pink-600 text-white rounded-lg text-sm font-medium hover:bg-pink-700 disabled:opacity-40 transition-colors"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add
+        </button>
+      </div>
+
       <p className="text-xs text-gray-500">
         {selected.size} of {allPincodes.size} pincodes selected
       </p>
 
       <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-80 overflow-y-auto">
-        {Object.entries(grouped).length === 0 ? (
+        {/* Manual pincodes (not yet in service_areas) */}
+        {manualPincodes
+          .filter(p => !search || p.includes(search))
+          .map(pincode => (
+          <div
+            key={`manual-${pincode}`}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors bg-blue-50/40"
+          >
+            <button
+              type="button"
+              onClick={() => togglePincode(pincode)}
+              className="flex items-center gap-3 flex-1 text-left"
+            >
+              {selected.has(pincode) ? (
+                <CheckSquare className="h-4 w-4 text-pink-600 shrink-0" />
+              ) : (
+                <Square className="h-4 w-4 text-gray-300 shrink-0" />
+              )}
+              <span className="text-sm font-mono text-gray-500 w-16">{pincode}</span>
+              <span className="text-xs text-blue-600 italic">New — service area will be auto-created on save</span>
+            </button>
+            {selected.has(pincode) && (
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-xs text-gray-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={charges[pincode] || 0}
+                  onChange={e => updateCharge(pincode, e.target.value)}
+                  onClick={e => e.stopPropagation()}
+                  className="w-16 px-1.5 py-1 text-xs border border-gray-200 rounded text-right focus:outline-none focus:border-pink-500"
+                  placeholder="0"
+                />
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setManualPincodes(prev => prev.filter(p => p !== pincode))
+                setSelected(prev => {
+                  const next = new Set(prev)
+                  next.delete(pincode)
+                  return next
+                })
+              }}
+              className="p-1 text-gray-400 hover:text-red-500"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+        {Object.entries(grouped).length === 0 && manualPincodes.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-400">
-            No service areas found for this city
+            No service areas found. Use &quot;Add pincode manually&quot; above to add new pincodes.
           </p>
         ) : (
           Object.entries(grouped).map(([pincode, areaList]) => (
