@@ -199,7 +199,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
             {extendedSlides.map((banner, idx) => (
               <div
                 key={`${banner.id}-${idx}`}
-                className="flex-shrink-0 rounded-2xl overflow-hidden aspect-[4/3]"
+                className="flex-shrink-0 rounded-2xl overflow-hidden aspect-[16/9]"
                 style={{ width: `${slideWidth}px` }}
               >
                 <BannerLayerRenderer
@@ -215,7 +215,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="flex-shrink-0 aspect-[4/3] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl"
+                className="flex-shrink-0 aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl"
                 style={{ width: '38%' }}
               />
             ))}
