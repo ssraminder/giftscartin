@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
       ctaBorderColor: b.cta_border_color ?? null,
       badgeBgColor: b.badge_bg_color ?? null,
       badgeTextColor: b.badge_text_color ?? null,
+      layers: b.layers ?? [],
     }))
 
     return NextResponse.json({ success: true, data: mapped }, {

@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
       ctaBorderColor: b.cta_border_color ?? null,
       badgeBgColor: b.badge_bg_color ?? 'rgba(255,255,255,0.2)',
       badgeTextColor: b.badge_text_color ?? '#FFFFFF',
+      layers: b.layers ?? [],
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }))
@@ -134,6 +135,7 @@ export async function POST(request: NextRequest) {
     if (body.ctaBorderColor !== undefined) insertData.cta_border_color = body.ctaBorderColor
     if (body.badgeBgColor !== undefined) insertData.badge_bg_color = body.badgeBgColor
     if (body.badgeTextColor !== undefined) insertData.badge_text_color = body.badgeTextColor
+    if (body.layers !== undefined) insertData.layers = body.layers
 
     const { data, error } = await supabase
       .from('banners')
@@ -185,6 +187,7 @@ export async function POST(request: NextRequest) {
       ctaBorderColor: data.cta_border_color ?? null,
       badgeBgColor: data.badge_bg_color ?? 'rgba(255,255,255,0.2)',
       badgeTextColor: data.badge_text_color ?? '#FFFFFF',
+      layers: data.layers ?? [],
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

@@ -60,6 +60,7 @@ export async function PATCH(
       ctaBorderColor: 'cta_border_color',
       badgeBgColor: 'badge_bg_color',
       badgeTextColor: 'badge_text_color',
+      layers: 'layers',
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {
@@ -119,6 +120,7 @@ export async function PATCH(
       ctaBorderColor: data.cta_border_color ?? null,
       badgeBgColor: data.badge_bg_color ?? 'rgba(255,255,255,0.2)',
       badgeTextColor: data.badge_text_color ?? '#FFFFFF',
+      layers: data.layers ?? [],
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

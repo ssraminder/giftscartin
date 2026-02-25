@@ -12,25 +12,16 @@ import {
   Loader2,
   RefreshCw,
   Image as ImageIcon,
-  Upload,
-  X,
-  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import { BannerImageGenerator } from '@/components/admin/banner-image-generator'
-import { BannerTextStyler } from '@/components/admin/banner-text-styler'
-import { FormattingToolbar } from '@/components/admin/formatting-toolbar'
-import { PositionEditor } from '@/components/admin/position-editor'
+import { LayersPanel } from '@/components/admin/layers-panel'
+import { BannerCanvas } from '@/components/admin/banner-canvas'
+import { PropertiesPanel } from '@/components/admin/properties-panel'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
 import {
@@ -43,6 +34,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  type Layer,
+  type LayerType,
+  type TextLayer,
+  type BackgroundLayer,
+  type ButtonLayer,
+  generateId,
+  loadGoogleFont,
+  migrateOldBannerToLayers,
+  createBackgroundLayer,
+  createImageLayer,
+  createTextLayer,
+  createShapeLayer,
+  createBadgeLayer,
+  createButtonLayer,
+} from '@/lib/banner-layers'
 
 // ==================== Types ====================
 
@@ -88,86 +95,8 @@ interface Banner {
   badgeTextColor: string | null
   createdAt: string
   updatedAt: string
-}
-
-interface BannerFormData {
-  imageUrl: string
-  subjectImageUrl: string
-  titleHtml: string
-  subtitleHtml: string
-  ctaText: string
-  ctaLink: string
-  secondaryCtaText: string
-  secondaryCtaLink: string
-  badgeText: string
-  textPosition: string
-  overlayStyle: string
-  validFrom: string
-  validUntil: string
-  targetCitySlug: string
-  isActive: boolean
-  theme: string
-  contentWidth: string
-  titleSize: string
-  subtitleSize: string
-  verticalAlign: string
-  heroSize: string
-  contentPadding: string
-  contentX: number
-  contentY: number
-  contentW: number
-  contentH: number
-  heroX: number
-  heroY: number
-  heroW: number
-  heroH: number
-  contentLockRatio: boolean
-  heroLockRatio: boolean
-  ctaBgColor: string
-  ctaTextColor: string
-  ctaBorderColor: string
-  badgeBgColor: string
-  badgeTextColor: string
-}
-
-const EMPTY_FORM: BannerFormData = {
-  imageUrl: '',
-  subjectImageUrl: '',
-  titleHtml: '',
-  subtitleHtml: '',
-  ctaText: 'Shop Now',
-  ctaLink: '/',
-  secondaryCtaText: '',
-  secondaryCtaLink: '',
-  badgeText: '',
-  textPosition: 'left',
-  overlayStyle: 'dark-left',
-  validFrom: '',
-  validUntil: '',
-  targetCitySlug: '',
-  isActive: true,
-  theme: 'blush',
-  contentWidth: 'medium',
-  titleSize: 'lg',
-  subtitleSize: 'sm',
-  verticalAlign: 'center',
-  heroSize: 'md',
-  contentPadding: 'normal',
-  contentX: 5,
-  contentY: 50,
-  contentW: 55,
-  contentH: 80,
-  heroX: 55,
-  heroY: 10,
-  heroW: 40,
-  heroH: 85,
-  contentLockRatio: false,
-  heroLockRatio: false,
-  ctaBgColor: '#E91E63',
-  ctaTextColor: '#FFFFFF',
-  ctaBorderColor: '',
-  badgeBgColor: 'rgba(255,255,255,0.2)',
-  badgeTextColor: '#FFFFFF',
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  layers?: any[]
 }
 
 const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
@@ -179,224 +108,6 @@ const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
   { value: 'peach', color: '#fff3e0', label: 'Peach' },
 ]
 
-const CITY_OPTIONS = [
-  { value: '', label: 'All Cities' },
-  { value: 'chandigarh', label: 'Chandigarh' },
-  { value: 'mohali', label: 'Mohali' },
-  { value: 'panchkula', label: 'Panchkula' },
-  { value: 'patiala', label: 'Patiala' },
-]
-
-const OVERLAY_OPTIONS = [
-  { value: 'none', label: 'No Overlay', helper: 'Text sits directly on the image — ensure image has natural contrast' },
-  { value: 'dark-left', label: 'Dark Left', helper: 'Dark gradient on left, white text' },
-  { value: 'dark-right', label: 'Dark Right', helper: 'Dark gradient on right, white text' },
-  { value: 'full-dark', label: 'Full Dark', helper: 'Dark overlay across full banner, white text' },
-  { value: 'light-left', label: 'Light Left', helper: 'Light gradient on left, dark text' },
-  { value: 'light-right', label: 'Light Right', helper: 'Light gradient on right, dark text' },
-  { value: 'full-light', label: 'Full Light', helper: 'Light overlay across full banner, dark text' },
-]
-
-// ==================== Sizing Maps ====================
-
-const TITLE_SIZE_MAP: Record<string, string> = { sm: '1.25rem', md: '1.75rem', lg: '2.25rem', xl: '2.75rem', '2xl': '3.5rem' }
-const SUBTITLE_SIZE_MAP: Record<string, string> = { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.25rem' }
-const PADDING_MAP: Record<string, string> = { tight: '1rem', normal: '2rem', spacious: '3rem' }
-
-// ==================== Overlay Helpers ====================
-
-function getOverlayCss(overlayStyle: string): React.CSSProperties | null {
-  switch (overlayStyle) {
-    case 'none':
-      return null
-    case 'dark-left':
-      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
-    case 'dark-right':
-      return { background: 'linear-gradient(to left, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
-    case 'full-dark':
-      return { background: 'rgba(0,0,0,0.6)' }
-    case 'light-left':
-      return { background: 'linear-gradient(to right, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
-    case 'light-right':
-      return { background: 'linear-gradient(to left, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.5) 50%, transparent 100%)' }
-    case 'full-light':
-      return { background: 'rgba(255,255,255,0.75)' }
-    default:
-      return { background: 'linear-gradient(to right, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%)' }
-  }
-}
-
-function isLightOverlay(style: string): boolean {
-  return style.startsWith('light-') || style === 'full-light'
-}
-
-// ==================== Banner Preview ====================
-
-function BannerPreview({ form, showGuides }: { form: BannerFormData; showGuides?: boolean }) {
-  const [heroError, setHeroError] = useState(false)
-  const isNone = form.overlayStyle === 'none'
-  const light = isLightOverlay(form.overlayStyle)
-  const textColor = isNone ? '#ffffff' : light ? '#1a1a1a' : '#ffffff'
-  const ctaBgColor = form.ctaBgColor || '#E91E63'
-  const ctaTextColor = form.ctaTextColor || '#FFFFFF'
-  const badgeBgColorVal = form.badgeBgColor || (light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)')
-  const badgeTextColorVal = form.badgeTextColor || textColor
-  const hasImage = form.imageUrl?.trim()
-  const hasHero = form.subjectImageUrl?.trim() && !heroError
-
-  const titleSize = TITLE_SIZE_MAP[form.titleSize] || '2.25rem'
-  const subtitleSize = SUBTITLE_SIZE_MAP[form.subtitleSize] || '0.875rem'
-  const padding = PADDING_MAP[form.contentPadding] || '2rem'
-
-  // Reset hero error when URL changes
-  useEffect(() => { setHeroError(false) }, [form.subjectImageUrl])
-
-  return (
-    <div
-      className="relative rounded-xl overflow-hidden w-full"
-      style={{ aspectRatio: '16/5', maxHeight: 260 }}
-    >
-      {/* Layer 1: Background image */}
-      {hasImage ? (
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${form.imageUrl})` }}
-        />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-gray-300 to-gray-500 flex items-center justify-center">
-          <span className="text-gray-100 text-sm font-medium">Banner Preview</span>
-        </div>
-      )}
-
-      {/* Layer 2: Overlay */}
-      {getOverlayCss(form.overlayStyle) && (
-        <div className="absolute inset-0" style={getOverlayCss(form.overlayStyle)!} />
-      )}
-
-      {/* Layer 3: Hero image */}
-      {hasHero && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={form.subjectImageUrl}
-          alt=""
-          onError={() => setHeroError(true)}
-          style={{
-            position: 'absolute',
-            left: `${form.heroX}%`,
-            top: `${form.heroY}%`,
-            width: `${form.heroW}%`,
-            height: `${form.heroH}%`,
-            objectFit: 'contain',
-            objectPosition: 'bottom center',
-            zIndex: 3,
-          }}
-        />
-      )}
-
-      {/* Layer 4: Content */}
-      <div
-        className="absolute z-10 flex flex-col justify-center overflow-hidden"
-        style={{
-          left: `${form.contentX}%`,
-          top: `${form.contentY}%`,
-          width: `${form.contentW}%`,
-          height: `${form.contentH}%`,
-          padding: padding,
-          textAlign: form.textPosition === 'right' ? 'right' : form.textPosition === 'center' ? 'center' : 'left',
-        }}
-      >
-        {/* Badge */}
-        {form.badgeText?.trim() && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              width: 'fit-content',
-              padding: '2px 8px',
-              borderRadius: '9999px',
-              fontSize: '9px',
-              fontWeight: 600,
-              backgroundColor: badgeBgColorVal,
-              color: badgeTextColorVal,
-              whiteSpace: 'nowrap' as const,
-            }}
-          >
-            {form.badgeText}
-          </span>
-        )}
-
-        <div
-          className="font-bold leading-tight"
-          style={{ color: textColor, fontSize: titleSize }}
-          dangerouslySetInnerHTML={{
-            __html: form.titleHtml?.trim()
-              ? form.titleHtml
-              : `<span style="opacity:0.5">Your headline here</span>`,
-          }}
-        />
-        {form.subtitleHtml?.trim() && (
-          <div
-            className="mt-1 leading-tight"
-            style={{ color: textColor, opacity: 0.75, fontSize: subtitleSize }}
-            dangerouslySetInnerHTML={{ __html: form.subtitleHtml }}
-          />
-        )}
-        {form.ctaText?.trim() && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              width: 'fit-content',
-              marginTop: '0.5rem',
-              padding: '4px 12px',
-              borderRadius: '9999px',
-              fontSize: '10px',
-              fontWeight: 600,
-              backgroundColor: ctaBgColor,
-              color: ctaTextColor,
-              border: form.ctaBorderColor ? `1px solid ${form.ctaBorderColor}` : 'none',
-              whiteSpace: 'nowrap' as const,
-              cursor: 'pointer',
-            }}
-          >
-            {form.ctaText}
-          </span>
-        )}
-      </div>
-
-      {/* Guide overlays */}
-      {showGuides && (
-        <>
-          <div
-            className="absolute z-20 border-2 border-dashed border-pink-400 rounded"
-            style={{
-              left: `${form.contentX}%`,
-              top: `${form.contentY}%`,
-              width: `${form.contentW}%`,
-              height: `${form.contentH}%`,
-              backgroundColor: 'rgba(233,30,99,0.08)',
-            }}
-          >
-            <span className="absolute top-0.5 left-0.5 text-[8px] bg-pink-500 text-white px-1 rounded">Content</span>
-          </div>
-          <div
-            className="absolute z-20 border-2 border-dashed border-blue-400 rounded"
-            style={{
-              left: `${form.heroX}%`,
-              top: `${form.heroY}%`,
-              width: `${form.heroW}%`,
-              height: `${form.heroH}%`,
-              backgroundColor: 'rgba(59,130,246,0.08)',
-            }}
-          >
-            <span className="absolute top-0.5 left-0.5 text-[8px] bg-blue-500 text-white px-1 rounded">Hero</span>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 // ==================== Component ====================
 
 export default function AdminBannersPage() {
@@ -407,45 +118,18 @@ export default function AdminBannersPage() {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null)
-  const [form, setForm] = useState<BannerFormData>(EMPTY_FORM)
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+
+  // Layer editor state
+  const [formLayers, setFormLayers] = useState<Layer[]>([])
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null)
+  const [canvasMode, setCanvasMode] = useState<'edit' | 'preview'>('edit')
+  const [snapToGrid, setSnapToGrid] = useState(false)
+  const [previewRatio, setPreviewRatio] = useState('16/5')
 
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<Banner | null>(null)
   const [deleting, setDeleting] = useState(false)
-
-  // Upload state (background)
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-
-  // Upload state (hero image)
-  const [heroUploading, setHeroUploading] = useState(false)
-  const [heroUploadError, setHeroUploadError] = useState<string | null>(null)
-
-  // Remove BG state
-  const [removingBg, setRemovingBg] = useState(false)
-
-  // AI generation state
-  const [aiTheme, setAiTheme] = useState('')
-  const [aiGenerating, setAiGenerating] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-
-  // AI image regeneration panels
-  const [showBgAiGen, setShowBgAiGen] = useState(false)
-  const [showHeroAiGen, setShowHeroAiGen] = useState(false)
-
-  // AI text styler — null = closed, 'title' | 'subtitle' | 'both' = open with target
-  const [textStylerTarget, setTextStylerTarget] = useState<'title' | 'subtitle' | 'both' | null>(null)
-
-  // AI color suggestion state
-  const [suggestingColors, setSuggestingColors] = useState(false)
-  const [colorSuggestion, setColorSuggestion] = useState<{
-    ctaBgColor: string; ctaTextColor: string; badgeBgColor: string; badgeTextColor: string; explanation: string
-  } | null>(null)
-
-  // Preview guides
-  const [showGuides, setShowGuides] = useState(false)
 
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -547,114 +231,128 @@ export default function AdminBannersPage() {
 
   const openCreateModal = () => {
     setEditingBanner(null)
-    setForm(EMPTY_FORM)
-    setFormErrors({})
+    const defaultLayers: Layer[] = [
+      createBackgroundLayer(),
+    ]
+    setFormLayers(defaultLayers)
+    setSelectedLayerId(null)
+    setCanvasMode('edit')
     setModalOpen(true)
   }
 
   const openEditModal = (banner: Banner) => {
-    setEditingBanner(banner)
-    setForm({
-      imageUrl: banner.imageUrl,
-      subjectImageUrl: banner.subjectImageUrl || '',
-      titleHtml: banner.titleHtml,
-      subtitleHtml: banner.subtitleHtml || '',
-      ctaText: banner.ctaText,
-      ctaLink: banner.ctaLink,
-      secondaryCtaText: banner.secondaryCtaText || '',
-      secondaryCtaLink: banner.secondaryCtaLink || '',
-      badgeText: banner.badgeText || '',
-      textPosition: banner.textPosition,
-      overlayStyle: banner.overlayStyle,
-      validFrom: banner.validFrom ? banner.validFrom.split('T')[0] : '',
-      validUntil: banner.validUntil ? banner.validUntil.split('T')[0] : '',
-      targetCitySlug: banner.targetCitySlug || '',
-      isActive: Boolean(banner.isActive),
-      theme: banner.theme || 'blush',
-      contentWidth: banner.contentWidth || 'medium',
-      titleSize: banner.titleSize || 'lg',
-      subtitleSize: banner.subtitleSize || 'sm',
-      verticalAlign: banner.verticalAlign || 'center',
-      heroSize: banner.heroSize || 'md',
-      contentPadding: banner.contentPadding || 'normal',
-      contentX: banner.contentX ?? 5,
-      contentY: banner.contentY ?? 50,
-      contentW: banner.contentW ?? 55,
-      contentH: banner.contentH ?? 80,
-      heroX: banner.heroX ?? 55,
-      heroY: banner.heroY ?? 10,
-      heroW: banner.heroW ?? 40,
-      heroH: banner.heroH ?? 85,
-      contentLockRatio: banner.contentLockRatio ?? false,
-      heroLockRatio: banner.heroLockRatio ?? false,
-      ctaBgColor: banner.ctaBgColor || '#E91E63',
-      ctaTextColor: banner.ctaTextColor || '#FFFFFF',
-      ctaBorderColor: banner.ctaBorderColor || '',
-      badgeBgColor: banner.badgeBgColor || 'rgba(255,255,255,0.2)',
-      badgeTextColor: banner.badgeTextColor || '#FFFFFF',
+    let layers: Layer[]
+    if (banner.layers && Array.isArray(banner.layers) && banner.layers.length > 0) {
+      layers = banner.layers as Layer[]
+    } else {
+      layers = migrateOldBannerToLayers(banner as unknown as Record<string, unknown>)
+    }
+    // Load all fonts used in this banner
+    layers.forEach(l => {
+      if ('fontFamily' in l) loadGoogleFont((l as { fontFamily: string }).fontFamily)
     })
-    setFormErrors({})
+    setFormLayers(layers)
+    setSelectedLayerId(null)
+    setEditingBanner(banner)
+    setCanvasMode('edit')
     setModalOpen(true)
   }
 
-  const handleSubmit = async () => {
-    // Validate
-    const errors: Record<string, string> = {}
-    if (!form.titleHtml?.trim()) errors.titleHtml = 'Title HTML is required'
-    if (!form.imageUrl?.trim()) errors.imageUrl = 'Image URL is required'
-    if (!form.ctaText?.trim()) errors.ctaText = 'CTA text is required'
-    if (!form.ctaLink?.trim()) errors.ctaLink = 'CTA link is required'
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors)
-      return
-    }
+  // ==================== Layer Handlers ====================
 
+  const handleUpdateLayer = (id: string, updates: Partial<Layer>) => {
+    setFormLayers(prev =>
+      prev.map(l => l.id === id ? ({ ...l, ...updates } as Layer) : l)
+    )
+  }
+
+  const handleAddLayer = (type: LayerType) => {
+    let newLayer: Layer
+    switch (type) {
+      case 'image': newLayer = createImageLayer(); break
+      case 'text': newLayer = createTextLayer(); break
+      case 'shape': newLayer = createShapeLayer(); break
+      case 'badge': newLayer = createBadgeLayer(); break
+      case 'button': newLayer = createButtonLayer(); break
+      default: return
+    }
+    const maxZ = Math.max(0, ...formLayers.map(l => l.zIndex))
+    newLayer.zIndex = maxZ + 10
+    setFormLayers(prev => [...prev, newLayer])
+    setSelectedLayerId(newLayer.id)
+  }
+
+  const handleDeleteLayer = (id: string) => {
+    const layer = formLayers.find(l => l.id === id)
+    if (layer?.type === 'background') return
+    setFormLayers(prev => prev.filter(l => l.id !== id))
+    if (selectedLayerId === id) setSelectedLayerId(null)
+  }
+
+  const handleDuplicateLayer = (id: string) => {
+    const layer = formLayers.find(l => l.id === id)
+    if (!layer) return
+    const maxZ = Math.max(0, ...formLayers.map(l => l.zIndex))
+    const duplicate: Layer = {
+      ...layer,
+      id: generateId(),
+      name: `${layer.name} copy`,
+      x: layer.x + 2,
+      y: layer.y + 2,
+      zIndex: maxZ + 10,
+    } as Layer
+    setFormLayers(prev => [...prev, duplicate])
+    setSelectedLayerId(duplicate.id)
+  }
+
+  const handleToggleVisible = (id: string) => {
+    setFormLayers(prev =>
+      prev.map(l => l.id === id ? { ...l, visible: !l.visible } : l)
+    )
+  }
+
+  const handleToggleLocked = (id: string) => {
+    setFormLayers(prev =>
+      prev.map(l => l.id === id ? { ...l, locked: !l.locked } : l)
+    )
+  }
+
+  // ==================== Save ====================
+
+  const handleSave = async () => {
     setSaving(true)
     try {
+      // Extract backward-compatible fields from layers
+      const bgLayer = formLayers.find(l => l.type === 'background') as BackgroundLayer | undefined
+      const titleLayer = formLayers.find(l => l.type === 'text' && l.name === 'Title') as TextLayer | undefined
+      const subtitleLayer = formLayers.find(l => l.type === 'text' && l.name === 'Subtitle') as TextLayer | undefined
+      const ctaLayer = formLayers.find(l => l.type === 'button') as ButtonLayer | undefined
+      const imageLayer = formLayers.find(l => l.type === 'image')
+      const badgeLayer = formLayers.find(l => l.type === 'badge')
+
       const payload: Record<string, unknown> = {
-        titleHtml: form.titleHtml,
-        subtitleHtml: form.subtitleHtml || null,
-        imageUrl: form.imageUrl,
-        subjectImageUrl: form.subjectImageUrl || null,
-        ctaText: form.ctaText,
-        ctaLink: form.ctaLink,
-        secondaryCtaText: form.secondaryCtaText || null,
-        secondaryCtaLink: form.secondaryCtaLink || null,
-        badgeText: form.badgeText || null,
-        textPosition: form.textPosition,
-        overlayStyle: form.overlayStyle,
-        validFrom: form.validFrom || null,
-        validUntil: form.validUntil || null,
-        targetCitySlug: form.targetCitySlug || null,
-        isActive: Boolean(form.isActive),
-        theme: form.theme || 'blush',
-        contentWidth: form.contentWidth || 'medium',
-        titleSize: form.titleSize || 'lg',
-        subtitleSize: form.subtitleSize || 'sm',
-        verticalAlign: form.verticalAlign || 'center',
-        heroSize: form.heroSize || 'md',
-        contentPadding: form.contentPadding || 'normal',
-        contentX: form.contentX,
-        contentY: form.contentY,
-        contentW: form.contentW,
-        contentH: form.contentH,
-        heroX: form.heroX,
-        heroY: form.heroY,
-        heroW: form.heroW,
-        heroH: form.heroH,
-        contentLockRatio: form.contentLockRatio,
-        heroLockRatio: form.heroLockRatio,
-        ctaBgColor: form.ctaBgColor || '#E91E63',
-        ctaTextColor: form.ctaTextColor || '#FFFFFF',
-        ctaBorderColor: form.ctaBorderColor || null,
-        badgeBgColor: form.badgeBgColor || 'rgba(255,255,255,0.2)',
-        badgeTextColor: form.badgeTextColor || '#FFFFFF',
+        layers: formLayers,
+        // Backward-compat fields for homepage rendering (Phase 4 migration)
+        imageUrl: bgLayer?.imageUrl || '',
+        titleHtml: titleLayer?.html || '',
+        subtitleHtml: subtitleLayer?.html || null,
+        ctaText: ctaLayer?.text || 'Shop Now',
+        ctaLink: ctaLayer?.href || '/',
+        ctaBgColor: ctaLayer?.bgColor || '#E91E63',
+        ctaTextColor: ctaLayer?.textColor || '#FFFFFF',
+        subjectImageUrl: imageLayer && 'imageUrl' in imageLayer ? (imageLayer as { imageUrl: string }).imageUrl : null,
+        badgeText: badgeLayer && 'text' in badgeLayer ? (badgeLayer as { text: string }).text : null,
+        badgeBgColor: badgeLayer && 'bgColor' in badgeLayer ? (badgeLayer as { bgColor: string }).bgColor : 'rgba(255,255,255,0.2)',
+        badgeTextColor: badgeLayer && 'textColor' in badgeLayer ? (badgeLayer as { textColor: string }).textColor : '#FFFFFF',
+        overlayStyle: formLayers.some(l => l.type === 'shape') ? 'dark-left' : 'none',
+        textPosition: 'left',
+        isActive: editingBanner?.isActive ?? true,
       }
 
-      const url = editingBanner
+      const url = editingBanner?.id
         ? `/api/admin/banners/${editingBanner.id}`
         : '/api/admin/banners'
-      const method = editingBanner ? 'PATCH' : 'POST'
+      const method = editingBanner?.id ? 'PATCH' : 'POST'
 
       const res = await fetch(url, {
         method,
@@ -705,154 +403,6 @@ export default function AdminBannersPage() {
     return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
   }
 
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError('File too large. Max 5MB.')
-      return
-    }
-    setUploading(true)
-    setUploadError(null)
-    const fd = new FormData()
-    fd.append('file', file)
-    fd.append('type', 'background')
-    try {
-      const res = await fetch('/api/admin/banners/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (json.success) {
-        setForm(f => ({ ...f, imageUrl: json.data.url }))
-        setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
-      } else {
-        setUploadError(json.error || 'Upload failed')
-      }
-    } catch {
-      setUploadError('Upload failed. Please try again.')
-    } finally {
-      setUploading(false)
-      e.target.value = ''
-    }
-  }
-
-  async function handleHeroImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      setHeroUploadError('File too large. Max 5MB.')
-      return
-    }
-    setHeroUploading(true)
-    setHeroUploadError(null)
-    const fd = new FormData()
-    fd.append('file', file)
-    fd.append('type', 'hero')
-    try {
-      const res = await fetch('/api/admin/banners/upload', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (json.success) {
-        setForm(f => ({ ...f, subjectImageUrl: json.data.url }))
-      } else {
-        setHeroUploadError(json.error || 'Upload failed')
-      }
-    } catch {
-      setHeroUploadError('Upload failed. Please try again.')
-    } finally {
-      setHeroUploading(false)
-      e.target.value = ''
-    }
-  }
-
-  async function handleRemoveBg() {
-    if (!form.subjectImageUrl) return
-    setRemovingBg(true)
-    try {
-      const res = await fetch('/api/admin/banners/remove-bg', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: form.subjectImageUrl }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed')
-
-      setForm(prev => ({ ...prev, subjectImageUrl: data.resultUrl }))
-      showToast('success', 'Background removed')
-    } catch (err: unknown) {
-      const error = err as Error
-      showToast('error', error.message || 'Remove BG failed')
-    } finally {
-      setRemovingBg(false)
-    }
-  }
-
-  async function handleAiGenerate() {
-    if (!aiTheme?.trim()) return
-    setAiGenerating(true)
-    setAiError(null)
-
-    try {
-      // Start background job
-      const res = await fetch('/api/admin/banners/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme: aiTheme }),
-      })
-      const json = await res.json()
-      if (!json.success || !json.jobId) {
-        setAiError(json.error || 'Failed to start generation.')
-        setAiGenerating(false)
-        return
-      }
-
-      const jobId = json.jobId
-
-      // Poll every 3 seconds for up to 2 minutes
-      let attempts = 0
-      const maxAttempts = 40
-      const poll = setInterval(async () => {
-        attempts++
-        try {
-          const pollRes = await fetch(`/api/admin/banners/generate/${jobId}`)
-          const pollJson = await pollRes.json()
-          const data = pollJson.data
-
-          if (data?.status === 'done') {
-            clearInterval(poll)
-            setForm(f => ({
-              ...f,
-              ...(data.result?.imageUrl ? { imageUrl: data.result.imageUrl } : {}),
-              ...(data.result?.subjectImageUrl ? { subjectImageUrl: data.result.subjectImageUrl } : {}),
-              ...(data.result?.titleHtml ? { titleHtml: data.result.titleHtml } : {}),
-              ...(data.result?.subtitleHtml ? { subtitleHtml: data.result.subtitleHtml } : {}),
-              ...(data.result?.ctaText ? { ctaText: data.result.ctaText } : {}),
-              ...(data.result?.ctaLink ? { ctaLink: data.result.ctaLink } : {}),
-              ...(data.result?.secondaryCtaText ? { secondaryCtaText: data.result.secondaryCtaText } : {}),
-              ...(data.result?.secondaryCtaLink ? { secondaryCtaLink: data.result.secondaryCtaLink } : {}),
-              ...(data.result?.badgeText ? { badgeText: data.result.badgeText } : {}),
-              ...(data.result?.overlayStyle ? { overlayStyle: data.result.overlayStyle } : {}),
-              ...(data.result?.textPosition ? { textPosition: data.result.textPosition } : {}),
-            }))
-            setFormErrors({})
-            setAiGenerating(false)
-          } else if (data?.status === 'failed' || attempts >= maxAttempts) {
-            clearInterval(poll)
-            setAiError(data?.error || 'Generation timed out. Please try again.')
-            setAiGenerating(false)
-          }
-        } catch {
-          // Ignore individual poll failures, keep trying
-          if (attempts >= maxAttempts) {
-            clearInterval(poll)
-            setAiError('Generation timed out. Please try again.')
-            setAiGenerating(false)
-          }
-        }
-      }, 3000)
-    } catch {
-      setAiError('Generation failed. Please try again.')
-      setAiGenerating(false)
-    }
-  }
-
   // ==================== Render ====================
 
   return (
@@ -875,7 +425,7 @@ export default function AdminBannersPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Banner / Slider Management</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manage homepage banners and hero sliders
+            Manage homepage banners with the layer-based canvas editor
           </p>
         </div>
         <Button onClick={openCreateModal} className="bg-pink-600 hover:bg-pink-700">
@@ -915,10 +465,8 @@ export default function AdminBannersPage() {
                   : 'border-l-4 border-l-gray-300 opacity-60'
               }`}
             >
-              {/* Drag handle */}
               <GripVertical className="h-5 w-5 shrink-0 text-slate-300" />
 
-              {/* Thumbnail */}
               {banner.imageUrl && banner.imageUrl?.trim() !== '' ? (
                 <div className="relative w-16 h-10 rounded overflow-hidden bg-gray-100 flex-shrink-0">
                   <Image
@@ -935,18 +483,13 @@ export default function AdminBannersPage() {
                 </div>
               )}
 
-              {/* Content */}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span
                     style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: '50%',
+                      width: 10, height: 10, borderRadius: '50%',
                       backgroundColor: THEME_SWATCHES.find(s => s.value === banner.theme)?.color || '#fce4ec',
-                      border: '1px solid rgba(0,0,0,0.1)',
-                      flexShrink: 0,
-                      display: 'inline-block',
+                      border: '1px solid rgba(0,0,0,0.1)', flexShrink: 0, display: 'inline-block',
                     }}
                   />
                   <div
@@ -961,9 +504,11 @@ export default function AdminBannersPage() {
                   />
                 )}
                 <div className="mt-1 flex flex-wrap gap-1">
-                  <Badge variant="secondary" className="text-[10px]">
-                    {banner.textPosition}
-                  </Badge>
+                  {banner.layers && Array.isArray(banner.layers) && banner.layers.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {banner.layers.length} layers
+                    </Badge>
+                  )}
                   <Badge variant="secondary" className="text-[10px]">
                     {banner.overlayStyle}
                   </Badge>
@@ -975,9 +520,7 @@ export default function AdminBannersPage() {
                 </div>
               </div>
 
-              {/* Right side controls */}
               <div className="flex shrink-0 items-center gap-2">
-                {/* Date range */}
                 {(banner.validFrom || banner.validUntil) && (
                   <span className="hidden text-xs text-slate-400 sm:block">
                     {banner.validFrom ? formatDate(banner.validFrom) : '...'}
@@ -986,7 +529,6 @@ export default function AdminBannersPage() {
                   </span>
                 )}
 
-                {/* Reorder buttons */}
                 <div className="flex flex-col">
                   <button
                     onClick={() => handleMoveUp(index)}
@@ -1004,18 +546,15 @@ export default function AdminBannersPage() {
                   </button>
                 </div>
 
-                {/* Active toggle */}
                 <Switch
                   checked={Boolean(banner.isActive)}
                   onCheckedChange={() => handleToggleActive(banner)}
                 />
 
-                {/* Edit */}
                 <Button variant="outline" size="sm" onClick={() => openEditModal(banner)}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
 
-                {/* Delete */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1030,931 +569,77 @@ export default function AdminBannersPage() {
         </div>
       )}
 
-      {/* ==================== Create/Edit Modal ==================== */}
+      {/* ==================== Layer Canvas Modal ==================== */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden p-0">
-          <div className="flex flex-col max-h-[90vh] overflow-y-auto p-6">
-              <DialogHeader>
-                <DialogTitle>{editingBanner ? 'Edit Banner' : 'Create New Banner'}</DialogTitle>
-                <DialogDescription>
-                  {editingBanner
-                    ? 'Update banner content and settings.'
-                    : 'Add a new banner to the homepage slider.'}
-                </DialogDescription>
-              </DialogHeader>
+        <DialogContent className="max-h-[90vh] max-w-[95vw] w-full overflow-hidden p-0">
+          <DialogDescription className="sr-only">
+            {editingBanner ? 'Edit banner layers' : 'Create new banner with layers'}
+          </DialogDescription>
 
-              <div className="space-y-4 mt-4">
-                {/* AI Generation Panel */}
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles className="w-4 h-4 text-purple-600" />
-                    <span className="text-sm font-medium text-purple-900">Generate with AI</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Describe the theme e.g. Birthday cakes, Midnight delivery, Flowers..."
-                      value={aiTheme}
-                      onChange={e => setAiTheme(e.target.value)}
-                      className="flex-1 text-sm"
-                    />
-                    <Button
-                      type="button"
-                      onClick={handleAiGenerate}
-                      disabled={aiGenerating || !aiTheme?.trim()}
-                      className="bg-purple-600 hover:bg-purple-700 text-white shrink-0"
-                    >
-                      {aiGenerating
-                        ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
-                        : <><Sparkles className="w-4 h-4 mr-2" />Generate</>
-                      }
-                    </Button>
-                  </div>
-                  {aiError && <p className="text-xs text-red-500 mt-2">{aiError}</p>}
-                  <p className="text-xs text-purple-600 mt-2">
-                    Generates background image, hero product image (background removed), title, subtitle, CTA and badge text automatically
-                  </p>
-                </div>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
+            <h2 className="text-lg font-semibold text-slate-900">
+              {editingBanner ? 'Edit Banner' : 'Create New Banner'}
+            </h2>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-pink-600 hover:bg-pink-700"
+              >
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saving ? 'Saving...' : 'Save Banner'}
+              </Button>
+            </div>
+          </div>
 
-                {/* Theme Picker */}
-                <div className="space-y-2">
-                  <Label>Theme</Label>
-                  <div className="flex items-center gap-3">
-                    {THEME_SWATCHES.map(s => (
-                      <button
-                        key={s.value}
-                        type="button"
-                        title={s.label}
-                        onClick={() => setForm(f => ({ ...f, theme: s.value }))}
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: '50%',
-                          backgroundColor: s.color,
-                          outline: form.theme === s.value ? '2px solid #111' : '2px solid transparent',
-                          outlineOffset: 3,
-                          border: '1px solid rgba(0,0,0,0.12)',
-                          cursor: 'pointer',
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Selected: {THEME_SWATCHES.find(s => s.value === form.theme)?.label || form.theme}
-                  </p>
-                </div>
+          {/* Three-panel layout */}
+          <div className="flex h-[80vh] overflow-hidden">
+            {/* Left: Layers panel */}
+            <div className="w-56 flex-shrink-0 border-r overflow-y-auto">
+              <LayersPanel
+                layers={formLayers}
+                selectedId={selectedLayerId}
+                onSelect={setSelectedLayerId}
+                onReorder={setFormLayers}
+                onToggleVisible={handleToggleVisible}
+                onToggleLocked={handleToggleLocked}
+                onDelete={handleDeleteLayer}
+                onDuplicate={handleDuplicateLayer}
+                onAddLayer={handleAddLayer}
+              />
+            </div>
 
-                {/* ---- Section 1: Image ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
-                  {/* Background Image */}
-                  <div className="space-y-1">
-                    <Label>Background Image</Label>
-                    <div className="flex items-center gap-2">
-                      <label className="cursor-pointer shrink-0">
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          className="hidden"
-                          onChange={handleImageUpload}
-                          disabled={uploading}
-                        />
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-pink-400 transition-colors">
-                          {uploading
-                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin text-pink-500" /><span className="text-xs text-gray-500">Uploading...</span></>
-                            : <><Upload className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-500">Upload</span></>
-                          }
-                        </div>
-                      </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowBgAiGen(v => !v)}
-                        className="shrink-0 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        AI Generate
-                      </Button>
-                      <span className="text-xs text-gray-400">or</span>
-                      <Input
-                        placeholder="Paste Supabase / external URL"
-                        value={form.imageUrl}
-                        onChange={e => {
-                          setForm(f => ({ ...f, imageUrl: e.target.value }))
-                          setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
-                        }}
-                        className="flex-1 text-sm"
-                      />
-                      {form.imageUrl?.trim() ? (
-                        <div className="relative w-24 h-16 rounded overflow-hidden bg-gray-100 shrink-0 border">
-                          <Image src={form.imageUrl} alt="" fill style={{ objectFit: 'cover' }} />
-                          <button
-                            type="button"
-                            onClick={() => setForm(f => ({ ...f, imageUrl: '' }))}
-                            className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    {formErrors.imageUrl && <p className="text-xs text-red-500">{formErrors.imageUrl}</p>}
-                    {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
-                    <p className="text-[11px] text-gray-400">Landscape 1536x864px recommended.</p>
-                    {showBgAiGen && (
-                      <BannerImageGenerator
-                        imageType="background"
-                        currentImageUrl={form.imageUrl || undefined}
-                        bannerContext={{
-                          titleHtml: form.titleHtml || undefined,
-                          occasion: undefined,
-                          citySlug: form.targetCitySlug || undefined,
-                        }}
-                        onAccept={(newUrl) => {
-                          setForm(f => ({ ...f, imageUrl: newUrl }))
-                          setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
-                          setShowBgAiGen(false)
-                        }}
-                        onClose={() => setShowBgAiGen(false)}
-                      />
-                    )}
-                  </div>
+            {/* Center: Canvas */}
+            <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
+              <BannerCanvas
+                layers={formLayers}
+                selectedId={selectedLayerId}
+                onSelectLayer={setSelectedLayerId}
+                onUpdateLayer={handleUpdateLayer}
+                onDeleteLayer={handleDeleteLayer}
+                mode={canvasMode}
+                onModeChange={setCanvasMode}
+                snapToGrid={snapToGrid}
+                onSnapToGridChange={setSnapToGrid}
+                aspectRatio={previewRatio}
+                onAspectRatioChange={setPreviewRatio}
+              />
+            </div>
 
-                  {/* Hero / Subject Image */}
-                  <div className="space-y-1">
-                    <Label>Hero Image <span className="font-normal text-gray-400">(optional)</span></Label>
-                    <div className="flex items-center gap-2">
-                      <label className="cursor-pointer shrink-0">
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          className="hidden"
-                          onChange={handleHeroImageUpload}
-                          disabled={heroUploading}
-                        />
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 transition-colors">
-                          {heroUploading
-                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" /><span className="text-xs text-gray-500">Uploading...</span></>
-                            : <><Upload className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-500">Upload</span></>
-                          }
-                        </div>
-                      </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowHeroAiGen(v => !v)}
-                        className="shrink-0 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        AI Generate
-                      </Button>
-                      <span className="text-xs text-gray-400">or</span>
-                      <Input
-                        placeholder="Paste hero image URL (transparent PNG)"
-                        value={form.subjectImageUrl}
-                        onChange={e => setForm(f => ({ ...f, subjectImageUrl: e.target.value }))}
-                        className="flex-1 text-sm"
-                      />
-                      {form.subjectImageUrl?.trim() ? (
-                        <div className="flex flex-col items-center gap-1 shrink-0">
-                          <div className="relative w-24 h-16 rounded overflow-hidden checker-bg border">
-                            <Image src={form.subjectImageUrl} alt="" fill style={{ objectFit: 'contain' }} />
-                            <button
-                              type="button"
-                              onClick={() => setForm(f => ({ ...f, subjectImageUrl: '' }))}
-                              className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70 z-10"
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={handleRemoveBg}
-                            disabled={removingBg}
-                            className="text-xs h-6 px-2"
-                          >
-                            {removingBg ? (
-                              <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Removing BG...</>
-                            ) : (
-                              <><Sparkles className="w-3 h-3 mr-1" /> Remove BG</>
-                            )}
-                          </Button>
-                        </div>
-                      ) : null}
-                    </div>
-                    {heroUploadError && <p className="text-xs text-red-500">{heroUploadError}</p>}
-                    <p className="text-[11px] text-gray-400">Product/subject photo. PNG preferred, max 5MB. Use &quot;Remove BG&quot; to remove background after uploading.</p>
-                    {showHeroAiGen && (
-                      <BannerImageGenerator
-                        imageType="hero"
-                        currentImageUrl={form.subjectImageUrl || undefined}
-                        bannerContext={{
-                          titleHtml: form.titleHtml || undefined,
-                          occasion: undefined,
-                          citySlug: form.targetCitySlug || undefined,
-                        }}
-                        onAccept={(newUrl) => {
-                          setForm(f => ({ ...f, subjectImageUrl: newUrl }))
-                          setShowHeroAiGen(false)
-                        }}
-                        onClose={() => setShowHeroAiGen(false)}
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* ---- Section 2: Content ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
-                  {/* Title HTML */}
-                  <div>
-                    <div className="mb-1 flex items-center gap-2">
-                      <label className="block text-sm font-medium">
-                        Title HTML{' '}
-                        <span className="font-normal text-slate-400">
-                          (&lt;strong&gt;, &lt;em&gt;, &lt;br/&gt;, &lt;span style=&apos;color:...&apos;&gt;)
-                        </span>
-                      </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setTextStylerTarget(textStylerTarget === 'title' ? null : 'title')}
-                        className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        Style Title
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setTextStylerTarget(textStylerTarget === 'both' ? null : 'both')}
-                        className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        Style Both
-                      </Button>
-                    </div>
-                    <FormattingToolbar
-                      value={form.titleHtml}
-                      onChange={v => {
-                        setForm(f => ({ ...f, titleHtml: v }))
-                        setFormErrors(e2 => ({ ...e2, titleHtml: '' }))
-                      }}
-                      label="Title"
-                    />
-                    <textarea
-                      rows={3}
-                      value={form.titleHtml}
-                      onChange={e => {
-                        setForm(f => ({ ...f, titleHtml: e.target.value }))
-                        setFormErrors(e2 => ({ ...e2, titleHtml: '' }))
-                      }}
-                      placeholder="<strong>Fresh Cakes,</strong><br/>Delivered Today"
-                      className="w-full rounded-md border px-3 py-2 font-mono text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                    />
-                    {formErrors.titleHtml && (
-                      <p className="mt-1 text-xs text-red-600">{formErrors.titleHtml}</p>
-                    )}
-                    {form.titleHtml && (
-                      <div className="mt-1 rounded bg-gray-900 px-3 py-2 text-lg font-bold leading-tight text-white max-h-16 overflow-hidden">
-                        <span dangerouslySetInnerHTML={{ __html: form.titleHtml ?? '' }} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* AI Text Styler Panel — title only */}
-                  {textStylerTarget === 'title' && (
-                    <BannerTextStyler
-                      target="title"
-                      titleHtml={form.titleHtml}
-                      subtitleHtml={form.subtitleHtml}
-                      ctaText={form.ctaText}
-                      backgroundImageUrl={form.imageUrl || undefined}
-                      overlayStyle={form.overlayStyle}
-                      onAccept={(newTitle, newSubtitle) => {
-                        setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
-                        setTextStylerTarget(null)
-                      }}
-                      onClose={() => setTextStylerTarget(null)}
-                    />
-                  )}
-
-                  {/* Subtitle HTML */}
-                  <div>
-                    <div className="mb-1 flex items-center gap-2">
-                      <label className="block text-sm font-medium">
-                        Subtitle HTML{' '}
-                        <span className="font-normal text-slate-400">(HTML allowed)</span>
-                      </label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setTextStylerTarget(textStylerTarget === 'subtitle' ? null : 'subtitle')}
-                        className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
-                      >
-                        <Sparkles className="w-3 h-3" />
-                        Style Subtitle
-                      </Button>
-                    </div>
-                    <FormattingToolbar
-                      value={form.subtitleHtml}
-                      onChange={v => setForm(f => ({ ...f, subtitleHtml: v }))}
-                      label="Subtitle"
-                    />
-                    <textarea
-                      rows={3}
-                      value={form.subtitleHtml}
-                      onChange={e => setForm(f => ({ ...f, subtitleHtml: e.target.value }))}
-                      placeholder="Order by <strong>6 PM</strong> for same-day delivery"
-                      className="w-full rounded-md border px-3 py-2 font-mono text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                    />
-                    {form.subtitleHtml && (
-                      <div className="mt-1 rounded bg-gray-900 px-2 py-1.5 text-sm text-white/80 max-h-16 overflow-hidden">
-                        <span dangerouslySetInnerHTML={{ __html: form.subtitleHtml ?? '' }} />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* AI Text Styler Panel — subtitle only */}
-                  {textStylerTarget === 'subtitle' && (
-                    <BannerTextStyler
-                      target="subtitle"
-                      titleHtml={form.titleHtml}
-                      subtitleHtml={form.subtitleHtml}
-                      ctaText={form.ctaText}
-                      backgroundImageUrl={form.imageUrl || undefined}
-                      overlayStyle={form.overlayStyle}
-                      onAccept={(newTitle, newSubtitle) => {
-                        setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
-                        setTextStylerTarget(null)
-                      }}
-                      onClose={() => setTextStylerTarget(null)}
-                    />
-                  )}
-
-                  {/* AI Text Styler Panel — both */}
-                  {textStylerTarget === 'both' && (
-                    <BannerTextStyler
-                      target="both"
-                      titleHtml={form.titleHtml}
-                      subtitleHtml={form.subtitleHtml}
-                      ctaText={form.ctaText}
-                      backgroundImageUrl={form.imageUrl || undefined}
-                      overlayStyle={form.overlayStyle}
-                      onAccept={(newTitle, newSubtitle) => {
-                        setForm(f => ({ ...f, titleHtml: newTitle, subtitleHtml: newSubtitle }))
-                        setTextStylerTarget(null)
-                      }}
-                      onClose={() => setTextStylerTarget(null)}
-                    />
-                  )}
-
-                  {/* Badge Text — full width */}
-                  <div>
-                    <label className="mb-1 block text-sm font-medium">Badge Text <span className="font-normal text-slate-400">(optional)</span></label>
-                    <input
-                      type="text"
-                      value={form.badgeText}
-                      onChange={e => setForm(f => ({ ...f, badgeText: e.target.value }))}
-                      placeholder="&#127874; Same Day Available"
-                      className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                    />
-                    <p className="mt-1 text-xs text-slate-400">
-                      Small pill shown on the banner above the title
-                    </p>
-                  </div>
-                </div>
-
-                {/* ---- Section 3: Layout & Sizing ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
-                  <p className="text-sm font-semibold text-slate-700">Layout &amp; Sizing</p>
-
-                  {/* Row 1: Text Position, Overlay Style, Title Size, Subtitle Size */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Text Position</label>
-                      <select
-                        value={form.textPosition}
-                        onChange={e => setForm(f => ({ ...f, textPosition: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="left">Left</option>
-                        <option value="center">Center</option>
-                        <option value="right">Right</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Overlay Style</label>
-                      <select
-                        value={form.overlayStyle}
-                        onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        {OVERLAY_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                      {form.overlayStyle === 'none' && (
-                        <p className="mt-1 text-xs text-amber-600">
-                          &#9888;&#65039; Ensure your background image has sufficient contrast for text readability
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Title Size</label>
-                      <select
-                        value={form.titleSize}
-                        onChange={e => setForm(f => ({ ...f, titleSize: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="sm">Small</option>
-                        <option value="md">Medium</option>
-                        <option value="lg">Large</option>
-                        <option value="xl">Extra Large</option>
-                        <option value="2xl">2X Large</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Subtitle Size</label>
-                      <select
-                        value={form.subtitleSize}
-                        onChange={e => setForm(f => ({ ...f, subtitleSize: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="xs">Extra Small</option>
-                        <option value="sm">Small</option>
-                        <option value="md">Medium</option>
-                        <option value="lg">Large</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Padding only */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Padding</label>
-                      <select
-                        value={form.contentPadding}
-                        onChange={e => setForm(f => ({ ...f, contentPadding: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="tight">Tight</option>
-                        <option value="normal">Normal</option>
-                        <option value="spacious">Spacious</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Position Editors */}
-                  <div className="grid grid-cols-2 gap-4 mt-2">
-                    <PositionEditor
-                      label="Content Block"
-                      x={form.contentX}
-                      y={form.contentY}
-                      w={form.contentW}
-                      h={form.contentH}
-                      lockRatio={form.contentLockRatio}
-                      color="pink"
-                      presets={[
-                        { label: 'Top Left', x: 3, y: 5, w: 50, h: 75 },
-                        { label: 'Center', x: 25, y: 10, w: 50, h: 80 },
-                        { label: 'Top Right', x: 47, y: 5, w: 50, h: 75 },
-                      ]}
-                      defaults={{ x: 5, y: 50, w: 55, h: 80 }}
-                      onChange={vals =>
-                        setForm(f => ({
-                          ...f,
-                          contentX: vals.x,
-                          contentY: vals.y,
-                          contentW: vals.w,
-                          contentH: vals.h,
-                          contentLockRatio: vals.lockRatio,
-                        }))
-                      }
-                    />
-                    <PositionEditor
-                      label="Hero Image"
-                      x={form.heroX}
-                      y={form.heroY}
-                      w={form.heroW}
-                      h={form.heroH}
-                      lockRatio={form.heroLockRatio}
-                      color="blue"
-                      presets={[
-                        { label: 'Right Side', x: 55, y: 5, w: 40, h: 88 },
-                        { label: 'Left Side', x: 5, y: 5, w: 40, h: 88 },
-                        { label: 'Full Right', x: 50, y: 0, w: 50, h: 100 },
-                      ]}
-                      defaults={{ x: 55, y: 10, w: 40, h: 85 }}
-                      onChange={vals =>
-                        setForm(f => ({
-                          ...f,
-                          heroX: vals.x,
-                          heroY: vals.y,
-                          heroW: vals.w,
-                          heroH: vals.h,
-                          heroLockRatio: vals.lockRatio,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* ---- Section 4: CTAs ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">CTA Text</label>
-                      <input
-                        type="text"
-                        value={form.ctaText}
-                        onChange={e => {
-                          setForm(f => ({ ...f, ctaText: e.target.value }))
-                          setFormErrors(e2 => ({ ...e2, ctaText: '' }))
-                        }}
-                        placeholder="Shop Now"
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                      {formErrors.ctaText && (
-                        <p className="mt-1 text-xs text-red-600">{formErrors.ctaText}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">CTA Link</label>
-                      <input
-                        type="text"
-                        value={form.ctaLink}
-                        onChange={e => {
-                          setForm(f => ({ ...f, ctaLink: e.target.value }))
-                          setFormErrors(e2 => ({ ...e2, ctaLink: '' }))
-                        }}
-                        placeholder="/category/cakes"
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                      {formErrors.ctaLink && (
-                        <p className="mt-1 text-xs text-red-600">{formErrors.ctaLink}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Secondary CTA Text <span className="font-normal text-slate-400">(optional)</span></label>
-                      <input
-                        type="text"
-                        value={form.secondaryCtaText}
-                        onChange={e => setForm(f => ({ ...f, secondaryCtaText: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Secondary CTA Link <span className="font-normal text-slate-400">(optional)</span></label>
-                      <input
-                        type="text"
-                        value={form.secondaryCtaLink}
-                        onChange={e => setForm(f => ({ ...f, secondaryCtaLink: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ---- Section 4b: Button & Badge Colors ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-slate-700">Button &amp; Badge Colors</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={suggestingColors}
-                      onClick={async () => {
-                        setSuggestingColors(true)
-                        setColorSuggestion(null)
-                        try {
-                          const res = await fetch('/api/admin/banners/style-text', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              titleHtml: form.titleHtml,
-                              subtitleHtml: form.subtitleHtml,
-                              ctaText: form.ctaText,
-                              overlayStyle: form.overlayStyle,
-                              styleInstruction: `Suggest colors for the CTA button and badge pill that complement the banner style and text.`,
-                              mode: 'colors_only',
-                            }),
-                          })
-                          const json = await res.json()
-                          if (json.success) {
-                            setColorSuggestion(json.data)
-                          }
-                        } catch { /* ignore */ }
-                        setSuggestingColors(false)
-                      }}
-                      className="shrink-0 gap-1 text-xs border-purple-300 text-purple-700 hover:bg-purple-50 h-6 px-2"
-                    >
-                      {suggestingColors ? (
-                        <><Loader2 className="w-3 h-3 animate-spin" /> Suggesting...</>
-                      ) : (
-                        <><Sparkles className="w-3 h-3" /> Suggest Colors</>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* AI color suggestion */}
-                  {colorSuggestion && (
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 space-y-2">
-                      <p className="text-xs text-purple-600 italic">{colorSuggestion.explanation}</p>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-500">Preview:</span>
-                        <span
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', padding: '4px 12px',
-                            borderRadius: '9999px', fontSize: '11px', fontWeight: 600,
-                            backgroundColor: colorSuggestion.ctaBgColor, color: colorSuggestion.ctaTextColor,
-                          }}
-                        >
-                          {form.ctaText || 'Shop Now'}
-                        </span>
-                        {form.badgeText && (
-                          <span
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
-                              borderRadius: '9999px', fontSize: '10px', fontWeight: 600,
-                              backgroundColor: colorSuggestion.badgeBgColor, color: colorSuggestion.badgeTextColor,
-                            }}
-                          >
-                            {form.badgeText}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => {
-                            setForm(f => ({
-                              ...f,
-                              ctaBgColor: colorSuggestion.ctaBgColor,
-                              ctaTextColor: colorSuggestion.ctaTextColor,
-                              badgeBgColor: colorSuggestion.badgeBgColor,
-                              badgeTextColor: colorSuggestion.badgeTextColor,
-                            }))
-                            setColorSuggestion(null)
-                          }}
-                          className="bg-green-600 hover:bg-green-700 text-white text-xs h-6"
-                        >
-                          Apply
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setColorSuggestion(null)}
-                          className="text-xs h-6"
-                        >
-                          Dismiss
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-6">
-                    {/* CTA Button Colors */}
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-gray-600">CTA Button</p>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-20 shrink-0">Background:</label>
-                          <input
-                            type="color"
-                            value={form.ctaBgColor?.startsWith('#') ? form.ctaBgColor : '#E91E63'}
-                            onChange={e => setForm(f => ({ ...f, ctaBgColor: e.target.value }))}
-                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
-                          />
-                          <input
-                            type="text"
-                            value={form.ctaBgColor}
-                            onChange={e => setForm(f => ({ ...f, ctaBgColor: e.target.value }))}
-                            className="flex-1 text-xs border rounded px-2 py-1"
-                            placeholder="#E91E63"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-20 shrink-0">Text:</label>
-                          <input
-                            type="color"
-                            value={form.ctaTextColor?.startsWith('#') ? form.ctaTextColor : '#FFFFFF'}
-                            onChange={e => setForm(f => ({ ...f, ctaTextColor: e.target.value }))}
-                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
-                          />
-                          <input
-                            type="text"
-                            value={form.ctaTextColor}
-                            onChange={e => setForm(f => ({ ...f, ctaTextColor: e.target.value }))}
-                            className="flex-1 text-xs border rounded px-2 py-1"
-                            placeholder="#FFFFFF"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-20 shrink-0">Border:</label>
-                          <input
-                            type="color"
-                            value={form.ctaBorderColor?.startsWith('#') ? form.ctaBorderColor : '#E91E63'}
-                            onChange={e => setForm(f => ({ ...f, ctaBorderColor: e.target.value }))}
-                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
-                          />
-                          <input
-                            type="text"
-                            value={form.ctaBorderColor}
-                            onChange={e => setForm(f => ({ ...f, ctaBorderColor: e.target.value }))}
-                            className="flex-1 text-xs border rounded px-2 py-1"
-                            placeholder="none"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Badge Pill Colors */}
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-gray-600">Badge Pill</p>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-20 shrink-0">Background:</label>
-                          <input
-                            type="text"
-                            value={form.badgeBgColor}
-                            onChange={e => setForm(f => ({ ...f, badgeBgColor: e.target.value }))}
-                            className="flex-1 text-xs border rounded px-2 py-1"
-                            placeholder="rgba(255,255,255,0.2)"
-                          />
-                        </div>
-                        <div className="flex flex-wrap gap-1 ml-[5.5rem]">
-                          {[
-                            { l: 'White 15%', v: 'rgba(255,255,255,0.15)' },
-                            { l: 'White 30%', v: 'rgba(255,255,255,0.3)' },
-                            { l: 'Black 20%', v: 'rgba(0,0,0,0.2)' },
-                            { l: 'Black 50%', v: 'rgba(0,0,0,0.5)' },
-                            { l: 'Pink 20%', v: 'rgba(233,30,99,0.2)' },
-                            { l: 'Gold 25%', v: 'rgba(255,215,0,0.25)' },
-                          ].map(p => (
-                            <button
-                              key={p.l}
-                              type="button"
-                              onClick={() => setForm(f => ({ ...f, badgeBgColor: p.v }))}
-                              className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                                form.badgeBgColor === p.v ? 'border-purple-400 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                              }`}
-                            >
-                              {p.l}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs text-gray-500 w-20 shrink-0">Text:</label>
-                          <input
-                            type="color"
-                            value={form.badgeTextColor?.startsWith('#') ? form.badgeTextColor : '#FFFFFF'}
-                            onChange={e => setForm(f => ({ ...f, badgeTextColor: e.target.value }))}
-                            className="w-6 h-6 rounded border border-gray-200 cursor-pointer p-0"
-                          />
-                          <input
-                            type="text"
-                            value={form.badgeTextColor}
-                            onChange={e => setForm(f => ({ ...f, badgeTextColor: e.target.value }))}
-                            className="flex-1 text-xs border rounded px-2 py-1"
-                            placeholder="#FFFFFF"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Inline preview */}
-                  <div className="flex items-center gap-3 bg-gray-900 rounded-lg p-3">
-                    <span className="text-[10px] text-gray-400">Preview:</span>
-                    <span
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', width: 'fit-content',
-                        padding: '6px 16px', borderRadius: '9999px', fontSize: '12px', fontWeight: 600,
-                        backgroundColor: form.ctaBgColor || '#E91E63', color: form.ctaTextColor || '#FFFFFF',
-                        border: form.ctaBorderColor ? `1px solid ${form.ctaBorderColor}` : 'none',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {form.ctaText || 'Shop Now'}
-                    </span>
-                    {form.badgeText?.trim() && (
-                      <span
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', width: 'fit-content',
-                          padding: '3px 10px', borderRadius: '9999px', fontSize: '10px', fontWeight: 600,
-                          backgroundColor: form.badgeBgColor || 'rgba(255,255,255,0.2)',
-                          color: form.badgeTextColor || '#FFFFFF', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {form.badgeText}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* ---- Section 5: Schedule ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Valid From <span className="font-normal text-slate-400">(optional)</span></label>
-                      <input
-                        type="date"
-                        value={form.validFrom}
-                        onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Valid Until <span className="font-normal text-slate-400">(optional)</span></label>
-                      <input
-                        type="date"
-                        value={form.validUntil}
-                        onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Leave empty to always show. Use for seasonal banners like Mother&apos;s Day.
-                  </p>
-
-                  {/* Target City */}
-                  <div>
-                    <label className="mb-1 block text-sm font-medium">Show in City <span className="font-normal text-slate-400">(optional)</span></label>
-                    <select
-                      value={form.targetCitySlug}
-                      onChange={e => setForm(f => ({ ...f, targetCitySlug: e.target.value }))}
-                      className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                    >
-                      {CITY_OPTIONS.map(c => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Leave as All Cities unless this banner is city-specific
-                    </p>
-                  </div>
-                </div>
-
-                {/* ---- Section 6: Status ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2">
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      checked={form.isActive}
-                      onCheckedChange={checked => setForm(f => ({ ...f, isActive: checked }))}
-                    />
-                    <label className="text-sm font-medium">Active — show on homepage</label>
-                  </div>
-                </div>
-
-                {/* ---- Live Preview (bottom, full-width) ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-700">Live Preview</p>
-                      <p className="text-xs text-gray-400">Updates as you type</p>
-                    </div>
-                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={showGuides}
-                        onChange={e => setShowGuides(e.target.checked)}
-                        className="rounded border-gray-300"
-                      />
-                      Show guides
-                    </label>
-                  </div>
-                  <div className="mt-2">
-                    <BannerPreview form={form} showGuides={showGuides} />
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter className="mt-6">
-                <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSubmit} disabled={saving} className="bg-pink-600 hover:bg-pink-700">
-                  {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {editingBanner ? 'Save Changes' : 'Create Banner'}
-                </Button>
-              </DialogFooter>
+            {/* Right: Properties */}
+            <div className="w-72 flex-shrink-0 border-l overflow-y-auto">
+              <PropertiesPanel
+                layer={formLayers.find(l => l.id === selectedLayerId) ?? null}
+                onUpdate={(updates) => {
+                  if (selectedLayerId) handleUpdateLayer(selectedLayerId, updates)
+                }}
+              />
+            </div>
           </div>
         </DialogContent>
       </Dialog>
