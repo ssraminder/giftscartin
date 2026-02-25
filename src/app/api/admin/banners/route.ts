@@ -40,6 +40,12 @@ export async function GET(request: NextRequest) {
       validUntil: b.valid_until,
       targetCitySlug: b.target_city_slug,
       theme: b.theme,
+      contentWidth: b.content_width ?? 'medium',
+      titleSize: b.title_size ?? 'lg',
+      subtitleSize: b.subtitle_size ?? 'sm',
+      verticalAlign: b.vertical_align ?? 'center',
+      heroSize: b.hero_size ?? 'md',
+      contentPadding: b.content_padding ?? 'normal',
       createdAt: b.created_at,
       updatedAt: b.updated_at,
     }))
@@ -92,6 +98,12 @@ export async function POST(request: NextRequest) {
     if (body.validFrom !== undefined) insertData.valid_from = body.validFrom
     if (body.validUntil !== undefined) insertData.valid_until = body.validUntil
     if (body.targetCitySlug !== undefined) insertData.target_city_slug = body.targetCitySlug || null
+    if (body.contentWidth !== undefined) insertData.content_width = body.contentWidth
+    if (body.titleSize !== undefined) insertData.title_size = body.titleSize
+    if (body.subtitleSize !== undefined) insertData.subtitle_size = body.subtitleSize
+    if (body.verticalAlign !== undefined) insertData.vertical_align = body.verticalAlign
+    if (body.heroSize !== undefined) insertData.hero_size = body.heroSize
+    if (body.contentPadding !== undefined) insertData.content_padding = body.contentPadding
 
     const { data, error } = await supabase
       .from('banners')
@@ -122,6 +134,12 @@ export async function POST(request: NextRequest) {
       validUntil: data.valid_until,
       targetCitySlug: data.target_city_slug,
       theme: data.theme,
+      contentWidth: data.content_width ?? 'medium',
+      titleSize: data.title_size ?? 'lg',
+      subtitleSize: data.subtitle_size ?? 'sm',
+      verticalAlign: data.vertical_align ?? 'center',
+      heroSize: data.hero_size ?? 'md',
+      contentPadding: data.content_padding ?? 'normal',
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null

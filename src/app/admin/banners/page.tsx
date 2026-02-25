@@ -61,6 +61,12 @@ interface Banner {
   validUntil: string | null
   targetCitySlug: string | null
   theme: string
+  contentWidth: string
+  titleSize: string
+  subtitleSize: string
+  verticalAlign: string
+  heroSize: string
+  contentPadding: string
   createdAt: string
   updatedAt: string
 }
@@ -82,6 +88,12 @@ interface BannerFormData {
   targetCitySlug: string
   isActive: boolean
   theme: string
+  contentWidth: string
+  titleSize: string
+  subtitleSize: string
+  verticalAlign: string
+  heroSize: string
+  contentPadding: string
 }
 
 const EMPTY_FORM: BannerFormData = {
@@ -101,6 +113,12 @@ const EMPTY_FORM: BannerFormData = {
   targetCitySlug: '',
   isActive: true,
   theme: 'blush',
+  contentWidth: 'medium',
+  titleSize: 'lg',
+  subtitleSize: 'sm',
+  verticalAlign: 'center',
+  heroSize: 'md',
+  contentPadding: 'normal',
 }
 
 const THEME_SWATCHES: { value: string; color: string; label: string }[] = [
@@ -128,6 +146,15 @@ const OVERLAY_OPTIONS = [
   { value: 'light-right', label: 'Light Right', helper: 'Light gradient on right, dark text' },
   { value: 'full-light', label: 'Full Light', helper: 'Light overlay across full banner, dark text' },
 ]
+
+// ==================== Sizing Maps ====================
+
+const CONTENT_WIDTH_MAP: Record<string, string> = { narrow: '40%', medium: '55%', wide: '70%', full: '100%' }
+const TITLE_SIZE_MAP: Record<string, string> = { sm: '1.25rem', md: '1.75rem', lg: '2.25rem', xl: '2.75rem', '2xl': '3.5rem' }
+const SUBTITLE_SIZE_MAP: Record<string, string> = { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.25rem' }
+const VERTICAL_ALIGN_MAP: Record<string, string> = { top: 'flex-start', center: 'center', bottom: 'flex-end' }
+const HERO_SIZE_MAP: Record<string, string> = { sm: '35%', md: '45%', lg: '55%', xl: '65%' }
+const PADDING_MAP: Record<string, string> = { tight: '1rem', normal: '2rem', spacious: '3rem' }
 
 // ==================== Overlay Helpers ====================
 
@@ -157,17 +184,32 @@ function isLightOverlay(style: string): boolean {
 // ==================== Banner Preview ====================
 
 function BannerPreview({ form }: { form: BannerFormData }) {
+  const [heroError, setHeroError] = useState(false)
   const light = isLightOverlay(form.overlayStyle)
   const textColor = light ? '#1a1a1a' : '#ffffff'
-  const subtitleColor = light ? 'rgba(26,26,26,0.7)' : 'rgba(255,255,255,0.8)'
+  const badgeBg = light ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.2)'
   const hasImage = form.imageUrl?.trim()
+  const hasHero = form.subjectImageUrl?.trim() && !heroError
+
+  const contentWidth = CONTENT_WIDTH_MAP[form.contentWidth] || '55%'
+  const titleSize = TITLE_SIZE_MAP[form.titleSize] || '2.25rem'
+  const subtitleSize = SUBTITLE_SIZE_MAP[form.subtitleSize] || '0.875rem'
+  const verticalAlign = VERTICAL_ALIGN_MAP[form.verticalAlign] || 'center'
+  const heroWidth = HERO_SIZE_MAP[form.heroSize] || '45%'
+  const padding = PADDING_MAP[form.contentPadding] || '2rem'
+
+  // Reset hero error when URL changes
+  useEffect(() => { setHeroError(false) }, [form.subjectImageUrl])
+
+  // Hero on opposite side of text
+  const heroOnLeft = form.textPosition === 'right'
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden w-full"
-      style={{ aspectRatio: '16/6', maxHeight: 180 }}
+      className="relative rounded-xl overflow-hidden w-full"
+      style={{ aspectRatio: '16/5', maxHeight: 260 }}
     >
-      {/* Background */}
+      {/* Layer 1: Background image */}
       {hasImage ? (
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -179,32 +221,52 @@ function BannerPreview({ form }: { form: BannerFormData }) {
         </div>
       )}
 
-      {/* Overlay */}
+      {/* Layer 2: Overlay */}
       <div className="absolute inset-0" style={getOverlayCss(form.overlayStyle)} />
 
-      {/* Badge */}
-      {form.badgeText?.trim() && (
-        <span
-          className="absolute z-10 text-[9px] font-semibold px-2 py-0.5 rounded-full bg-pink-500 text-white"
+      {/* Layer 3: Hero image */}
+      {hasHero && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={form.subjectImageUrl}
+          alt=""
+          onError={() => setHeroError(true)}
           style={{
-            top: 8,
-            ...(form.textPosition === 'right' ? { right: 8 } : { left: 8 }),
+            position: 'absolute',
+            bottom: 0,
+            [heroOnLeft ? 'left' : 'right']: 0,
+            width: heroWidth,
+            height: '100%',
+            objectFit: 'contain',
+            objectPosition: 'bottom center',
+            zIndex: 3,
           }}
-        >
-          {form.badgeText}
-        </span>
+        />
       )}
 
-      {/* Text content */}
+      {/* Layer 4: Content */}
       <div
-        className={`absolute inset-0 z-10 flex flex-col justify-end p-3 ${
-          form.textPosition === 'right' ? 'items-end text-right' : 'items-start text-left'
-        }`}
+        className="absolute inset-0 z-10 flex flex-col"
+        style={{
+          justifyContent: verticalAlign,
+          padding,
+          alignItems: form.textPosition === 'right' ? 'flex-end' : form.textPosition === 'center' ? 'center' : 'flex-start',
+        }}
       >
-        <div className="max-w-[75%]">
+        <div style={{ width: contentWidth, textAlign: form.textPosition === 'right' ? 'right' : form.textPosition === 'center' ? 'center' : 'left' }}>
+          {/* Badge */}
+          {form.badgeText?.trim() && (
+            <span
+              className="inline-block text-[9px] font-semibold px-2 py-0.5 rounded-full mb-1"
+              style={{ color: textColor, backgroundColor: badgeBg }}
+            >
+              {form.badgeText}
+            </span>
+          )}
+
           <div
-            className="text-xs font-bold leading-tight"
-            style={{ color: textColor }}
+            className="font-bold leading-tight"
+            style={{ color: textColor, fontSize: titleSize }}
             dangerouslySetInnerHTML={{
               __html: form.titleHtml?.trim()
                 ? form.titleHtml
@@ -213,13 +275,15 @@ function BannerPreview({ form }: { form: BannerFormData }) {
           />
           {form.subtitleHtml?.trim() && (
             <div
-              className="text-[9px] mt-0.5 leading-tight"
-              style={{ color: subtitleColor }}
+              className="mt-1 leading-tight"
+              style={{ color: textColor, opacity: 0.75, fontSize: subtitleSize }}
               dangerouslySetInnerHTML={{ __html: form.subtitleHtml }}
             />
           )}
           {form.ctaText?.trim() && (
-            <span className="inline-block mt-1 bg-pink-500 text-white text-[8px] font-semibold px-2 py-0.5 rounded-full">
+            <span
+              className="inline-block mt-2 bg-pink-500 text-white text-[10px] font-semibold px-3 py-1 rounded-full"
+            >
               {form.ctaText}
             </span>
           )}
@@ -384,6 +448,12 @@ export default function AdminBannersPage() {
       targetCitySlug: banner.targetCitySlug || '',
       isActive: Boolean(banner.isActive),
       theme: banner.theme || 'blush',
+      contentWidth: banner.contentWidth || 'medium',
+      titleSize: banner.titleSize || 'lg',
+      subtitleSize: banner.subtitleSize || 'sm',
+      verticalAlign: banner.verticalAlign || 'center',
+      heroSize: banner.heroSize || 'md',
+      contentPadding: banner.contentPadding || 'normal',
     })
     setFormErrors({})
     setModalOpen(true)
@@ -420,6 +490,12 @@ export default function AdminBannersPage() {
         targetCitySlug: form.targetCitySlug || null,
         isActive: Boolean(form.isActive),
         theme: form.theme || 'blush',
+        contentWidth: form.contentWidth || 'medium',
+        titleSize: form.titleSize || 'lg',
+        subtitleSize: form.subtitleSize || 'sm',
+        verticalAlign: form.verticalAlign || 'center',
+        heroSize: form.heroSize || 'md',
+        contentPadding: form.contentPadding || 'normal',
       }
 
       const url = editingBanner
@@ -784,17 +860,8 @@ export default function AdminBannersPage() {
 
       {/* ==================== Create/Edit Modal ==================== */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
-          <div className="flex flex-col lg:flex-row max-h-[90vh]">
-            {/* ---- Form Column ---- */}
-            <div className="flex-1 min-w-0 overflow-y-auto p-6">
-              {/* Mobile preview strip */}
-              <div className="lg:hidden mb-4 rounded-lg border bg-gray-50 p-3">
-                <p className="text-xs font-medium text-gray-500 mb-1">Preview</p>
-                <p className="text-[10px] text-gray-400 mb-2">Updates as you type</p>
-                <BannerPreview form={form} />
-              </div>
-
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden p-0">
+          <div className="flex flex-col max-h-[90vh] overflow-y-auto p-6">
               <DialogHeader>
                 <DialogTitle>{editingBanner ? 'Edit Banner' : 'Create New Banner'}</DialogTitle>
                 <DialogDescription>
@@ -1023,7 +1090,130 @@ export default function AdminBannersPage() {
                   </div>
                 </div>
 
-                {/* ---- Section 3: CTAs ---- */}
+                {/* ---- Section 3: Layout & Sizing ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
+                  <p className="text-sm font-semibold text-slate-700">Layout &amp; Sizing</p>
+                  <div className="grid grid-cols-3 gap-4">
+                    {/* Text Position */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Text Position</label>
+                      <select
+                        value={form.textPosition}
+                        onChange={e => setForm(f => ({ ...f, textPosition: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
+
+                    {/* Content Width */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Content Width</label>
+                      <select
+                        value={form.contentWidth}
+                        onChange={e => setForm(f => ({ ...f, contentWidth: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="narrow">Narrow (40%)</option>
+                        <option value="medium">Medium (55%)</option>
+                        <option value="wide">Wide (70%)</option>
+                        <option value="full">Full (100%)</option>
+                      </select>
+                    </div>
+
+                    {/* Title Size */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Title Size</label>
+                      <select
+                        value={form.titleSize}
+                        onChange={e => setForm(f => ({ ...f, titleSize: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="sm">Small</option>
+                        <option value="md">Medium</option>
+                        <option value="lg">Large</option>
+                        <option value="xl">Extra Large</option>
+                        <option value="2xl">2X Large</option>
+                      </select>
+                    </div>
+
+                    {/* Subtitle Size */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Subtitle Size</label>
+                      <select
+                        value={form.subtitleSize}
+                        onChange={e => setForm(f => ({ ...f, subtitleSize: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="xs">Extra Small</option>
+                        <option value="sm">Small</option>
+                        <option value="md">Medium</option>
+                        <option value="lg">Large</option>
+                      </select>
+                    </div>
+
+                    {/* Vertical Align */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Vertical Align</label>
+                      <select
+                        value={form.verticalAlign}
+                        onChange={e => setForm(f => ({ ...f, verticalAlign: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="top">Top</option>
+                        <option value="center">Center</option>
+                        <option value="bottom">Bottom</option>
+                      </select>
+                    </div>
+
+                    {/* Hero Size */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Hero Size</label>
+                      <select
+                        value={form.heroSize}
+                        onChange={e => setForm(f => ({ ...f, heroSize: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="sm">Small (35%)</option>
+                        <option value="md">Medium (45%)</option>
+                        <option value="lg">Large (55%)</option>
+                        <option value="xl">Extra Large (65%)</option>
+                      </select>
+                    </div>
+
+                    {/* Content Padding */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Padding</label>
+                      <select
+                        value={form.contentPadding}
+                        onChange={e => setForm(f => ({ ...f, contentPadding: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        <option value="tight">Tight</option>
+                        <option value="normal">Normal</option>
+                        <option value="spacious">Spacious</option>
+                      </select>
+                    </div>
+
+                    {/* Overlay Style */}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Overlay Style</label>
+                      <select
+                        value={form.overlayStyle}
+                        onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
+                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        {OVERLAY_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ---- Section 4: CTAs ---- */}
                 <div className="border-t border-gray-100 pt-4 mt-2 space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -1078,38 +1268,6 @@ export default function AdminBannersPage() {
                         onChange={e => setForm(f => ({ ...f, secondaryCtaLink: e.target.value }))}
                         className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                       />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ---- Section 4: Layout ---- */}
-                <div className="border-t border-gray-100 pt-4 mt-2">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Text Position</label>
-                      <select
-                        value={form.textPosition}
-                        onChange={e => setForm(f => ({ ...f, textPosition: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        <option value="left">Left</option>
-                        <option value="right">Right</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Overlay Style</label>
-                      <select
-                        value={form.overlayStyle}
-                        onChange={e => setForm(f => ({ ...f, overlayStyle: e.target.value }))}
-                        className="w-full rounded-md border px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                      >
-                        {OVERLAY_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {OVERLAY_OPTIONS.find(o => o.value === form.overlayStyle)?.helper}
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -1170,6 +1328,13 @@ export default function AdminBannersPage() {
                     <label className="text-sm font-medium">Active — show on homepage</label>
                   </div>
                 </div>
+
+                {/* ---- Live Preview (bottom, full-width) ---- */}
+                <div className="border-t border-gray-100 pt-4 mt-2">
+                  <p className="text-sm font-semibold text-slate-700 mb-0.5">Live Preview</p>
+                  <p className="text-xs text-gray-400 mb-3">Updates as you type</p>
+                  <BannerPreview form={form} />
+                </div>
               </div>
 
               <DialogFooter className="mt-6">
@@ -1181,14 +1346,6 @@ export default function AdminBannersPage() {
                   {editingBanner ? 'Save Changes' : 'Create Banner'}
                 </Button>
               </DialogFooter>
-            </div>
-
-            {/* ---- Desktop Preview Column ---- */}
-            <div className="hidden lg:flex lg:flex-col w-[340px] shrink-0 border-l bg-gray-50 p-4 overflow-y-auto">
-              <p className="text-sm font-medium mb-0.5">Preview</p>
-              <p className="text-xs text-gray-400 mb-3">Updates as you type</p>
-              <BannerPreview form={form} />
-            </div>
           </div>
         </DialogContent>
       </Dialog>
