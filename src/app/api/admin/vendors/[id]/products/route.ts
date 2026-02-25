@@ -68,6 +68,7 @@ export async function GET(
           dailyLimit: vp.dailyLimit,
           isAvailable: vp.isAvailable,
           isSameDayEligible: vp.isSameDayEligible,
+          isExpressEligible: vp.isExpressEligible ?? false,
           product: vp.products ? (() => {
             const prod = vp.products as Record<string, unknown>
             return {
