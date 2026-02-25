@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
+import { autoAssignProductToVendors } from '@/lib/auto-assign-vendor-products'
 import { z } from 'zod/v4'
 
 // ==================== GET — Single product with all relations ====================
@@ -184,7 +185,7 @@ export async function PUT(
 
     const { data: existing } = await supabase
       .from('products')
-      .select('id')
+      .select('id, categoryId, isActive')
       .eq('id', params.id)
       .maybeSingle()
 
@@ -489,6 +490,20 @@ export async function PUT(
       }
     }
 
+    // Auto-assign product to vendors if category changed or product reactivated
+    const effectiveCategoryId = data.categoryId ?? existing.categoryId
+    const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId
+    const reactivated = data.isActive === true && existing.isActive === false
+
+    if (categoryChanged || reactivated) {
+      const assignResult = await autoAssignProductToVendors(params.id, effectiveCategoryId)
+      console.log(
+        `[product-put] Auto-assigned product ${params.id} to ${assignResult.attempted} vendors` +
+        (categoryChanged ? ` (category changed)` : ' (reactivated)') +
+        (assignResult.error ? `, error: ${assignResult.error}` : '')
+      )
+    }
+
     // Fetch updated product
     const { data: updatedProduct } = await supabase
       .from('products')
@@ -566,7 +581,7 @@ export async function PATCH(
 
     const { data: existing } = await supabase
       .from('products')
-      .select('id')
+      .select('id, categoryId, isActive')
       .eq('id', params.id)
       .maybeSingle()
 
@@ -617,6 +632,20 @@ export async function PATCH(
       .single()
 
     if (error) throw error
+
+    // Auto-assign product to vendors if category changed or product reactivated
+    const effectiveCategoryId = data.categoryId ?? existing.categoryId
+    const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId
+    const reactivated = data.isActive === true && existing.isActive === false
+
+    if (categoryChanged || reactivated) {
+      const assignResult = await autoAssignProductToVendors(params.id, effectiveCategoryId)
+      console.log(
+        `[product-patch] Auto-assigned product ${params.id} to ${assignResult.attempted} vendors` +
+        (categoryChanged ? ` (category changed)` : ' (reactivated)') +
+        (assignResult.error ? `, error: ${assignResult.error}` : '')
+      )
+    }
 
     // Get vendor product count
     const { count: vpCount } = await supabase

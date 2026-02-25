@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
+import { autoAssignVendorProducts } from '@/lib/auto-assign-vendor-products'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -249,6 +250,16 @@ export async function POST(request: NextRequest) {
       newValue: { businessName: data.businessName, ownerName: data.ownerName, email: data.email },
       reason: 'Admin created vendor',
     })
+
+    // 5. Auto-assign products from vendor's selected categories
+    if (data.categories.length > 0) {
+      const assignResult = await autoAssignVendorProducts(vendor.id, data.categories)
+      console.log(
+        `[vendor-create] Auto-assigned products for vendor ${vendor.id}: ` +
+        `${assignResult.attempted} attempted` +
+        (assignResult.error ? `, error: ${assignResult.error}` : '')
+      )
+    }
 
     // Fetch the full vendor with relations
     const { data: fullVendor } = await supabase

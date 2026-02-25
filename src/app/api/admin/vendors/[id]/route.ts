@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
 import { recalculateCitySlotCutoff } from '@/lib/recalculate-city-slots'
+import { autoAssignVendorProducts } from '@/lib/auto-assign-vendor-products'
 import { z } from 'zod/v4'
 
 const updateVendorSchema = z.object({
@@ -173,6 +174,22 @@ export async function PATCH(
       await recalculateCitySlotCutoff(updated.cityId)
     }
 
+    // Auto-assign products if new categories were added
+    if (data.categories !== undefined) {
+      const oldCategories: string[] = (vendor.categories as string[]) || []
+      const newCategories: string[] = data.categories
+      const addedCategories = newCategories.filter((c: string) => !oldCategories.includes(c))
+
+      if (addedCategories.length > 0) {
+        const assignResult = await autoAssignVendorProducts(id, addedCategories)
+        console.log(
+          `[vendor-patch] Auto-assigned products for vendor ${id}: ` +
+          `${assignResult.attempted} attempted from categories [${addedCategories.join(', ')}]` +
+          (assignResult.error ? `, error: ${assignResult.error}` : '')
+        )
+      }
+    }
+
     // Get counts
     const { count: orderCount } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('vendorId', id)
     const { count: productCount } = await supabase.from('vendor_products').select('*', { count: 'exact', head: true }).eq('vendorId', id)
@@ -309,6 +326,22 @@ export async function PUT(
       // If city changed, also recalculate the old city
       if (data.cityId && data.cityId !== vendor.cityId) {
         await recalculateCitySlotCutoff(vendor.cityId)
+      }
+    }
+
+    // Auto-assign products if new categories were added
+    if (data.categories !== undefined) {
+      const oldCategories: string[] = (vendor.categories as string[]) || []
+      const newCategories: string[] = data.categories
+      const addedCategories = newCategories.filter((c: string) => !oldCategories.includes(c))
+
+      if (addedCategories.length > 0) {
+        const assignResult = await autoAssignVendorProducts(id, addedCategories)
+        console.log(
+          `[vendor-put] Auto-assigned products for vendor ${id}: ` +
+          `${assignResult.attempted} attempted from categories [${addedCategories.join(', ')}]` +
+          (assignResult.error ? `, error: ${assignResult.error}` : '')
+        )
       }
     }
 
