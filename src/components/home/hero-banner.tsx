@@ -232,10 +232,6 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
                    items-center justify-center w-9 h-9 rounded-full
                    bg-black/30 hover:bg-black/50 text-white transition-colors"
         aria-label="Next banner"
-      <div
-        className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px]"
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
       >
         <ChevronRight className="w-5 h-5" />
       </button>
