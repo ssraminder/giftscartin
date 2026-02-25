@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { type Layer, migrateOldBannerToLayers } from '@/lib/banner-layers'
 import { BannerLayerRenderer } from '@/components/home/banner-layer-renderer'
@@ -17,21 +17,19 @@ interface ResolvedBanner {
   resolvedLayers: Layer[]
 }
 
-const SLIDE_GAP = 16 // gap-4 = 1rem
-const AUTO_PLAY_MS = 5000
-const TRANSITION_MS = 400
+const CLONE_COUNT = 3
+const AUTO_PLAY_MS = 4000
 
 export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {}) {
   const [banners, setBanners] = useState<ResolvedBanner[]>([])
-  const [currentIndex, setCurrentIndex] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(CLONE_COUNT)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
-  const [transitionEnabled, setTransitionEnabled] = useState(true)
   const [loading, setLoading] = useState(true)
   const [slideWidth, setSlideWidth] = useState(0)
-
-  const trackRef = useRef<HTMLDivElement>(null)
-  const isPausedRef = useRef(false)
-  const touchStartX = useRef(0)
+  const [gap, setGap] = useState(16)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Resolve layers for a banner — migrate old format if needed
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,7 +42,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
     return {
       ...banner,
       resolvedLayers: hasLayers
-        ? rawLayers as Layer[]
+        ? (rawLayers as Layer[])
         : migrateOldBannerToLayers(banner),
     }
   }, [])
@@ -74,219 +72,200 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       .finally(() => setLoading(false))
   }, [propBanners, resolveBanner])
 
-  // Sync ref
-  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
-
-  const len = banners.length
-  const hasMultiple = len > 1
-
-  // For infinite loop: displayBanners = [lastClone, ...banners, firstClone]
-  // Index 0 = clone of last, index len+1 = clone of first
-  // Start at index 1 (first real slide)
+  // Measure container and compute responsive slide dimensions
   useEffect(() => {
-    if (hasMultiple) setCurrentIndex(1)
-    else setCurrentIndex(0)
-  }, [hasMultiple])
-
-  // Measure slide width from DOM
-  const measure = useCallback(() => {
-    if (trackRef.current && trackRef.current.children.length > 0) {
-      setSlideWidth((trackRef.current.children[0] as HTMLElement).offsetWidth)
+    if (!containerRef.current) return
+    const measure = () => {
+      const el = containerRef.current!
+      const cs = getComputedStyle(el)
+      const pl = parseFloat(cs.paddingLeft) || 0
+      const visibleArea = el.clientWidth - pl
+      const isMobile = el.clientWidth < 768
+      const g = isMobile ? 12 : 16
+      // Mobile: ~1.1 tiles visible, Desktop: ~2.5 tiles visible
+      const visibleCount = isMobile ? 1.1 : 2.5
+      const gapsInView = Math.floor(visibleCount)
+      const sw = (visibleArea - gapsInView * g) / visibleCount
+      setSlideWidth(sw)
+      setGap(g)
+      setIsTransitioning(false)
     }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(containerRef.current)
+    return () => observer.disconnect()
   }, [])
 
-  useEffect(() => { measure() }, [banners, measure])
+  const realCount = banners.length
 
-  useEffect(() => {
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [measure])
+  // Build extended slides: [last N clones] + [real slides] + [first N clones]
+  const extendedSlides = useMemo(() => {
+    if (realCount === 0) return []
+    const before = banners.slice(-CLONE_COUNT)
+    const after = banners.slice(0, CLONE_COUNT)
+    return [...before, ...banners, ...after]
+  }, [banners, realCount])
 
-  // Infinite loop boundary jumps
-  useEffect(() => {
-    if (!hasMultiple) return
-
-    if (currentIndex === len + 1) {
-      // Reached clone of first → jump back to real first
-      const t = setTimeout(() => {
-        setTransitionEnabled(false)
-        setCurrentIndex(1)
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => setTransitionEnabled(true))
-        )
-      }, TRANSITION_MS + 20)
-      return () => clearTimeout(t)
-    }
-
-    if (currentIndex === 0) {
-      // Reached clone of last → jump to real last
-      const t = setTimeout(() => {
-        setTransitionEnabled(false)
-        setCurrentIndex(len)
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => setTransitionEnabled(true))
-        )
-      }, TRANSITION_MS + 20)
-      return () => clearTimeout(t)
-    }
-  }, [currentIndex, len, hasMultiple])
-
-  // Auto-advance
-  useEffect(() => {
-    if (!hasMultiple) return
-    const interval = setInterval(() => {
-      if (isPausedRef.current) return
-      setTransitionEnabled(true)
-      setCurrentIndex(prev => prev + 1)
-    }, AUTO_PLAY_MS)
-    return () => clearInterval(interval)
-  }, [hasMultiple])
+  const goTo = useCallback((index: number) => {
+    setIsTransitioning(true)
+    setCurrentIndex(index)
+  }, [])
 
   const goNext = useCallback(() => {
-    setTransitionEnabled(true)
-    setCurrentIndex(prev => prev + 1)
-  }, [])
+    goTo(currentIndex + 1)
+  }, [currentIndex, goTo])
 
   const goPrev = useCallback(() => {
-    setTransitionEnabled(true)
-    setCurrentIndex(prev => prev - 1)
-  }, [])
+    goTo(currentIndex - 1)
+  }, [currentIndex, goTo])
 
-  const goToDot = useCallback((dotIndex: number) => {
-    setTransitionEnabled(true)
-    setCurrentIndex(dotIndex + 1) // +1 because index 0 is lastClone
-  }, [])
+  // After transition ends on a clone, instantly snap to the matching real slide
+  const handleTransitionEnd = useCallback(() => {
+    setIsTransitioning(false)
+    setCurrentIndex((prev) => {
+      if (prev >= CLONE_COUNT + realCount) {
+        return CLONE_COUNT + (prev - CLONE_COUNT - realCount)
+      }
+      if (prev < CLONE_COUNT) {
+        return CLONE_COUNT + realCount - (CLONE_COUNT - prev)
+      }
+      return prev
+    })
+  }, [realCount])
 
-  // Touch handlers
+  // Auto-play
+  useEffect(() => {
+    if (realCount <= 1 || isPaused) {
+      if (timerRef.current) clearInterval(timerRef.current)
+      timerRef.current = null
+      return
+    }
+    timerRef.current = setInterval(goNext, AUTO_PLAY_MS)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [realCount, isPaused, goNext])
+
+  // Touch / swipe
+  const touchStartX = useRef(0)
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX
+    setIsPaused(true)
   }
   const handleTouchEnd = (e: React.TouchEvent) => {
-    const delta = touchStartX.current - e.changedTouches[0].clientX
-    if (Math.abs(delta) > 50) {
-      if (delta > 0) goNext()
+    const dx = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(dx) > 50) {
+      if (dx > 0) goNext()
       else goPrev()
     }
+    setIsPaused(false)
   }
 
-  const activeDot = hasMultiple ? ((currentIndex - 1 + len) % len) : 0
+  const activeDot =
+    realCount > 0
+      ? ((currentIndex - CLONE_COUNT) % realCount + realCount) % realCount
+      : 0
+  const translateX = -(currentIndex * (slideWidth + gap))
 
-  if (loading) {
-    return (
-      <div className="px-4 md:px-6 lg:px-8 py-2">
-        <div className="w-[92vw] sm:w-[55vw] md:w-[45vw] lg:w-[37vw] 2xl:w-[31vw] max-w-[600px] aspect-[4/3] md:aspect-[16/9] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
-      </div>
-    )
-  }
+  // No banners after loading
+  if (!loading && realCount === 0) return null
 
-  if (len === 0) return null
-
-  // Single banner — no carousel
-  if (len === 1) {
-    return (
-      <div className="px-4 md:px-6 lg:px-8 py-2">
-        <div className="relative overflow-hidden rounded-2xl w-[92vw] sm:w-[55vw] md:w-[45vw] lg:w-[37vw] 2xl:w-[31vw] max-w-[600px] aspect-[4/3] md:aspect-[16/9]">
-          <BannerLayerRenderer
-            layers={banners[0].resolvedLayers}
-            priority={true}
-            className="absolute inset-0 w-full h-full"
-          />
-        </div>
-        <div className="w-full aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
-      </div>
-    )
-  }
-
-  // Build display list with clones: [lastClone, ...banners, firstClone]
-  const displayBanners = [
-    banners[len - 1],
-    ...banners,
-    banners[0],
-  ]
-
-  const offset = slideWidth > 0
-    ? currentIndex * (slideWidth + SLIDE_GAP)
-    : 0
+  const showTrack = !loading && slideWidth > 0 && realCount > 0
 
   return (
     <div
-      className="relative px-4 md:px-6 lg:px-8 py-2"
+      className="relative py-2"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
     >
-      {/* Left arrow */}
-      <button
-        onClick={goPrev}
-        className="hidden md:flex absolute left-1 top-1/2 -translate-y-1/2 z-20
-                   items-center justify-center w-9 h-9 rounded-full
-                   bg-black/30 hover:bg-black/50 text-white transition-colors"
-        aria-label="Previous banner"
-      >
-        <ChevronLeft className="w-5 h-5" />
-      </button>
-
-      {/* Right arrow */}
-      <button
-        onClick={goNext}
-        className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 z-20
-                   items-center justify-center w-9 h-9 rounded-full
-                   bg-black/30 hover:bg-black/50 text-white transition-colors"
-        aria-label="Next banner"
       <div
-        className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px]"
+        ref={containerRef}
+        className="overflow-hidden pl-4 md:pl-6 lg:pl-8"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <ChevronRight className="w-5 h-5" />
-      </button>
-
-      <div className="overflow-hidden rounded-2xl">
-        <div
-          ref={trackRef}
-          className="flex gap-4"
-          style={{
-            transform: `translateX(-${offset}px)`,
-            transition: transitionEnabled ? `transform ${TRANSITION_MS}ms ease` : 'none',
-          }}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
-          {displayBanners.map((banner, i) => (
-            <div
-              key={`${banner.id}-${i}`}
-              className="relative flex-shrink-0 rounded-2xl overflow-hidden
-                         w-[92vw] sm:w-[55vw] md:w-[45vw] lg:w-[37vw] 2xl:w-[31vw] max-w-[600px]"
-            >
-              <div className="relative w-full aspect-[4/3] md:aspect-[16/9]">
+        {showTrack ? (
+          <div
+            className="flex"
+            style={{
+              gap: `${gap}px`,
+              transform: `translateX(${translateX}px)`,
+              transition: isTransitioning
+                ? 'transform 500ms ease-in-out'
+                : 'none',
+            }}
+            onTransitionEnd={handleTransitionEnd}
+          >
+            {extendedSlides.map((banner, idx) => (
+              <div
+                key={`${banner.id}-${idx}`}
+                className="flex-shrink-0 rounded-2xl overflow-hidden aspect-[4/3]"
+                style={{ width: `${slideWidth}px` }}
+              >
                 <BannerLayerRenderer
                   layers={banner.resolvedLayers}
-                  priority={i <= 2}
-                  className="absolute inset-0 w-full h-full"
+                  priority={idx >= CLONE_COUNT && idx < CLONE_COUNT + 2}
+                  className="w-full h-full"
                 />
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-3 md:gap-4">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex-shrink-0 aspect-[4/3] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl"
+                style={{ width: '38%' }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Dot indicators */}
-      <div className="flex justify-center gap-1.5 mt-3">
-        {banners.map((_, i) => (
+      {/* Navigation arrows */}
+      {showTrack && realCount > 1 && (
+        <>
           <button
-            key={i}
-            onClick={() => goToDot(i)}
-            aria-label={`Go to slide ${i + 1}`}
-            className="transition-all duration-300 rounded-full"
-            style={{
-              width: i === activeDot ? '20px' : '6px',
-              height: '6px',
-              backgroundColor: i === activeDot
-                ? '#E91E63'
-                : 'rgba(0,0,0,0.2)',
-            }}
-          />
-        ))}
-      </div>
+            onClick={goPrev}
+            className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 z-10
+                       w-8 h-8 rounded-full bg-white/80 hover:bg-white
+                       flex items-center justify-center shadow-md transition-colors"
+            aria-label="Previous banner"
+          >
+            <ChevronLeft className="w-4 h-4 text-gray-700" />
+          </button>
+          <button
+            onClick={goNext}
+            className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 z-10
+                       w-8 h-8 rounded-full bg-white/80 hover:bg-white
+                       flex items-center justify-center shadow-md transition-colors"
+            aria-label="Next banner"
+          >
+            <ChevronRight className="w-4 h-4 text-gray-700" />
+          </button>
+        </>
+      )}
+
+      {/* Dot indicators */}
+      {showTrack && realCount > 1 && (
+        <div className="flex justify-center gap-1.5 mt-3">
+          {banners.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goTo(CLONE_COUNT + i)}
+              aria-label={`Go to slide ${i + 1}`}
+              className="transition-all duration-300 rounded-full"
+              style={{
+                width: i === activeDot ? '20px' : '6px',
+                height: '6px',
+                backgroundColor:
+                  i === activeDot ? '#E91E63' : 'rgba(0,0,0,0.2)',
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
