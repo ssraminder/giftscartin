@@ -123,6 +123,7 @@ export function BannerCanvas({
               flexDirection: 'column',
               justifyContent: l.verticalAlign === 'top' ? 'flex-start'
                 : l.verticalAlign === 'bottom' ? 'flex-end' : 'center',
+              color: l.color || '#111827',
               fontFamily: `'${l.fontFamily}', sans-serif`,
               fontSize: `${l.fontSize}px`,
               fontWeight: l.fontWeight,

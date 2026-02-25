@@ -192,6 +192,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
             className="absolute inset-0 w-full h-full"
           />
         </div>
+        <div className="w-full aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px] bg-gradient-to-br from-pink-500 to-purple-600 animate-pulse rounded-2xl" />
       </div>
     )
   }
@@ -231,6 +232,10 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
                    items-center justify-center w-9 h-9 rounded-full
                    bg-black/30 hover:bg-black/50 text-white transition-colors"
         aria-label="Next banner"
+      <div
+        className="relative w-full overflow-hidden rounded-2xl aspect-[4/3] md:aspect-[16/9] md:max-h-[420px] md:min-h-[280px]"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
         <ChevronRight className="w-5 h-5" />
       </button>

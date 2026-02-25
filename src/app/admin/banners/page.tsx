@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ChevronDown,
   Pencil,
+  Copy,
   Trash2,
   Loader2,
   RefreshCw,
@@ -424,6 +425,41 @@ export default function AdminBannersPage() {
     }
   }
 
+  const handleDuplicate = async (banner: Banner) => {
+    try {
+      const payload = {
+        title: `${banner.titleHtml || 'Banner'} (Copy)`,
+        titleHtml: banner.titleHtml,
+        subtitleHtml: banner.subtitleHtml,
+        layers: banner.layers,
+        isActive: false,
+        sortOrder: 9999,
+        targetCitySlug: banner.targetCitySlug,
+        validFrom: banner.validFrom,
+        validUntil: banner.validUntil,
+        imageUrl: banner.imageUrl,
+        ctaText: banner.ctaText,
+        ctaLink: banner.ctaLink,
+        overlayStyle: banner.overlayStyle,
+        textPosition: banner.textPosition,
+        theme: banner.theme,
+      }
+
+      const res = await fetch('/api/admin/banners', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) throw new Error('Duplicate failed')
+
+      showToast('success', 'Banner duplicated as inactive')
+      fetchBanners()
+    } catch {
+      showToast('error', 'Failed to duplicate banner')
+    }
+  }
+
   // ==================== Helpers ====================
 
   const formatDate = (dateStr: string) => {
@@ -581,6 +617,15 @@ export default function AdminBannersPage() {
 
                 <Button variant="outline" size="sm" onClick={() => openEditModal(banner)}>
                   <Pencil className="h-3.5 w-3.5" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDuplicate(banner)}
+                  title="Duplicate banner"
+                >
+                  <Copy className="h-3.5 w-3.5" />
                 </Button>
 
                 <Button

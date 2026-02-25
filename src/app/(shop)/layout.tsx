@@ -33,7 +33,7 @@ export default async function ShopLayout({
         .from('platform_settings')
         .select('value')
         .eq('key', 'logo_url')
-        .single(),
+        .maybeSingle(),
       supabase
         .from('menu_items')
         .select('id, parentId, label, slug, href, icon, sortOrder, isVisible, itemType')
