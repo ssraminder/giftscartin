@@ -46,6 +46,12 @@ export async function GET(request: NextRequest) {
       validUntil: b.valid_until,
       targetCitySlug: b.target_city_slug,
       theme: b.theme,
+      contentWidth: b.content_width ?? 'medium',
+      titleSize: b.title_size ?? 'lg',
+      subtitleSize: b.subtitle_size ?? 'sm',
+      verticalAlign: b.vertical_align ?? 'center',
+      heroSize: b.hero_size ?? 'md',
+      contentPadding: b.content_padding ?? 'normal',
     }))
 
     return NextResponse.json({ success: true, data: mapped }, {

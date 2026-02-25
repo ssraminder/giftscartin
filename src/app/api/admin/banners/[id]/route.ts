@@ -39,6 +39,12 @@ export async function PATCH(
       subjectImageUrl: 'subject_image_url',
       targetCitySlug: 'target_city_slug',
       theme: 'theme',
+      contentWidth: 'content_width',
+      titleSize: 'title_size',
+      subtitleSize: 'subtitle_size',
+      verticalAlign: 'vertical_align',
+      heroSize: 'hero_size',
+      contentPadding: 'content_padding',
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {
@@ -77,6 +83,12 @@ export async function PATCH(
       validUntil: data.valid_until,
       targetCitySlug: data.target_city_slug,
       theme: data.theme,
+      contentWidth: data.content_width ?? 'medium',
+      titleSize: data.title_size ?? 'lg',
+      subtitleSize: data.subtitle_size ?? 'sm',
+      verticalAlign: data.vertical_align ?? 'center',
+      heroSize: data.hero_size ?? 'md',
+      contentPadding: data.content_padding ?? 'normal',
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     } : null
