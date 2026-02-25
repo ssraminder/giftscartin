@@ -44,6 +44,7 @@ export function BannerCanvas({
   snapToGrid,
   onSnapToGridChange,
   aspectRatio,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onAspectRatioChange,
 }: BannerCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null)
