@@ -36,6 +36,8 @@ const fullUpdateVendorSchema = z.object({
     closeTime: z.string(),
     isClosed: z.boolean().default(false),
   })).optional(),
+  gstNumber: z.string().max(15).optional().nullable(),
+  fssaiNumber: z.string().max(14).optional().nullable(),
   pincodes: z.array(z.object({
     pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode'),
     deliveryCharge: z.number().min(0).default(0),
@@ -286,6 +288,8 @@ export async function PUT(
     if (data.isOnline !== undefined) vendorUpdate.isOnline = data.isOnline
     if (data.lat !== undefined) vendorUpdate.lat = data.lat
     if (data.lng !== undefined) vendorUpdate.lng = data.lng
+    if (data.gstNumber !== undefined) vendorUpdate.gstNumber = data.gstNumber
+    if (data.fssaiNumber !== undefined) vendorUpdate.fssaiNumber = data.fssaiNumber
 
     // Update vendor
     await supabase.from('vendors').update(vendorUpdate).eq('id', id)

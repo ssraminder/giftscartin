@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, CheckSquare, Square, Loader2 } from 'lucide-react'
+import { Search, CheckSquare, Square, Loader2, Check, X } from 'lucide-react'
 
 // ==================== Types ====================
 
@@ -13,21 +13,40 @@ interface ServiceArea {
   isActive: boolean
 }
 
-// ==================== By Area (Checkmarks) ====================
+interface VendorPincode {
+  pincode: string
+  deliveryCharge: number
+  pendingCharge: number | null
+}
+
+// ==================== By Area (Checkmarks + Surcharges) ====================
 
 interface AreaProps {
   vendorId: string
   cityId: string
   currentPincodes: string[]
+  currentCharges?: VendorPincode[]
   onSave: (pincodes: string[]) => void
 }
 
-export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, onSave }: AreaProps) {
+export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, currentCharges, onSave }: AreaProps) {
   const [areas, setAreas] = useState<ServiceArea[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set(currentPincodes))
+  const [charges, setCharges] = useState<Record<string, number>>({})
   const [search, setSearch] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [loadingAreas, setLoadingAreas] = useState(true)
+
+  // Initialize charges from currentCharges
+  useEffect(() => {
+    if (currentCharges) {
+      const chargeMap: Record<string, number> = {}
+      for (const pc of currentCharges) {
+        chargeMap[pc.pincode] = pc.deliveryCharge
+      }
+      setCharges(chargeMap)
+    }
+  }, [currentCharges])
 
   useEffect(() => {
     if (!cityId) return
@@ -70,16 +89,28 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, onSave
     })
   }
 
+  const updateCharge = (pincode: string, value: string) => {
+    const num = parseFloat(value)
+    setCharges(prev => ({
+      ...prev,
+      [pincode]: isNaN(num) ? 0 : num,
+    }))
+  }
+
   const handleSave = async () => {
     if (!vendorId) return
     setIsSaving(true)
     try {
+      const pincodeCharges = Array.from(selected).map(pincode => ({
+        pincode,
+        deliveryCharge: charges[pincode] || 0,
+      }))
       await fetch(`/api/admin/vendors/${vendorId}/coverage`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           method: 'pincode',
-          pincodes: Array.from(selected),
+          pincodeCharges,
         }),
       })
       onSave(Array.from(selected))
@@ -91,6 +122,38 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, onSave
   }
 
   const allPincodes = new Set(areas.map(a => a.pincode))
+
+  // Pending charges from vendor
+  const pendingCharges = (currentCharges || []).filter(pc => pc.pendingCharge !== null)
+
+  const handleApproveAll = async () => {
+    if (!vendorId || pendingCharges.length === 0) return
+    try {
+      await fetch(`/api/admin/vendors/${vendorId}/coverage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'approve' }),
+      })
+      // Reload page to see updated charges
+      window.location.reload()
+    } catch {
+      // silently fail
+    }
+  }
+
+  const handleRejectAll = async () => {
+    if (!vendorId || pendingCharges.length === 0) return
+    try {
+      await fetch(`/api/admin/vendors/${vendorId}/coverage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject' }),
+      })
+      window.location.reload()
+    } catch {
+      // silently fail
+    }
+  }
 
   if (loadingAreas) {
     return (
@@ -110,6 +173,38 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, onSave
 
   return (
     <div className="space-y-4">
+      {/* Pending charge requests */}
+      {pendingCharges.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+          <p className="text-sm font-medium text-amber-800">
+            {pendingCharges.length} pending surcharge request{pendingCharges.length !== 1 ? 's' : ''} from vendor
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {pendingCharges.map(pc => (
+              <span key={pc.pincode} className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">
+                {pc.pincode}: ₹{pc.deliveryCharge} → ₹{pc.pendingCharge}
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleApproveAll}
+              className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
+            >
+              <Check className="h-3 w-3" /> Approve All
+            </button>
+            <button
+              type="button"
+              onClick={handleRejectAll}
+              className="flex items-center gap-1 text-xs font-medium text-red-700 bg-red-100 px-3 py-1.5 rounded-lg hover:bg-red-200 transition-colors"
+            >
+              <X className="h-3 w-3" /> Reject All
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -147,22 +242,41 @@ export function VendorCoverageByArea({ vendorId, cityId, currentPincodes, onSave
           </p>
         ) : (
           Object.entries(grouped).map(([pincode, areaList]) => (
-            <button
+            <div
               key={pincode}
-              type="button"
-              onClick={() => togglePincode(pincode)}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+              className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
             >
-              {selected.has(pincode) ? (
-                <CheckSquare className="h-4 w-4 text-pink-600 shrink-0" />
-              ) : (
-                <Square className="h-4 w-4 text-gray-300 shrink-0" />
+              <button
+                type="button"
+                onClick={() => togglePincode(pincode)}
+                className="flex items-center gap-3 flex-1 text-left"
+              >
+                {selected.has(pincode) ? (
+                  <CheckSquare className="h-4 w-4 text-pink-600 shrink-0" />
+                ) : (
+                  <Square className="h-4 w-4 text-gray-300 shrink-0" />
+                )}
+                <span className="text-sm font-mono text-gray-500 w-16">{pincode}</span>
+                <span className="text-sm text-gray-700 flex-1">
+                  {areaList.map(a => a.name).join(', ')}
+                </span>
+              </button>
+              {selected.has(pincode) && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs text-gray-400">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={charges[pincode] || 0}
+                    onChange={e => updateCharge(pincode, e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    className="w-16 px-1.5 py-1 text-xs border border-gray-200 rounded text-right focus:outline-none focus:border-pink-500"
+                    placeholder="0"
+                  />
+                </div>
               )}
-              <span className="text-sm font-mono text-gray-500 w-16">{pincode}</span>
-              <span className="text-sm text-gray-700">
-                {areaList.map(a => a.name).join(', ')}
-              </span>
-            </button>
+            </div>
           ))
         )}
       </div>

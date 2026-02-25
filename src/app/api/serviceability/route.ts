@@ -346,6 +346,25 @@ async function handleFullServiceability(
   const deliveryCharge = Number(city.baseDeliveryCharge)
   const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
+  // Check if any vendors have extra delivery charges for this pincode
+  let extraDeliveryCharge = 0
+  const allVendorIds = Array.from(allVendorIdSet)
+  if (allVendorIds.length > 0) {
+    const { data: vpCharges } = await supabase
+      .from('vendor_pincodes')
+      .select('deliveryCharge')
+      .eq('pincode', pincode)
+      .in('vendorId', allVendorIds)
+      .gt('deliveryCharge', 0)
+
+    if (vpCharges && vpCharges.length > 0) {
+      // Return the minimum surcharge (most favorable to customer)
+      extraDeliveryCharge = Math.min(
+        ...vpCharges.map((vc: { deliveryCharge: unknown }) => Number(vc.deliveryCharge))
+      )
+    }
+  }
+
   return NextResponse.json({
     success: true,
     data: {
@@ -356,6 +375,7 @@ async function handleFullServiceability(
       vendorCount,
       productAvailable,
       deliveryCharge,
+      extraDeliveryCharge,
       freeDeliveryAbove,
       availableSlots,
       deliverySlots: availableSlots,

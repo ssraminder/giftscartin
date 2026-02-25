@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSessionFromRequest } from '@/lib/auth'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { isVendorRole, isAdminRole } from '@/lib/roles'
+import { ensureServiceAreas } from '@/lib/pincode-resolver'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -23,6 +24,13 @@ const updateVendorSettingsSchema = z.object({
   bankIfsc: z.string().optional(),
   bankName: z.string().optional(),
   deliveryRadiusKm: z.number().min(1).max(100).optional(),
+  // Pincode management
+  pincodes: z.array(z.string().regex(/^\d{6}$/)).optional(),
+  // Surcharge proposals (vendor proposes, admin approves)
+  pincodeCharges: z.array(z.object({
+    pincode: z.string().regex(/^\d{6}$/),
+    charge: z.number().min(0),
+  })).optional(),
 })
 
 async function getVendorWithRelations(request: NextRequest) {
@@ -65,6 +73,7 @@ export async function GET(request: NextRequest) {
         pincodes: (vendor.vendor_pincodes || []).map((p: Record<string, unknown>) => ({
           ...p,
           deliveryCharge: Number(p.deliveryCharge),
+          pendingCharge: p.pendingCharge != null ? Number(p.pendingCharge) : null,
         })),
         slots: (vendor.vendor_slots || []).map((s: Record<string, unknown>) => {
           const slot = s.delivery_slots as Record<string, unknown> | null
@@ -162,6 +171,60 @@ export async function PATCH(request: NextRequest) {
       .single()
 
     if (updateError) throw updateError
+
+    // Handle pincode management (add/remove)
+    if (data.pincodes) {
+      // Get current pincodes
+      const { data: currentPincodes } = await supabase
+        .from('vendor_pincodes')
+        .select('pincode')
+        .eq('vendorId', vendor.id)
+      const currentSet = new Set((currentPincodes || []).map((p: { pincode: string }) => p.pincode))
+      const newSet = new Set(data.pincodes)
+
+      // Remove pincodes that are no longer in the list
+      const toRemove = Array.from(currentSet).filter(p => !newSet.has(p))
+      if (toRemove.length > 0) {
+        await supabase
+          .from('vendor_pincodes')
+          .delete()
+          .eq('vendorId', vendor.id)
+          .in('pincode', toRemove)
+      }
+
+      // Add new pincodes
+      const toAdd = Array.from(newSet).filter(p => !currentSet.has(p))
+      if (toAdd.length > 0) {
+        await supabase.from('vendor_pincodes').insert(
+          toAdd.map(pincode => ({
+            vendorId: vendor.id,
+            pincode,
+            deliveryCharge: 0,
+            pendingCharge: null,
+            isActive: true,
+          }))
+        )
+      }
+
+      // Auto-create service_areas for any new pincodes
+      if (toAdd.length > 0) {
+        const areaResult = await ensureServiceAreas(toAdd, vendor.cityId)
+        if (areaResult.created > 0) {
+          console.log(`[vendor-settings] Auto-created ${areaResult.created} service areas for vendor ${vendor.id}`)
+        }
+      }
+    }
+
+    // Handle surcharge proposals (vendor proposes, admin must approve)
+    if (data.pincodeCharges && data.pincodeCharges.length > 0) {
+      for (const pc of data.pincodeCharges) {
+        await supabase
+          .from('vendor_pincodes')
+          .update({ pendingCharge: pc.charge })
+          .eq('vendorId', vendor.id)
+          .eq('pincode', pc.pincode)
+      }
+    }
 
     return NextResponse.json({
       success: true,

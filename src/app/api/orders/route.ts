@@ -639,7 +639,7 @@ export async function POST(request: NextRequest) {
 
     // Add COD fee if payment method is cash on delivery
     const codFee = paymentMethod === 'cod' ? 50 : 0
-    const total = subtotal + deliveryCharge + surcharge + codFee - discount
+    let total = subtotal + deliveryCharge + surcharge + codFee - discount
 
     // Determine city code for order number
     const cityCode = zone
@@ -701,6 +701,23 @@ export async function POST(request: NextRequest) {
         bestVendorId = (approvedEntries[0].vendors as unknown as { id: string }).id
       }
     }
+
+    // Add vendor-specific pincode delivery surcharge
+    if (bestVendorId && address.pincode) {
+      const { data: vpCharge } = await supabase
+        .from('vendor_pincodes')
+        .select('deliveryCharge')
+        .eq('vendorId', bestVendorId)
+        .eq('pincode', address.pincode as string)
+        .maybeSingle()
+
+      if (vpCharge && Number(vpCharge.deliveryCharge) > 0) {
+        deliveryCharge += Number(vpCharge.deliveryCharge)
+      }
+    }
+
+    // Recalculate total with updated delivery charge (vendor pincode surcharge may have been added)
+    total = subtotal + deliveryCharge + surcharge + codFee - discount
 
     // Create the order
     const { data: order, error: orderError } = await supabase

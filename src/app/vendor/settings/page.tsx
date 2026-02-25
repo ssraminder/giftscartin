@@ -18,7 +18,11 @@ import {
   Calendar,
   MapPin,
   Clock,
+  Plus,
+  X,
+  Loader2,
 } from "lucide-react"
+import { requiresFssai, GST_REGEX, FSSAI_REGEX } from "@/lib/constants"
 
 interface VendorSettings {
   id: string
@@ -61,8 +65,10 @@ interface VendorSettings {
     id: string
     pincode: string
     deliveryCharge: number
+    pendingCharge: number | null
     isActive: boolean
   }[]
+  categories: string[]
 }
 
 const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -94,6 +100,14 @@ export default function VendorSettingsPage() {
     deliveryRadiusKm: "10",
   })
 
+  // Pincode management state
+  const [editPincodes, setEditPincodes] = useState<
+    { pincode: string; deliveryCharge: number; pendingCharge: number | null; proposedCharge: string }[]
+  >([])
+  const [newPincode, setNewPincode] = useState("")
+  const [savingPincodes, setSavingPincodes] = useState(false)
+  const [pincodeError, setPincodeError] = useState<string | null>(null)
+
   const fetchSettings = async () => {
     setLoading(true)
     setError(null)
@@ -124,6 +138,15 @@ export default function VendorSettingsPage() {
           bankName: json.data.bankName || "",
           deliveryRadiusKm: json.data.deliveryRadiusKm?.toString() ?? "10",
         })
+        // Initialize editable pincodes
+        setEditPincodes(
+          (json.data.pincodes || []).map((p: { pincode: string; deliveryCharge: number; pendingCharge: number | null }) => ({
+            pincode: p.pincode,
+            deliveryCharge: p.deliveryCharge,
+            pendingCharge: p.pendingCharge,
+            proposedCharge: (p.pendingCharge ?? p.deliveryCharge).toString(),
+          }))
+        )
       } else {
         setError(json.error || "Failed to load settings")
       }
@@ -138,7 +161,25 @@ export default function VendorSettingsPage() {
     fetchSettings()
   }, [])
 
+  // Vendor's categories for conditional FSSAI validation
+  const vendorCategories = settings?.categories || []
+  const needsFssai = requiresFssai(vendorCategories)
+
   const handleSave = async () => {
+    // Client-side GST/FSSAI validation
+    if (form.gstNumber && !GST_REGEX.test(form.gstNumber)) {
+      setError("Invalid GST number format (e.g. 22AAAAA0000A1Z5)")
+      return
+    }
+    if (needsFssai && !form.fssaiNumber) {
+      setError("FSSAI number is required for food category vendors")
+      return
+    }
+    if (form.fssaiNumber && !FSSAI_REGEX.test(form.fssaiNumber)) {
+      setError("Invalid FSSAI number format (must be 14 digits)")
+      return
+    }
+
     setSaving(true)
     setError(null)
     setSuccess(null)
@@ -171,6 +212,70 @@ export default function VendorSettingsPage() {
       setError("Failed to connect to server")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleAddPincode = () => {
+    const pin = newPincode.trim()
+    if (!/^\d{6}$/.test(pin)) {
+      setPincodeError("Enter a valid 6-digit pincode")
+      return
+    }
+    if (editPincodes.some(p => p.pincode === pin)) {
+      setPincodeError("Pincode already added")
+      return
+    }
+    setPincodeError(null)
+    setEditPincodes(prev => [...prev, { pincode: pin, deliveryCharge: 0, pendingCharge: null, proposedCharge: "0" }])
+    setNewPincode("")
+  }
+
+  const handleRemovePincode = (pincode: string) => {
+    setEditPincodes(prev => prev.filter(p => p.pincode !== pincode))
+  }
+
+  const handleSavePincodes = async () => {
+    setSavingPincodes(true)
+    setPincodeError(null)
+    try {
+      const pincodeList = editPincodes.map(p => p.pincode)
+
+      // Build surcharge proposals for pincodes where vendor changed the charge
+      const chargeProposals = editPincodes
+        .filter(p => {
+          const proposed = parseFloat(p.proposedCharge) || 0
+          return proposed !== p.deliveryCharge
+        })
+        .map(p => ({
+          pincode: p.pincode,
+          charge: parseFloat(p.proposedCharge) || 0,
+        }))
+
+      const res = await fetch("/api/vendor/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pincodes: pincodeList,
+          ...(chargeProposals.length > 0 ? { pincodeCharges: chargeProposals } : {}),
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setSuccess(
+          chargeProposals.length > 0
+            ? "Pincodes saved. Surcharge changes sent for admin approval."
+            : "Pincodes saved successfully"
+        )
+        setTimeout(() => setSuccess(null), 4000)
+        // Refresh to get updated data
+        fetchSettings()
+      } else {
+        setPincodeError(json.error || "Failed to save pincodes")
+      }
+    } catch {
+      setPincodeError("Failed to connect to server")
+    } finally {
+      setSavingPincodes(false)
     }
   }
 
@@ -468,8 +573,9 @@ export default function VendorSettingsPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 flex items-center gap-1 text-sm font-medium text-slate-700">
                 GST Number
+                <Badge className="bg-red-100 text-red-700 text-[10px]">Required</Badge>
               </label>
               <input
                 type="text"
@@ -477,21 +583,43 @@ export default function VendorSettingsPage() {
                 onChange={(e) =>
                   setForm({ ...form, gstNumber: e.target.value.toUpperCase() })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                placeholder="22AAAAA0000A1Z5"
+                className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                  form.gstNumber && !GST_REGEX.test(form.gstNumber)
+                    ? "border-red-300 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-teal-500 focus:ring-teal-500"
+                }`}
               />
+              {form.gstNumber && !GST_REGEX.test(form.gstNumber) && (
+                <p className="mt-1 text-xs text-red-600">Invalid GST format</p>
+              )}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 flex items-center gap-1 text-sm font-medium text-slate-700">
                 FSSAI Number
+                {needsFssai && (
+                  <Badge className="bg-red-100 text-red-700 text-[10px]">Required</Badge>
+                )}
               </label>
               <input
                 type="text"
                 value={form.fssaiNumber}
                 onChange={(e) =>
-                  setForm({ ...form, fssaiNumber: e.target.value })
+                  setForm({ ...form, fssaiNumber: e.target.value.replace(/\D/g, "").slice(0, 14) })
                 }
-                className="w-full rounded-md border px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                placeholder="14-digit FSSAI number"
+                className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                  form.fssaiNumber && !FSSAI_REGEX.test(form.fssaiNumber)
+                    ? "border-red-300 focus:border-red-500 focus:ring-red-500"
+                    : "focus:border-teal-500 focus:ring-teal-500"
+                }`}
               />
+              {needsFssai && !form.fssaiNumber && (
+                <p className="mt-1 text-xs text-amber-600">Required for food categories</p>
+              )}
+              {form.fssaiNumber && !FSSAI_REGEX.test(form.fssaiNumber) && (
+                <p className="mt-1 text-xs text-red-600">Must be 14 digits</p>
+              )}
             </div>
           </div>
         </CardContent>
@@ -581,38 +709,109 @@ export default function VendorSettingsPage() {
         </Card>
       )}
 
-      {/* Delivery pincodes (read-only) */}
-      {settings?.pincodes && settings.pincodes.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <MapPin className="h-5 w-5" />
-              Delivery Pincodes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {settings.pincodes.map((p) => (
-                <span
-                  key={p.id}
-                  className={`rounded-full px-3 py-1 text-sm ${
-                    p.isActive
-                      ? "bg-teal-50 text-teal-800"
-                      : "bg-slate-100 text-slate-500 line-through"
-                  }`}
+      {/* Delivery pincodes (editable) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <MapPin className="h-5 w-5" />
+            Delivery Pincodes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Add new pincode */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newPincode}
+              onChange={(e) => {
+                setNewPincode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                setPincodeError(null)
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleAddPincode()}
+              placeholder="Enter 6-digit pincode"
+              className="w-40 rounded-md border px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+            />
+            <button
+              onClick={handleAddPincode}
+              className="flex items-center gap-1 rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              <Plus className="h-4 w-4" /> Add
+            </button>
+          </div>
+          {pincodeError && (
+            <p className="text-xs text-red-600">{pincodeError}</p>
+          )}
+
+          {/* Pincode list with surcharge inputs */}
+          {editPincodes.length === 0 ? (
+            <p className="text-sm text-slate-400">No delivery pincodes configured</p>
+          ) : (
+            <div className="space-y-2">
+              {editPincodes.map((p) => (
+                <div
+                  key={p.pincode}
+                  className="flex items-center gap-3 rounded-lg border p-2"
                 >
-                  {p.pincode}
-                  {p.deliveryCharge > 0 && (
-                    <span className="ml-1 text-xs text-slate-500">
-                      (+{p.deliveryCharge})
-                    </span>
+                  <span className="font-mono text-sm text-slate-700 w-16">{p.pincode}</span>
+
+                  {/* Surcharge input */}
+                  <div className="flex items-center gap-1 flex-1">
+                    <span className="text-xs text-slate-400">Surcharge ₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={p.proposedCharge}
+                      onChange={(e) =>
+                        setEditPincodes(prev =>
+                          prev.map(pc =>
+                            pc.pincode === p.pincode
+                              ? { ...pc, proposedCharge: e.target.value }
+                              : pc
+                          )
+                        )
+                      }
+                      className="w-20 rounded border px-2 py-1 text-sm text-right focus:border-teal-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Status badge */}
+                  {p.pendingCharge != null && (
+                    <Badge className="bg-amber-100 text-amber-800 text-xs">
+                      Pending: ₹{p.pendingCharge}
+                    </Badge>
                   )}
-                </span>
+                  {p.deliveryCharge > 0 && p.pendingCharge == null && (
+                    <Badge className="bg-green-100 text-green-800 text-xs">
+                      Approved: ₹{p.deliveryCharge}
+                    </Badge>
+                  )}
+
+                  <button
+                    onClick={() => handleRemovePincode(p.pincode)}
+                    className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+
+          <p className="text-xs text-slate-500">
+            Surcharge changes require admin approval before they take effect.
+          </p>
+
+          <button
+            onClick={handleSavePincodes}
+            disabled={savingPincodes}
+            className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {savingPincodes ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {savingPincodes ? "Saving..." : "Save Pincodes"}
+          </button>
+        </CardContent>
+      </Card>
 
       {/* Store status info */}
       <Card>
