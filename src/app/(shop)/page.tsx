@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { buildOrganizationJsonLd, buildLocalBusinessJsonLd } from '@/lib/seo'
 import { JsonLd } from '@/components/seo/json-ld'
 import HeroBanner from "@/components/home/hero-banner"
-import { OccasionPills } from "@/components/home/occasion-pills"
+import { OccasionNav } from "@/components/home/occasion-nav"
 import { TrendingProducts } from "@/components/home/trending-products"
 import { CategoryGrid } from "@/components/home/category-grid"
 import { OccasionProductRow } from "@/components/home/occasion-product-row"
@@ -33,8 +33,8 @@ export default function HomePage() {
       {/* 1. Hero Banner (carousel) */}
       <HeroBanner />
 
-      {/* 2. Occasion Pills */}
-      <OccasionPills />
+      {/* 2. Occasion / Category Carousel */}
+      <OccasionNav />
 
       {/* 3. Best Sellers Row */}
       <TrendingProducts />
