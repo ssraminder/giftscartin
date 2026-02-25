@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
+import { BannerImageGenerator } from '@/components/admin/banner-image-generator'
 import {
   Dialog,
   DialogContent,
@@ -323,6 +324,10 @@ export default function AdminBannersPage() {
   const [aiTheme, setAiTheme] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+
+  // AI image regeneration panels
+  const [showBgAiGen, setShowBgAiGen] = useState(false)
+  const [showHeroAiGen, setShowHeroAiGen] = useState(false)
 
   // Toast state
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -952,6 +957,16 @@ export default function AdminBannersPage() {
                           }
                         </div>
                       </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowBgAiGen(v => !v)}
+                        className="shrink-0 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        AI Generate
+                      </Button>
                       <span className="text-xs text-gray-400">or</span>
                       <Input
                         placeholder="Paste Supabase / external URL"
@@ -978,6 +993,23 @@ export default function AdminBannersPage() {
                     {formErrors.imageUrl && <p className="text-xs text-red-500">{formErrors.imageUrl}</p>}
                     {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
                     <p className="text-[11px] text-gray-400">Landscape 1536x864px recommended.</p>
+                    {showBgAiGen && (
+                      <BannerImageGenerator
+                        imageType="background"
+                        currentImageUrl={form.imageUrl || undefined}
+                        bannerContext={{
+                          titleHtml: form.titleHtml || undefined,
+                          occasion: undefined,
+                          citySlug: form.targetCitySlug || undefined,
+                        }}
+                        onAccept={(newUrl) => {
+                          setForm(f => ({ ...f, imageUrl: newUrl }))
+                          setFormErrors(e2 => ({ ...e2, imageUrl: '' }))
+                          setShowBgAiGen(false)
+                        }}
+                        onClose={() => setShowBgAiGen(false)}
+                      />
+                    )}
                   </div>
 
                   {/* Hero / Subject Image */}
@@ -999,6 +1031,16 @@ export default function AdminBannersPage() {
                           }
                         </div>
                       </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowHeroAiGen(v => !v)}
+                        className="shrink-0 gap-1.5 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        AI Generate
+                      </Button>
                       <span className="text-xs text-gray-400">or</span>
                       <Input
                         placeholder="Paste hero image URL (transparent PNG)"
@@ -1021,6 +1063,22 @@ export default function AdminBannersPage() {
                     </div>
                     {heroUploadError && <p className="text-xs text-red-500">{heroUploadError}</p>}
                     <p className="text-[11px] text-gray-400">Product/subject photo. PNG preferred, max 5MB.</p>
+                    {showHeroAiGen && (
+                      <BannerImageGenerator
+                        imageType="hero"
+                        currentImageUrl={form.subjectImageUrl || undefined}
+                        bannerContext={{
+                          titleHtml: form.titleHtml || undefined,
+                          occasion: undefined,
+                          citySlug: form.targetCitySlug || undefined,
+                        }}
+                        onAccept={(newUrl) => {
+                          setForm(f => ({ ...f, subjectImageUrl: newUrl }))
+                          setShowHeroAiGen(false)
+                        }}
+                        onClose={() => setShowHeroAiGen(false)}
+                      />
+                    )}
                   </div>
                 </div>
 
