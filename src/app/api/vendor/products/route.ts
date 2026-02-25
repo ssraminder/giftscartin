@@ -122,7 +122,6 @@ export async function PUT(request: NextRequest) {
     if (existing) {
       const updateData: Record<string, unknown> = {
         costPrice,
-        updatedAt: new Date().toISOString(),
       }
       if (sellingPrice !== undefined) updateData.sellingPrice = sellingPrice
       if (isAvailable !== undefined) updateData.isAvailable = isAvailable

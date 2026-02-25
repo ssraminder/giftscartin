@@ -59,7 +59,7 @@ export async function PATCH(
     }
 
     // Build update payload
-    const updateData: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+    const updateData: Record<string, unknown> = {}
     if (updates.isSameDayEligible !== undefined) updateData.isSameDayEligible = updates.isSameDayEligible
     if (updates.isExpressEligible !== undefined) updateData.isExpressEligible = updates.isExpressEligible
     if (updates.isAvailable !== undefined) updateData.isAvailable = updates.isAvailable
