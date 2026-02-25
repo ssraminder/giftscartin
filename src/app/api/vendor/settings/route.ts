@@ -185,17 +185,21 @@ export async function PATCH(request: NextRequest) {
       // Remove pincodes that are no longer in the list
       const toRemove = Array.from(currentSet).filter(p => !newSet.has(p))
       if (toRemove.length > 0) {
-        await supabase
+        const { error: delErr } = await supabase
           .from('vendor_pincodes')
           .delete()
           .eq('vendorId', vendor.id)
           .in('pincode', toRemove)
+        if (delErr) {
+          console.error('Failed to delete vendor_pincodes:', delErr)
+          throw delErr
+        }
       }
 
       // Add new pincodes
       const toAdd = Array.from(newSet).filter(p => !currentSet.has(p))
       if (toAdd.length > 0) {
-        await supabase.from('vendor_pincodes').insert(
+        const { error: insErr } = await supabase.from('vendor_pincodes').insert(
           toAdd.map(pincode => ({
             vendorId: vendor.id,
             pincode,
@@ -204,6 +208,10 @@ export async function PATCH(request: NextRequest) {
             isActive: true,
           }))
         )
+        if (insErr) {
+          console.error('Failed to insert vendor_pincodes:', insErr)
+          throw insErr
+        }
       }
 
       // Auto-create service_areas for any new pincodes

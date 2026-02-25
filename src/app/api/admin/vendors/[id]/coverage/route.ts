@@ -81,7 +81,11 @@ export async function PUT(
     }
 
     // Replace all vendor_pincodes
-    await supabase.from('vendor_pincodes').delete().eq('vendorId', params.id)
+    const { error: deleteError } = await supabase.from('vendor_pincodes').delete().eq('vendorId', params.id)
+    if (deleteError) {
+      console.error('Failed to delete vendor_pincodes:', deleteError)
+      throw deleteError
+    }
 
     if (finalPincodeCharges.length > 0) {
       const rows = finalPincodeCharges.map(pc => ({
@@ -91,7 +95,11 @@ export async function PUT(
         pendingCharge: null,
         isActive: true,
       }))
-      await supabase.from('vendor_pincodes').insert(rows)
+      const { error: insertError } = await supabase.from('vendor_pincodes').insert(rows)
+      if (insertError) {
+        console.error('Failed to insert vendor_pincodes:', insertError)
+        throw insertError
+      }
     }
 
     // Update vendor coverage method
