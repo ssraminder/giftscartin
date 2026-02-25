@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Sparkles,
@@ -23,10 +23,12 @@ export interface BannerImageGeneratorProps {
 
 type GeneratorState = 'idle' | 'generating' | 'result' | 'error'
 
-const GENERATING_MESSAGES = [
-  { text: 'Generating your image...', until: 5000 },
-  { text: 'Adding details...', until: 12000 },
-  { text: 'Almost ready...', until: Infinity },
+const PROGRESS_MESSAGES = [
+  { after: 0, text: 'Starting generation...' },
+  { after: 5000, text: 'Generating your image...' },
+  { after: 12000, text: 'Adding details...' },
+  { after: 20000, text: 'Almost ready...' },
+  { after: 28000, text: 'Finishing up...' },
 ]
 
 export function BannerImageGenerator({
@@ -43,27 +45,41 @@ export function BannerImageGenerator({
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null)
   const [promptUsed, setPromptUsed] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [generatingMessage, setGeneratingMessage] = useState(GENERATING_MESSAGES[0].text)
+  const [progressMessage, setProgressMessage] = useState(PROGRESS_MESSAGES[0].text)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [showPromptDetails, setShowPromptDetails] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const generateStartRef = useRef<number>(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortedRef = useRef(false)
 
   const placeholderText =
     imageType === 'background'
       ? `A beautiful${bannerContext?.occasion ? ` ${bannerContext.occasion}` : ''} celebration scene with flowers, warm lighting, Indian aesthetic`
       : `A stunning gift product with elegant presentation on clean background`
 
-  // Cycle generating messages based on elapsed time
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+      if (pollRef.current) clearTimeout(pollRef.current)
+    }
+  }, [])
+
+  // Progress timer for elapsed time and messages
   useEffect(() => {
     if (state === 'generating') {
       generateStartRef.current = Date.now()
-      setGeneratingMessage(GENERATING_MESSAGES[0].text)
+      setElapsedSeconds(0)
+      setProgressMessage(PROGRESS_MESSAGES[0].text)
 
       timerRef.current = setInterval(() => {
         const elapsed = Date.now() - generateStartRef.current
-        const msg = GENERATING_MESSAGES.find((m) => elapsed < m.until)
-        if (msg) setGeneratingMessage(msg.text)
+        setElapsedSeconds(Math.floor(elapsed / 1000))
+
+        const msg = [...PROGRESS_MESSAGES].reverse().find((m) => elapsed >= m.after)
+        if (msg) setProgressMessage(msg.text)
       }, 1000)
 
       return () => {
@@ -71,6 +87,58 @@ export function BannerImageGenerator({
       }
     }
   }, [state])
+
+  const pollJobStatus = useCallback(
+    async (jobId: string) => {
+      if (abortedRef.current) return
+
+      const elapsed = Date.now() - generateStartRef.current
+
+      try {
+        const statusRes = await fetch(
+          `/api/admin/banners/generate-image?jobId=${encodeURIComponent(jobId)}`
+        )
+        const json = await statusRes.json()
+
+        if (!json.success) {
+          throw new Error(json.error || 'Failed to check job status')
+        }
+
+        const job = json.data
+
+        if (job.status === 'done') {
+          setGeneratedUrl(job.imageUrl)
+          setPromptUsed(job.promptUsed)
+          setState('result')
+          return
+        }
+
+        if (job.status === 'failed') {
+          setErrorMessage(job.errorMessage || 'Generation failed. Please try again.')
+          setState('error')
+          return
+        }
+
+        // Still pending/processing — poll again (max 90s total)
+        if (elapsed < 90000 && !abortedRef.current) {
+          pollRef.current = setTimeout(() => pollJobStatus(jobId), 3000)
+        } else {
+          setErrorMessage('Generation timed out after 90 seconds. Please try again.')
+          setState('error')
+        }
+      } catch (err) {
+        // Network error during poll — retry once more, then fail
+        if (elapsed < 90000 && !abortedRef.current) {
+          pollRef.current = setTimeout(() => pollJobStatus(jobId), 5000)
+        } else {
+          const msg = err instanceof Error ? err.message : 'Failed to check generation status'
+          setErrorMessage(msg)
+          setState('error')
+        }
+      }
+    },
+    []
+  )
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -95,18 +163,19 @@ export function BannerImageGenerator({
     if (!prompt.trim()) return
     setState('generating')
     setErrorMessage(null)
+    abortedRef.current = false
 
     try {
       // Convert reference image to base64 if present
       let referenceImageBase64: string | undefined
       if (referenceFile && referencePreview) {
-        // Extract base64 from data URL (data:image/...;base64,XXXX)
         const parts = referencePreview.split(',')
         if (parts.length === 2) {
           referenceImageBase64 = parts[1]
         }
       }
 
+      // Step 1: Create the job (returns immediately)
       const res = await fetch('/api/admin/banners/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -121,12 +190,13 @@ export function BannerImageGenerator({
 
       const json = await res.json()
       if (!json.success) {
-        throw new Error(json.error || 'Generation failed')
+        throw new Error(json.error || 'Failed to start generation')
       }
 
-      setGeneratedUrl(json.data.imageUrl)
-      setPromptUsed(json.data.promptUsed)
-      setState('result')
+      const jobId = json.data.jobId
+
+      // Step 2: Start polling after 3 seconds
+      pollRef.current = setTimeout(() => pollJobStatus(jobId), 3000)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Image generation failed'
       setErrorMessage(msg)
@@ -141,6 +211,8 @@ export function BannerImageGenerator({
   }
 
   const handleDiscard = () => {
+    abortedRef.current = true
+    if (pollRef.current) clearTimeout(pollRef.current)
     setGeneratedUrl(null)
     setPromptUsed(null)
     setState('idle')
@@ -245,8 +317,11 @@ export function BannerImageGenerator({
           <div className="flex flex-col items-center gap-3 py-6">
             <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             <div className="text-center">
-              <p className="text-sm font-medium text-slate-700">{generatingMessage}</p>
-              <p className="text-xs text-slate-500 mt-1">Usually takes 15-30 seconds</p>
+              <p className="text-sm font-medium text-slate-700">{progressMessage}</p>
+              <p className="text-xs text-slate-500 mt-1">Usually takes 15–30 seconds</p>
+              <p className="text-xs text-slate-400 mt-0.5 tabular-nums">
+                Elapsed: {elapsedSeconds}s
+              </p>
             </div>
           </div>
         )}
