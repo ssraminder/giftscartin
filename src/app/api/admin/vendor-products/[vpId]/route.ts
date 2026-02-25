@@ -10,6 +10,7 @@ const updateSchema = z.object({
   dailyLimit: z.number().int().min(1).nullable().optional(),
   isAvailable: z.boolean().optional(),
   isSameDayEligible: z.boolean().optional(),
+  isExpressEligible: z.boolean().optional(),
 })
 
 // PATCH: Update vendor product fields
@@ -58,6 +59,7 @@ export async function PATCH(
     if (parsed.data.dailyLimit !== undefined) data.dailyLimit = parsed.data.dailyLimit
     if (parsed.data.isAvailable !== undefined) data.isAvailable = parsed.data.isAvailable
     if (parsed.data.isSameDayEligible !== undefined) data.isSameDayEligible = parsed.data.isSameDayEligible
+    if (parsed.data.isExpressEligible !== undefined) data.isExpressEligible = parsed.data.isExpressEligible
 
     const { data: updated, error } = await supabase
       .from('vendor_products')
@@ -78,6 +80,7 @@ export async function PATCH(
         dailyLimit: updated.dailyLimit,
         isAvailable: updated.isAvailable,
         isSameDayEligible: updated.isSameDayEligible,
+        isExpressEligible: updated.isExpressEligible ?? false,
       },
     })
   } catch (error) {

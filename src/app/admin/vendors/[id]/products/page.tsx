@@ -17,6 +17,7 @@ import {
   Loader2,
   ArrowRight,
   ArrowLeft,
+  X,
 } from "lucide-react"
 import { formatPrice } from "@/lib/utils"
 
@@ -44,6 +45,7 @@ interface VendorProductItem {
   dailyLimit: number | null
   isAvailable: boolean
   isSameDayEligible: boolean
+  isExpressEligible: boolean
   product: {
     id: string
     name: string
@@ -258,6 +260,14 @@ export default function VendorProductsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState("All")
 
+  // Bulk select for assigned products
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null)
+
+  // Filters for assigned products
+  const [filterSameDay, setFilterSameDay] = useState(false)
+  const [filterExpress, setFilterExpress] = useState(false)
+
   // Toast
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null)
 
@@ -338,6 +348,37 @@ export default function VendorProductsPage() {
     }
   }
 
+  // ── Bulk update handler ────────────────────────────────────────
+
+  const bulkUpdate = async (
+    actionKey: string,
+    updates: { isSameDayEligible?: boolean; isExpressEligible?: boolean; isAvailable?: boolean }
+  ) => {
+    const ids = Array.from(bulkSelectedIds)
+    if (ids.length === 0) return
+
+    setBulkActionLoading(actionKey)
+    try {
+      const res = await fetch(`/api/admin/vendors/${vendorId}/products/bulk-update`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorProductIds: ids, updates }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        showToast("success", `Updated ${json.data.updated} product${json.data.updated !== 1 ? "s" : ""}`)
+        setBulkSelectedIds(new Set())
+        fetchAssigned()
+      } else {
+        showToast("error", json.error || "Bulk update failed")
+      }
+    } catch {
+      showToast("error", "Failed to bulk update")
+    } finally {
+      setBulkActionLoading(null)
+    }
+  }
+
   // ── Remove handler ───────────────────────────────────────────────
 
   const removeVendorProduct = async (vp: VendorProductItem) => {
@@ -357,7 +398,7 @@ export default function VendorProductsPage() {
     }
   }
 
-  // ── Selection helpers ────────────────────────────────────────────
+  // ── Selection helpers (assign tab) ─────────────────────────────
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -446,12 +487,42 @@ export default function VendorProductsPage() {
 
   // ── Filtered assigned products ───────────────────────────────────
 
-  const filteredAssigned = vendorProducts.filter(
-    (vp) =>
+  const filteredAssigned = vendorProducts.filter((vp) => {
+    const matchesSearch =
       !assignedSearch ||
       vp.product.name.toLowerCase().includes(assignedSearch.toLowerCase()) ||
       vp.product.category.name.toLowerCase().includes(assignedSearch.toLowerCase())
-  )
+    const matchesSameDay = !filterSameDay || vp.isSameDayEligible
+    const matchesExpress = !filterExpress || vp.isExpressEligible
+    return matchesSearch && matchesSameDay && matchesExpress
+  })
+
+  // ── Bulk select helpers (assigned tab) ────────────────────────────
+
+  const toggleBulkSelect = (id: string) => {
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const allVisibleSelected = filteredAssigned.length > 0 && filteredAssigned.every((vp) => bulkSelectedIds.has(vp.id))
+  const someVisibleSelected = filteredAssigned.some((vp) => bulkSelectedIds.has(vp.id))
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    const ids = filteredAssigned.map((vp) => vp.id)
+    setBulkSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        ids.forEach((id) => next.add(id))
+      } else {
+        ids.forEach((id) => next.delete(id))
+      }
+      return next
+    })
+  }
 
   // ── Compute today's working info ─────────────────────────────────
 
@@ -589,16 +660,119 @@ export default function VendorProductsPage() {
           ═══════════════════════════════════════════════════════════════ */}
       {activeTab === "assigned" && (
         <div className="space-y-4">
-          {/* Search */}
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              value={assignedSearch}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssignedSearch(e.target.value)}
-              placeholder="Search assigned products..."
-              className="pl-9"
-            />
+          {/* Search + filter bar */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                value={assignedSearch}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setAssignedSearch(e.target.value)}
+                placeholder="Search assigned products..."
+                className="pl-9"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilterSameDay(!filterSameDay)}
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                filterSameDay
+                  ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Same Day
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterExpress(!filterExpress)}
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                filterExpress
+                  ? "bg-blue-100 text-blue-700 ring-1 ring-blue-300"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Express
+            </button>
           </div>
+
+          {/* Bulk action toolbar */}
+          {bulkSelectedIds.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 animate-in slide-in-from-top-2">
+              <span className="text-sm font-medium text-blue-800">
+                {bulkSelectedIds.size} selected
+              </span>
+              <div className="mx-1 h-4 w-px bg-blue-200" />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                disabled={bulkActionLoading !== null}
+                onClick={() => bulkUpdate("sameday-on", { isSameDayEligible: true })}
+              >
+                {bulkActionLoading === "sameday-on" && <Loader2 className="h-3 w-3 animate-spin" />}
+                Mark Same Day
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                disabled={bulkActionLoading !== null}
+                onClick={() => bulkUpdate("sameday-off", { isSameDayEligible: false })}
+              >
+                {bulkActionLoading === "sameday-off" && <Loader2 className="h-3 w-3 animate-spin" />}
+                Remove Same Day
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-blue-300 bg-white text-blue-700 hover:bg-blue-50"
+                disabled={bulkActionLoading !== null}
+                onClick={() => bulkUpdate("express-on", { isExpressEligible: true })}
+              >
+                {bulkActionLoading === "express-on" && <Loader2 className="h-3 w-3 animate-spin" />}
+                Mark Express
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                disabled={bulkActionLoading !== null}
+                onClick={() => bulkUpdate("express-off", { isExpressEligible: false })}
+              >
+                {bulkActionLoading === "express-off" && <Loader2 className="h-3 w-3 animate-spin" />}
+                Remove Express
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50"
+                disabled={bulkActionLoading !== null}
+                onClick={() => bulkUpdate("available-on", { isAvailable: true })}
+              >
+                {bulkActionLoading === "available-on" && <Loader2 className="h-3 w-3 animate-spin" />}
+                Mark Available
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 border-red-300 bg-white text-red-600 hover:bg-red-50"
+                disabled={bulkActionLoading !== null}
+                onClick={() => bulkUpdate("available-off", { isAvailable: false })}
+              >
+                {bulkActionLoading === "available-off" && <Loader2 className="h-3 w-3 animate-spin" />}
+                Mark Unavailable
+              </Button>
+              <div className="mx-1 h-4 w-px bg-blue-200" />
+              <button
+                type="button"
+                onClick={() => setBulkSelectedIds(new Set())}
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+              >
+                <X className="h-3 w-3" />
+                Clear
+              </button>
+            </div>
+          )}
 
           {filteredAssigned.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-lg border bg-white py-12">
@@ -613,6 +787,15 @@ export default function VendorProductsPage() {
               <table className="w-full text-sm">
                 <thead className="border-b bg-slate-50">
                   <tr>
+                    <th className="px-3 py-3 text-left">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        ref={(el) => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected }}
+                        onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-[#E91E63] focus:ring-[#E91E63]"
+                      />
+                    </th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Product</th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Platform Price</th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Cost Price</th>
@@ -620,6 +803,7 @@ export default function VendorProductsPage() {
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Prep Time</th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Daily Limit</th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Same Day</th>
+                    <th className="px-3 py-3 text-left font-medium text-slate-600">Express</th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Available</th>
                     <th className="px-3 py-3 text-left font-medium text-slate-600">Actions</th>
                   </tr>
@@ -627,14 +811,31 @@ export default function VendorProductsPage() {
                 <tbody className="divide-y">
                   {filteredAssigned.map((vp) => {
                     const margin = ((vp.product.basePrice - vp.costPrice) / vp.product.basePrice * 100)
+                    const isSelected = bulkSelectedIds.has(vp.id)
                     return (
-                      <tr key={vp.id} className="hover:bg-slate-50">
+                      <tr key={vp.id} className={isSelected ? "bg-blue-50" : "hover:bg-slate-50"}>
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleBulkSelect(vp.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-[#E91E63] focus:ring-[#E91E63]"
+                          />
+                        </td>
                         <td className="px-3 py-3">
                           <div>
                             <p className="font-medium text-slate-900 line-clamp-1">{vp.product.name}</p>
-                            <Badge variant="outline" className="mt-1 text-xs">
-                              {vp.product.category.name}
-                            </Badge>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <Badge variant="outline" className="text-xs">
+                                {vp.product.category.name}
+                              </Badge>
+                              {vp.isSameDayEligible && (
+                                <Badge className="bg-emerald-100 text-emerald-700 text-xs">Same Day</Badge>
+                              )}
+                              {vp.isExpressEligible && (
+                                <Badge className="bg-blue-100 text-blue-700 text-xs">Express</Badge>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-3 py-3 text-slate-500 whitespace-nowrap">
@@ -684,12 +885,29 @@ export default function VendorProductsPage() {
                             aria-checked={vp.isSameDayEligible}
                             onClick={() => patchVendorProduct(vp.id, "isSameDayEligible", !vp.isSameDayEligible)}
                             className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                              vp.isSameDayEligible ? "bg-[#E91E63]" : "bg-slate-200"
+                              vp.isSameDayEligible ? "bg-emerald-500" : "bg-slate-200"
                             }`}
                           >
                             <span
                               className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition-transform ${
                                 vp.isSameDayEligible ? "translate-x-4" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </td>
+                        <td className="px-3 py-3">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={vp.isExpressEligible}
+                            onClick={() => patchVendorProduct(vp.id, "isExpressEligible", !vp.isExpressEligible)}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                              vp.isExpressEligible ? "bg-blue-500" : "bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition-transform ${
+                                vp.isExpressEligible ? "translate-x-4" : "translate-x-0"
                               }`}
                             />
                           </button>
