@@ -26,6 +26,10 @@ export const metadata: Metadata = {
   title: "Gifts Cart India — Send Cakes, Flowers & Gifts Online",
   description:
     "Order fresh cakes, flowers, and gifts for delivery across India. Same-day and midnight delivery available. Gifts Cart India by Cital Enterprises.",
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+  },
 }
 
 export default function RootLayout({
