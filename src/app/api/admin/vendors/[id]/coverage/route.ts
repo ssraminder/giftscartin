@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
+import { ensureServiceAreas } from '@/lib/pincode-resolver'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,16 +17,27 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { method, pincodes, radiusKm, lat, lng } = body
+    const { method, pincodes, pincodeCharges, radiusKm, lat, lng, defaultCharge } = body
     const supabase = getSupabaseAdmin()
 
-    let finalPincodes: string[] = []
+    // Build final pincode list with charges
+    let finalPincodeCharges: Array<{ pincode: string; deliveryCharge: number }> = []
 
     if (method === 'pincode') {
-      finalPincodes = pincodes || []
+      if (pincodeCharges && Array.isArray(pincodeCharges)) {
+        // New format: per-pincode charges
+        finalPincodeCharges = pincodeCharges.map((pc: { pincode: string; deliveryCharge?: number }) => ({
+          pincode: pc.pincode,
+          deliveryCharge: pc.deliveryCharge ?? 0,
+        }))
+      } else if (pincodes && Array.isArray(pincodes)) {
+        // Legacy format: just pincode strings, default charge 0
+        finalPincodeCharges = (pincodes as string[]).map(pincode => ({
+          pincode,
+          deliveryCharge: 0,
+        }))
+      }
     } else if (method === 'radius' && lat && lng && radiusKm) {
-      // Find all service_areas within radius using Haversine via RPC or raw query
-      // Using supabase, we need to fetch all active areas and filter in JS
       const { data: areas } = await supabase
         .from('service_areas')
         .select('pincode, lat, lng')
@@ -33,7 +45,7 @@ export async function PUT(
 
       if (areas) {
         const toRad = (deg: number) => deg * Math.PI / 180
-        finalPincodes = Array.from(new Set(
+        const uniquePincodes = Array.from(new Set(
           areas.filter((a: Record<string, unknown>) => {
             const aLat = parseFloat(a.lat as string)
             const aLng = parseFloat(a.lng as string)
@@ -47,11 +59,20 @@ export async function PUT(
             return dist <= radiusKm
           }).map((a: Record<string, unknown>) => a.pincode as string)
         ))
+        const charge = typeof defaultCharge === 'number' ? defaultCharge : 0
+        finalPincodeCharges = uniquePincodes.map(pincode => ({
+          pincode,
+          deliveryCharge: charge,
+        }))
       }
     }
 
     // Get vendor
-    const { data: vendor } = await supabase.from('vendors').select('id').eq('id', params.id).maybeSingle()
+    const { data: vendor } = await supabase
+      .from('vendors')
+      .select('id, cityId')
+      .eq('id', params.id)
+      .maybeSingle()
     if (!vendor) {
       return NextResponse.json(
         { success: false, error: 'Vendor not found' },
@@ -59,14 +80,15 @@ export async function PUT(
       )
     }
 
-    // Replace all vendor_pincodes sequentially
+    // Replace all vendor_pincodes
     await supabase.from('vendor_pincodes').delete().eq('vendorId', params.id)
 
-    if (finalPincodes.length > 0) {
-      const rows = finalPincodes.map(pincode => ({
+    if (finalPincodeCharges.length > 0) {
+      const rows = finalPincodeCharges.map(pc => ({
         vendorId: params.id,
-        pincode,
-        deliveryCharge: 0,
+        pincode: pc.pincode,
+        deliveryCharge: pc.deliveryCharge,
+        pendingCharge: null,
         isActive: true,
       }))
       await supabase.from('vendor_pincodes').insert(rows)
@@ -82,14 +104,101 @@ export async function PUT(
     }
     await supabase.from('vendors').update(vendorUpdate).eq('id', params.id)
 
+    // Auto-create service_areas for any new pincodes
+    const allPincodes = finalPincodeCharges.map(pc => pc.pincode)
+    const areaResult = await ensureServiceAreas(allPincodes, vendor.cityId)
+    if (areaResult.created > 0) {
+      console.log(`[coverage] Auto-created ${areaResult.created} service areas for vendor ${params.id}`)
+    }
+
     return NextResponse.json({
       success: true,
-      data: { pincodeCount: finalPincodes.length },
+      data: {
+        pincodeCount: finalPincodeCharges.length,
+        serviceAreasCreated: areaResult.created,
+      },
     })
   } catch (error) {
     console.error('Vendor coverage update error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to update coverage' },
+      { status: 500 }
+    )
+  }
+}
+
+// PATCH: approve/reject vendor-proposed surcharges
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const user = await getSessionFromRequest(request)
+    if (!user || !['ADMIN', 'SUPER_ADMIN', 'CITY_MANAGER', 'OPERATIONS'].includes(user.role)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { action, pincodes: targetPincodes } = body as {
+      action: 'approve' | 'reject'
+      pincodes?: string[]
+    }
+
+    if (!action || !['approve', 'reject'].includes(action)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid action. Use "approve" or "reject".' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = getSupabaseAdmin()
+
+    // Get pending charges for this vendor
+    let query = supabase
+      .from('vendor_pincodes')
+      .select('id, pincode, pendingCharge')
+      .eq('vendorId', params.id)
+      .not('pendingCharge', 'is', null)
+
+    if (targetPincodes && targetPincodes.length > 0) {
+      query = query.in('pincode', targetPincodes)
+    }
+
+    const { data: pending } = await query
+
+    if (!pending || pending.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: { updated: 0, message: 'No pending charges to process' },
+      })
+    }
+
+    let updated = 0
+    for (const row of pending) {
+      if (action === 'approve') {
+        // Copy pendingCharge → deliveryCharge, clear pendingCharge
+        await supabase
+          .from('vendor_pincodes')
+          .update({ deliveryCharge: row.pendingCharge, pendingCharge: null })
+          .eq('id', row.id)
+      } else {
+        // Reject: just clear pendingCharge
+        await supabase
+          .from('vendor_pincodes')
+          .update({ pendingCharge: null })
+          .eq('id', row.id)
+      }
+      updated++
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: { updated, action },
+    })
+  } catch (error) {
+    console.error('Vendor charge approval error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to process charge approval' },
       { status: 500 }
     )
   }

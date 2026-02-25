@@ -33,6 +33,8 @@ const createVendorSchema = z.object({
     closeTime: z.string(),
     isClosed: z.boolean().default(false),
   })).optional(),
+  gstNumber: z.string().max(15).optional(),
+  fssaiNumber: z.string().max(14).optional(),
   pincodes: z.array(z.object({
     pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode'),
     deliveryCharge: z.number().min(0).default(0),
@@ -201,6 +203,8 @@ export async function POST(request: NextRequest) {
         autoAccept: data.autoAccept,
         lat: data.lat ?? null,
         lng: data.lng ?? null,
+        gstNumber: data.gstNumber || null,
+        fssaiNumber: data.fssaiNumber || null,
         status: 'APPROVED',
       })
       .select()

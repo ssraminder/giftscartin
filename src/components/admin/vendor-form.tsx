@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Loader2, CheckCircle, AlertCircle, AlertTriangle } from "lucide-react"
 import { VendorCoverageByArea, VendorCoverageByRadius } from "./vendor-coverage"
 import { VendorAddressInput, type VendorAddressResult } from "@/components/vendor/address-input/vendor-address-input"
+import { requiresFssai, GST_REGEX, FSSAI_REGEX } from "@/lib/constants"
 
 // ==================== Types ====================
 
@@ -21,6 +22,7 @@ interface WorkingHoursData {
 interface PincodeData {
   pincode: string
   deliveryCharge: number
+  pendingCharge?: number | null
 }
 
 interface CityOption {
@@ -45,6 +47,8 @@ interface VendorData {
   isOnline: boolean
   coverageMethod?: string
   coverageRadiusKm?: number | null
+  gstNumber?: string | null
+  fssaiNumber?: string | null
   workingHours: WorkingHoursData[]
   pincodes: PincodeData[]
 }
@@ -119,6 +123,8 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
   )
   const [autoAccept, setAutoAccept] = useState(vendor?.autoAccept ?? false)
   const [status, setStatus] = useState(vendor?.status ?? "APPROVED")
+  const [gstNumber, setGstNumber] = useState(vendor?.gstNumber ?? "")
+  const [fssaiNumber, setFssaiNumber] = useState(vendor?.fssaiNumber ?? "")
 
   // Working Hours
   const [workingHours, setWorkingHours] = useState<WorkingHoursData[]>(
@@ -206,6 +212,24 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       showToast("error", "Please search or pin your shop location.")
       return
     }
+    if (!gstNumber.trim()) {
+      showToast("error", "GST Number is required.")
+      return
+    }
+    if (gstNumber.trim() && !GST_REGEX.test(gstNumber.trim())) {
+      showToast("error", "Invalid GST format. Expected 15-character alphanumeric (e.g., 22AAAAA0000A1Z5).")
+      return
+    }
+    if (requiresFssai(categories)) {
+      if (!fssaiNumber.trim()) {
+        showToast("error", "FSSAI Number is required for food categories (cakes, sweets, pastries, chocolates).")
+        return
+      }
+      if (!FSSAI_REGEX.test(fssaiNumber.trim())) {
+        showToast("error", "Invalid FSSAI format. Expected 14-digit number.")
+        return
+      }
+    }
 
     // Parse pincodes
     const parsedPincodes = parsePincodes(pincodesText)
@@ -228,6 +252,8 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
       categories,
       commissionRate: parseFloat(commissionRate) || 12,
       autoAccept,
+      gstNumber: gstNumber.trim() || undefined,
+      fssaiNumber: fssaiNumber.trim() || undefined,
       workingHours,
     }
 
@@ -457,6 +483,50 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
         </label>
       </div>
 
+      {/* Business Documents */}
+      <div className="space-y-4 rounded-lg border bg-white p-6">
+        <h2 className="text-lg font-semibold text-slate-900">Business Documents</h2>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="gstNumber">
+              GST Number <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="gstNumber"
+              value={gstNumber}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setGstNumber(e.target.value.toUpperCase())
+              }
+              placeholder="22AAAAA0000A1Z5"
+              maxLength={15}
+            />
+            <p className="text-xs text-slate-500">15-character GST registration number</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="fssaiNumber">
+              FSSAI Number
+              {requiresFssai(categories) && (
+                <span className="text-red-500 ml-1">* Required</span>
+              )}
+            </Label>
+            <Input
+              id="fssaiNumber"
+              value={fssaiNumber}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setFssaiNumber(e.target.value)
+              }
+              placeholder="12345678901234"
+              maxLength={14}
+            />
+            <p className="text-xs text-slate-500">
+              14-digit FSSAI license number
+              {!requiresFssai(categories) && ' (required for cakes, sweets, pastries, chocolates)'}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Working Hours */}
       <div className="space-y-4 rounded-lg border bg-white p-6">
         <h2 className="text-lg font-semibold text-slate-900">Working Hours</h2>
@@ -543,6 +613,11 @@ export function VendorForm({ vendor, cities }: VendorFormProps) {
                 vendorId={vendor?.id || ""}
                 cityId={cityId}
                 currentPincodes={currentPincodes}
+                currentCharges={vendor?.pincodes?.map(p => ({
+                  pincode: p.pincode,
+                  deliveryCharge: p.deliveryCharge,
+                  pendingCharge: p.pendingCharge ?? null,
+                }))}
                 onSave={setCurrentPincodes}
               />
             ) : (

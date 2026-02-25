@@ -11,6 +11,7 @@ import { useCurrency } from "@/hooks/use-currency"
 interface CartSummaryProps {
   subtotal: number
   deliveryCharge: number
+  extraDeliveryCharge?: number
   discount: number
   /** If true, render "Place Order" button instead of "Proceed to Checkout" link */
   isCheckout?: boolean
@@ -21,13 +22,14 @@ interface CartSummaryProps {
 export function CartSummary({
   subtotal,
   deliveryCharge,
+  extraDeliveryCharge = 0,
   discount,
   isCheckout = false,
   onPlaceOrder,
   placing = false,
 }: CartSummaryProps) {
   const { formatPrice } = useCurrency()
-  const total = subtotal - discount + deliveryCharge
+  const total = subtotal - discount + deliveryCharge + extraDeliveryCharge
   const freeDeliveryThreshold = 499
 
   return (
@@ -50,6 +52,13 @@ export function CartSummary({
               <span>{formatPrice(deliveryCharge)}</span>
             )}
           </div>
+
+          {extraDeliveryCharge > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Distance surcharge</span>
+              <span>{formatPrice(extraDeliveryCharge)}</span>
+            </div>
+          )}
 
           {discount > 0 && (
             <div className="flex justify-between text-green-600">

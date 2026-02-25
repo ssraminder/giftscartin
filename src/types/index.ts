@@ -111,6 +111,9 @@ export interface Vendor {
   totalOrders: number
   isOnline: boolean
   autoAccept: boolean
+  panNumber: string | null
+  gstNumber: string | null
+  fssaiNumber: string | null
   createdAt: string
   updatedAt: string
 }
