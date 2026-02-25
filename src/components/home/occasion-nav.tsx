@@ -102,20 +102,20 @@ const occasions = [
 
 export function OccasionNav() {
   return (
-    <section className="w-full py-4 md:py-6">
+    <section className="w-full py-4 md:py-6 lg:py-8">
       {/* Full bleed — no max-width wrapper, padding only on sides */}
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory px-4">
+      <div className="flex gap-3 md:gap-4 lg:gap-5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory px-4 md:px-6 lg:px-8">
         {occasions.map((item) => (
             <Link
               key={item.id}
               href={item.href}
               className="flex-shrink-0 snap-start group"
             >
-              <div className="flex flex-col items-center gap-1.5 w-[72px] md:w-[80px]">
+              <div className="flex flex-col items-center gap-1.5 md:gap-2 w-[72px] md:w-[88px] lg:w-[104px]">
                 {/* Card */}
                 <div
                   className={`
-                    relative w-[64px] h-[64px] md:w-[72px] md:h-[72px]
+                    relative w-[64px] h-[64px] md:w-[80px] md:h-[80px] lg:w-[96px] lg:h-[96px]
                     rounded-2xl flex items-center justify-center
                     ${item.iconBg}
                     transition-all duration-200
@@ -123,14 +123,14 @@ export function OccasionNav() {
                     ${item.highlight ? 'ring-2 ring-pink-400 ring-offset-1' : ''}
                   `}
                 >
-                  <span className="text-[28px] md:text-[32px] select-none leading-none">
+                  <span className="text-[28px] md:text-[32px] lg:text-[38px] select-none leading-none">
                     {item.emoji}
                   </span>
 
                   {/* Upcoming date badge */}
                   {item.badge && (
                     <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                      <span className="bg-pink-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full shadow-sm">
+                      <span className="bg-pink-500 text-white text-[9px] md:text-[10px] font-semibold px-1.5 py-0.5 rounded-full shadow-sm">
                         {item.badge}
                       </span>
                     </div>
@@ -139,7 +139,7 @@ export function OccasionNav() {
                   {/* Fast badge for same-day */}
                   {item.highlight && (
                     <div className="absolute -bottom-2 left-1/2 -translate-x-1/2">
-                      <span className="bg-amber-400 text-amber-900 text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm whitespace-nowrap uppercase tracking-wide">
+                      <span className="bg-amber-400 text-amber-900 text-[8px] md:text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm whitespace-nowrap uppercase tracking-wide">
                         Fast
                       </span>
                     </div>
@@ -147,7 +147,7 @@ export function OccasionNav() {
                 </div>
 
                 {/* Label */}
-                <span className="text-[11px] md:text-xs text-center text-gray-600 font-medium leading-tight line-clamp-2 group-hover:text-pink-600 transition-colors">
+                <span className="text-[11px] md:text-xs lg:text-sm text-center text-gray-600 font-medium leading-tight line-clamp-2 group-hover:text-pink-600 transition-colors">
                   {item.label}
                 </span>
               </div>

@@ -24,7 +24,9 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   const [allBanners, setAllBanners] = useState<ResolvedBanner[]>([])
   const [currentIndex, setCurrentIndex] = useState(CLONE_COUNT)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
+  const [isPageHidden, setIsPageHidden] = useState(false)
+  const isPaused = isHovered || isPageHidden
   const [loading, setLoading] = useState(true)
   const [slideWidth, setSlideWidth] = useState(0)
   const [gap, setGap] = useState(16)
@@ -156,6 +158,15 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
     })
   }, [realCount, cloneCount])
 
+  // Pause carousel when page is hidden (tab switch, window minimize, etc.)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageHidden(document.hidden)
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
   // Auto-play
   useEffect(() => {
     if (realCount <= 1 || isPaused) {
@@ -173,7 +184,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   const touchStartX = useRef(0)
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX
-    setIsPaused(true)
+    setIsHovered(true)
   }
   const handleTouchEnd = (e: React.TouchEvent) => {
     const dx = touchStartX.current - e.changedTouches[0].clientX
@@ -181,7 +192,7 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
       if (dx > 0) goNext()
       else goPrev()
     }
-    setIsPaused(false)
+    setIsHovered(false)
   }
 
   const activeDot =
@@ -198,8 +209,8 @@ export default function HeroBanner({ banners: propBanners }: HeroBannerProps = {
   return (
     <div
       className="relative py-2"
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div
         ref={containerRef}
