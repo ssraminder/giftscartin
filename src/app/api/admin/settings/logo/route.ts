@@ -13,7 +13,7 @@ export async function GET() {
 
     const { data: settings, error } = await supabase
       .from('platform_settings')
-      .select('key, value, updatedAt')
+      .select('key, value, updated_at')
 
     if (error) throw error
 
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase
       .from('platform_settings')
       .upsert(
-        { key: 'logo_url', value: logoUrl, updatedBy: session.id, updatedAt: new Date().toISOString() },
+        { key: 'logo_url', value: logoUrl, updated_by: session.id, updated_at: new Date().toISOString() },
         { onConflict: 'key' }
       )
 
