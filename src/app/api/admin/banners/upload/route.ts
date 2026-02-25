@@ -39,95 +39,22 @@ export async function POST(request: NextRequest) {
   const supabase = getSupabaseAdmin()
 
   if (uploadType === 'hero') {
-    // Hero image flow: upload original, then call remove.bg, upload result
-    const originalFilename = `hero-original-${Date.now()}-${file.name}`
-    const { error: origError } = await supabase.storage
+    // Hero image: upload as-is (background removal is a separate manual step)
+    const heroFilename = `hero-${Date.now()}-${file.name}`
+    const { error: heroError } = await supabase.storage
       .from('banners')
-      .upload(originalFilename, buffer, { contentType: file.type, upsert: false })
+      .upload(heroFilename, buffer, { contentType: file.type, upsert: false })
 
-    if (origError) {
-      return NextResponse.json({ success: false, error: origError.message }, { status: 500 })
+    if (heroError) {
+      return NextResponse.json({ success: false, error: heroError.message }, { status: 500 })
     }
 
-    const originalUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/banners/${originalFilename}`
+    const heroUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/banners/${heroFilename}`
 
-    // Check if remove.bg API key is available
-    const removeBgKey = process.env.REMOVE_BG_API_KEY
-    if (!removeBgKey) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          url: originalUrl,
-          originalUrl,
-          warning: 'REMOVE_BG_API_KEY not configured — original image used without background removal',
-        },
-      })
-    }
-
-    try {
-      // Call remove.bg API
-      const removeBgForm = new FormData()
-      removeBgForm.append('image_file', new Blob([buffer], { type: file.type }), 'image.png')
-      removeBgForm.append('size', 'auto')
-
-      const removeBgResponse = await fetch('https://api.remove.bg/v1.0/removebg', {
-        method: 'POST',
-        headers: { 'X-Api-Key': removeBgKey },
-        body: removeBgForm,
-      })
-
-      if (!removeBgResponse.ok) {
-        const errText = await removeBgResponse.text()
-        console.error('remove.bg API error:', removeBgResponse.status, errText)
-        return NextResponse.json({
-          success: true,
-          data: {
-            url: originalUrl,
-            originalUrl,
-            warning: 'Background removal failed — original image used',
-          },
-        })
-      }
-
-      const resultBuffer = Buffer.from(await removeBgResponse.arrayBuffer())
-      const transparentFilename = `hero-${Date.now()}.png`
-
-      const { error: transError } = await supabase.storage
-        .from('banners')
-        .upload(transparentFilename, resultBuffer, { contentType: 'image/png', upsert: false })
-
-      if (transError) {
-        console.error('Failed to upload transparent image:', transError.message)
-        return NextResponse.json({
-          success: true,
-          data: {
-            url: originalUrl,
-            originalUrl,
-            warning: 'Failed to save processed image — original image used',
-          },
-        })
-      }
-
-      const transparentUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/banners/${transparentFilename}`
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          url: transparentUrl,
-          originalUrl,
-        },
-      })
-    } catch (err) {
-      console.error('remove.bg processing error:', err)
-      return NextResponse.json({
-        success: true,
-        data: {
-          url: originalUrl,
-          originalUrl,
-          warning: 'Background removal failed — original image used',
-        },
-      })
-    }
+    return NextResponse.json({
+      success: true,
+      data: { url: heroUrl },
+    })
   }
 
   // Default: background image upload (existing behaviour)

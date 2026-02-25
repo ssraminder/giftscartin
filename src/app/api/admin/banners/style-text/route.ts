@@ -10,7 +10,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
+    let body: Record<string, unknown>
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Invalid JSON body' },
+        { status: 400 }
+      )
+    }
+
     const {
       titleHtml,
       subtitleHtml,
@@ -19,7 +28,15 @@ export async function POST(req: NextRequest) {
       backgroundImageUrl,
       overlayStyle,
       currentColors,
-    } = body
+    } = body as {
+      titleHtml?: string
+      subtitleHtml?: string
+      ctaText?: string
+      styleInstruction?: string
+      backgroundImageUrl?: string
+      overlayStyle?: string
+      currentColors?: string[]
+    }
 
     if (!styleInstruction?.trim()) {
       return NextResponse.json(
@@ -30,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     if (!titleHtml?.trim() && !subtitleHtml?.trim()) {
       return NextResponse.json(
-        { success: false, error: 'At least one of titleHtml or subtitleHtml is required' },
+        { success: false, error: 'Title and subtitle cannot both be empty' },
         { status: 400 }
       )
     }
@@ -80,13 +97,10 @@ Return JSON with this exact shape:
       )
     }
 
-    // Parse JSON from response — handle potential markdown wrapping
-    let rawText = textContent.text.trim()
-    if (rawText.startsWith('```')) {
-      rawText = rawText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '')
-    }
-
-    const parsed = JSON.parse(rawText)
+    // Parse JSON from response — strip markdown code fences if present
+    const text = textContent.text
+    const cleaned = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+    const parsed = JSON.parse(cleaned)
 
     return NextResponse.json({
       success: true,
@@ -97,11 +111,15 @@ Return JSON with this exact shape:
         suggestedColors: parsed.suggestedColors || [],
       },
     })
-  } catch (error) {
-    console.error('POST /api/admin/banners/style-text error:', error)
-    const message = error instanceof SyntaxError
+  } catch (err: unknown) {
+    const error = err as Error & { status?: number }
+    console.error('[style-text] Error:', error?.message, error?.stack)
+    const message = err instanceof SyntaxError
       ? 'AI returned invalid response format'
-      : 'Failed to style text'
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+      : error?.message || 'Style generation failed'
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    )
   }
 }

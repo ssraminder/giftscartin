@@ -380,6 +380,9 @@ export default function AdminBannersPage() {
   const [heroUploading, setHeroUploading] = useState(false)
   const [heroUploadError, setHeroUploadError] = useState<string | null>(null)
 
+  // Remove BG state
+  const [removingBg, setRemovingBg] = useState(false)
+
   // AI generation state
   const [aiTheme, setAiTheme] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
@@ -689,9 +692,6 @@ export default function AdminBannersPage() {
       const json = await res.json()
       if (json.success) {
         setForm(f => ({ ...f, subjectImageUrl: json.data.url }))
-        if (json.data.warning) {
-          showToast('error', json.data.warning)
-        }
       } else {
         setHeroUploadError(json.error || 'Upload failed')
       }
@@ -700,6 +700,28 @@ export default function AdminBannersPage() {
     } finally {
       setHeroUploading(false)
       e.target.value = ''
+    }
+  }
+
+  async function handleRemoveBg() {
+    if (!form.subjectImageUrl) return
+    setRemovingBg(true)
+    try {
+      const res = await fetch('/api/admin/banners/remove-bg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: form.subjectImageUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
+
+      setForm(prev => ({ ...prev, subjectImageUrl: data.resultUrl }))
+      showToast('success', 'Background removed')
+    } catch (err: unknown) {
+      const error = err as Error
+      showToast('error', error.message || 'Remove BG failed')
+    } finally {
+      setRemovingBg(false)
     }
   }
 
@@ -1100,7 +1122,7 @@ export default function AdminBannersPage() {
 
                   {/* Hero / Subject Image */}
                   <div className="space-y-1">
-                    <Label>Hero Image <span className="font-normal text-gray-400">(optional, bg auto-removed)</span></Label>
+                    <Label>Hero Image <span className="font-normal text-gray-400">(optional)</span></Label>
                     <div className="flex items-center gap-2">
                       <label className="cursor-pointer shrink-0">
                         <input
@@ -1112,7 +1134,7 @@ export default function AdminBannersPage() {
                         />
                         <div className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-400 transition-colors">
                           {heroUploading
-                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" /><span className="text-xs text-gray-500">Removing bg...</span></>
+                            ? <><Loader2 className="w-3.5 h-3.5 animate-spin text-purple-500" /><span className="text-xs text-gray-500">Uploading...</span></>
                             : <><Upload className="w-3.5 h-3.5 text-gray-400" /><span className="text-xs text-gray-500">Upload</span></>
                           }
                         </div>
@@ -1135,20 +1157,36 @@ export default function AdminBannersPage() {
                         className="flex-1 text-sm"
                       />
                       {form.subjectImageUrl?.trim() ? (
-                        <div className="relative w-24 h-16 rounded overflow-hidden checker-bg shrink-0 border">
-                          <Image src={form.subjectImageUrl} alt="" fill style={{ objectFit: 'contain' }} />
-                          <button
+                        <div className="flex flex-col items-center gap-1 shrink-0">
+                          <div className="relative w-24 h-16 rounded overflow-hidden checker-bg border">
+                            <Image src={form.subjectImageUrl} alt="" fill style={{ objectFit: 'contain' }} />
+                            <button
+                              type="button"
+                              onClick={() => setForm(f => ({ ...f, subjectImageUrl: '' }))}
+                              className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70 z-10"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                          <Button
                             type="button"
-                            onClick={() => setForm(f => ({ ...f, subjectImageUrl: '' }))}
-                            className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70 z-10"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRemoveBg}
+                            disabled={removingBg}
+                            className="text-xs h-6 px-2"
                           >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
+                            {removingBg ? (
+                              <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Removing BG...</>
+                            ) : (
+                              <><Sparkles className="w-3 h-3 mr-1" /> Remove BG</>
+                            )}
+                          </Button>
                         </div>
                       ) : null}
                     </div>
                     {heroUploadError && <p className="text-xs text-red-500">{heroUploadError}</p>}
-                    <p className="text-[11px] text-gray-400">Product/subject photo. PNG preferred, max 5MB.</p>
+                    <p className="text-[11px] text-gray-400">Product/subject photo. PNG preferred, max 5MB. Use &quot;Remove BG&quot; to remove background after uploading.</p>
                     {showHeroAiGen && (
                       <BannerImageGenerator
                         imageType="hero"
