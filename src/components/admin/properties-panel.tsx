@@ -1,8 +1,10 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Layers } from 'lucide-react'
+import { Layers, Sparkles, Wand2, Palette } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { GOOGLE_FONTS, loadGoogleFont } from '@/lib/banner-layers'
+import { LayerAIPanel } from '@/components/admin/layer-ai-panel'
 import type {
   Layer, BackgroundLayer, ImageLayer, TextLayer,
   ShapeLayer, BadgeLayer, ButtonLayer,
@@ -12,6 +14,7 @@ import type {
 
 interface PropertiesPanelProps {
   layer: Layer | null
+  allLayers: Layer[]
   onUpdate: (updates: Partial<Layer>) => void
 }
 
@@ -268,9 +271,34 @@ function CommonLayerProperties({ layer, onUpdate }: { layer: Layer; onUpdate: (u
 
 // ==================== Background Properties ====================
 
-function BackgroundProperties({ layer, onUpdate }: { layer: BackgroundLayer; onUpdate: (u: Partial<Layer>) => void }) {
+function BackgroundProperties({ layer, allLayers, onUpdate }: { layer: BackgroundLayer; allLayers: Layer[]; onUpdate: (u: Partial<Layer>) => void }) {
+  const [showAIPanel, setShowAIPanel] = useState(false)
+
   return (
     <div className="space-y-3">
+      <Button
+        type="button"
+        variant="outline" size="sm"
+        className="w-full text-xs"
+        onClick={() => setShowAIPanel(!showAIPanel)}
+      >
+        <Sparkles className="w-3 h-3 mr-1" /> Generate Background
+      </Button>
+
+      {showAIPanel && (
+        <LayerAIPanel
+          layer={layer}
+          allLayers={allLayers}
+          onAcceptImage={(url) => {
+            onUpdate({ imageUrl: url })
+            setShowAIPanel(false)
+          }}
+          onAcceptText={() => {}}
+          onAcceptStyle={() => {}}
+          onClose={() => setShowAIPanel(false)}
+        />
+      )}
+
       <div>
         <label className="text-xs text-gray-500">Image URL</label>
         <input
@@ -316,9 +344,57 @@ function BackgroundProperties({ layer, onUpdate }: { layer: BackgroundLayer; onU
 
 // ==================== Image Properties ====================
 
-function ImageProperties({ layer, onUpdate }: { layer: ImageLayer; onUpdate: (u: Partial<Layer>) => void }) {
+function ImageProperties({ layer, allLayers, onUpdate }: { layer: ImageLayer; allLayers: Layer[]; onUpdate: (u: Partial<Layer>) => void }) {
+  const [showAIPanel, setShowAIPanel] = useState(false)
+  const [removingBg, setRemovingBg] = useState(false)
+
+  const handleRemoveBg = async () => {
+    if (!layer.imageUrl) return
+    setRemovingBg(true)
+    try {
+      const res = await fetch('/api/admin/banners/remove-bg', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl: layer.imageUrl }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.imageUrl) {
+        onUpdate({ imageUrl: json.data.imageUrl })
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setRemovingBg(false)
+    }
+  }
+
   return (
     <div className="space-y-3">
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" className="flex-1 text-xs"
+          onClick={() => setShowAIPanel(!showAIPanel)}>
+          <Sparkles className="w-3 h-3 mr-1" /> Generate Image
+        </Button>
+        <Button variant="outline" size="sm" className="text-xs"
+          onClick={handleRemoveBg} disabled={removingBg || !layer.imageUrl}>
+          <Wand2 className="w-3 h-3 mr-1" /> Remove BG
+        </Button>
+      </div>
+
+      {showAIPanel && (
+        <LayerAIPanel
+          layer={layer}
+          allLayers={allLayers}
+          onAcceptImage={(url) => {
+            onUpdate({ imageUrl: url })
+            setShowAIPanel(false)
+          }}
+          onAcceptText={() => {}}
+          onAcceptStyle={() => {}}
+          onClose={() => setShowAIPanel(false)}
+        />
+      )}
+
       <div>
         <label className="text-xs text-gray-500">Image URL</label>
         <input
@@ -376,7 +452,10 @@ function ImageProperties({ layer, onUpdate }: { layer: ImageLayer; onUpdate: (u:
 
 // ==================== Text Properties ====================
 
-function TextProperties({ layer, onUpdate }: { layer: TextLayer; onUpdate: (u: Partial<Layer>) => void }) {
+function TextProperties({ layer, allLayers, onUpdate }: { layer: TextLayer; allLayers: Layer[]; onUpdate: (u: Partial<Layer>) => void }) {
+  const [showAIPanel, setShowAIPanel] = useState(false)
+  const [aiPanelMode, setAIPanelMode] = useState<'generate' | 'restyle'>('generate')
+
   return (
     <div className="space-y-3">
       <FontFamilySelect value={layer.fontFamily} onChange={(v) => onUpdate({ fontFamily: v })} />
@@ -472,15 +551,62 @@ function TextProperties({ layer, onUpdate }: { layer: TextLayer; onUpdate: (u: P
           placeholder="Your text here"
         />
       </div>
+
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" className="flex-1 text-xs"
+          onClick={() => { setAIPanelMode('generate'); setShowAIPanel(true) }}>
+          <Sparkles className="w-3 h-3 mr-1" /> Generate Copy
+        </Button>
+        <Button variant="outline" size="sm" className="flex-1 text-xs"
+          onClick={() => { setAIPanelMode('restyle'); setShowAIPanel(true) }}>
+          <Palette className="w-3 h-3 mr-1" /> Restyle
+        </Button>
+      </div>
+
+      {showAIPanel && (
+        <LayerAIPanel
+          layer={layer}
+          allLayers={allLayers}
+          mode={aiPanelMode}
+          onAcceptImage={() => {}}
+          onAcceptText={(html) => {
+            onUpdate({ html })
+            setShowAIPanel(false)
+          }}
+          onAcceptStyle={() => {}}
+          onClose={() => setShowAIPanel(false)}
+        />
+      )}
     </div>
   )
 }
 
 // ==================== Shape Properties ====================
 
-function ShapeProperties({ layer, onUpdate }: { layer: ShapeLayer; onUpdate: (u: Partial<Layer>) => void }) {
+function ShapeProperties({ layer, allLayers, onUpdate }: { layer: ShapeLayer; allLayers: Layer[]; onUpdate: (u: Partial<Layer>) => void }) {
+  const [showAIPanel, setShowAIPanel] = useState(false)
+
   return (
     <div className="space-y-3">
+      <Button variant="outline" size="sm" className="w-full text-xs"
+        onClick={() => setShowAIPanel(!showAIPanel)}>
+        <Sparkles className="w-3 h-3 mr-1" /> AI Suggest Overlay
+      </Button>
+
+      {showAIPanel && (
+        <LayerAIPanel
+          layer={layer}
+          allLayers={allLayers}
+          onAcceptImage={() => {}}
+          onAcceptText={() => {}}
+          onAcceptStyle={(updates) => {
+            onUpdate(updates)
+            setShowAIPanel(false)
+          }}
+          onClose={() => setShowAIPanel(false)}
+        />
+      )}
+
       <div>
         <label className="text-xs text-gray-500">Shape</label>
         <div className="flex gap-1 mt-1">
@@ -554,9 +680,30 @@ function ShapeProperties({ layer, onUpdate }: { layer: ShapeLayer; onUpdate: (u:
 
 // ==================== Badge Properties ====================
 
-function BadgeProperties({ layer, onUpdate }: { layer: BadgeLayer; onUpdate: (u: Partial<Layer>) => void }) {
+function BadgeProperties({ layer, allLayers, onUpdate }: { layer: BadgeLayer; allLayers: Layer[]; onUpdate: (u: Partial<Layer>) => void }) {
+  const [showAIPanel, setShowAIPanel] = useState(false)
+
   return (
     <div className="space-y-3">
+      <Button variant="outline" size="sm" className="w-full text-xs"
+        onClick={() => setShowAIPanel(!showAIPanel)}>
+        <Sparkles className="w-3 h-3 mr-1" /> AI Suggest Badge
+      </Button>
+
+      {showAIPanel && (
+        <LayerAIPanel
+          layer={layer}
+          allLayers={allLayers}
+          onAcceptImage={() => {}}
+          onAcceptText={() => {}}
+          onAcceptStyle={(updates) => {
+            onUpdate(updates)
+            setShowAIPanel(false)
+          }}
+          onClose={() => setShowAIPanel(false)}
+        />
+      )}
+
       <div>
         <label className="text-xs text-gray-500">Text</label>
         <input
@@ -676,9 +823,30 @@ function BadgeProperties({ layer, onUpdate }: { layer: BadgeLayer; onUpdate: (u:
 
 // ==================== Button Properties ====================
 
-function ButtonProperties({ layer, onUpdate }: { layer: ButtonLayer; onUpdate: (u: Partial<Layer>) => void }) {
+function ButtonProperties({ layer, allLayers, onUpdate }: { layer: ButtonLayer; allLayers: Layer[]; onUpdate: (u: Partial<Layer>) => void }) {
+  const [showAIPanel, setShowAIPanel] = useState(false)
+
   return (
     <div className="space-y-3">
+      <Button variant="outline" size="sm" className="w-full text-xs"
+        onClick={() => setShowAIPanel(!showAIPanel)}>
+        <Sparkles className="w-3 h-3 mr-1" /> AI Suggest CTA
+      </Button>
+
+      {showAIPanel && (
+        <LayerAIPanel
+          layer={layer}
+          allLayers={allLayers}
+          onAcceptImage={() => {}}
+          onAcceptText={() => {}}
+          onAcceptStyle={(updates) => {
+            onUpdate(updates)
+            setShowAIPanel(false)
+          }}
+          onClose={() => setShowAIPanel(false)}
+        />
+      )}
+
       <div>
         <label className="text-xs text-gray-500">Button Text</label>
         <input
@@ -797,7 +965,7 @@ function ButtonProperties({ layer, onUpdate }: { layer: ButtonLayer; onUpdate: (
 
 // ==================== Main Properties Panel ====================
 
-export function PropertiesPanel({ layer, onUpdate }: PropertiesPanelProps) {
+export function PropertiesPanel({ layer, allLayers, onUpdate }: PropertiesPanelProps) {
   if (!layer) {
     return (
       <div className="flex items-center justify-center h-full text-gray-400 text-sm p-4 text-center">
@@ -820,12 +988,12 @@ export function PropertiesPanel({ layer, onUpdate }: PropertiesPanelProps) {
           {layer.type.charAt(0).toUpperCase() + layer.type.slice(1)} Settings
         </p>
 
-        {layer.type === 'background' && <BackgroundProperties layer={layer as BackgroundLayer} onUpdate={onUpdate} />}
-        {layer.type === 'image' && <ImageProperties layer={layer as ImageLayer} onUpdate={onUpdate} />}
-        {layer.type === 'text' && <TextProperties layer={layer as TextLayer} onUpdate={onUpdate} />}
-        {layer.type === 'shape' && <ShapeProperties layer={layer as ShapeLayer} onUpdate={onUpdate} />}
-        {layer.type === 'badge' && <BadgeProperties layer={layer as BadgeLayer} onUpdate={onUpdate} />}
-        {layer.type === 'button' && <ButtonProperties layer={layer as ButtonLayer} onUpdate={onUpdate} />}
+        {layer.type === 'background' && <BackgroundProperties layer={layer as BackgroundLayer} allLayers={allLayers} onUpdate={onUpdate} />}
+        {layer.type === 'image' && <ImageProperties layer={layer as ImageLayer} allLayers={allLayers} onUpdate={onUpdate} />}
+        {layer.type === 'text' && <TextProperties layer={layer as TextLayer} allLayers={allLayers} onUpdate={onUpdate} />}
+        {layer.type === 'shape' && <ShapeProperties layer={layer as ShapeLayer} allLayers={allLayers} onUpdate={onUpdate} />}
+        {layer.type === 'badge' && <BadgeProperties layer={layer as BadgeLayer} allLayers={allLayers} onUpdate={onUpdate} />}
+        {layer.type === 'button' && <ButtonProperties layer={layer as ButtonLayer} allLayers={allLayers} onUpdate={onUpdate} />}
       </div>
     </div>
   )

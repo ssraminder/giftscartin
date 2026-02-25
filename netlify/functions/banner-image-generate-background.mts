@@ -15,6 +15,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+interface LayerContextSummary {
+  backgroundColors?: string[]
+  backgroundImageUrl?: string
+  backgroundHasDarkTones?: boolean
+  existingFonts?: string[]
+  existingColors?: string[]
+  textLayers?: { name: string; html: string; fontSize: number; color: string }[]
+  imageLayerCount?: number
+  occasionHint?: string
+  dominantPalette?: string[]
+}
+
 interface JobPayload {
   jobId: string
   imageType: 'background' | 'hero'
@@ -25,13 +37,74 @@ interface JobPayload {
     occasion?: string
     citySlug?: string
   }
+  layerContext?: LayerContextSummary
 }
 
 function stripHtmlTags(html: string): string {
   return html.replace(/<[^>]*>/g, '').trim()
 }
 
+function buildContextAwarePrompt(
+  imageType: 'background' | 'hero',
+  userPrompt: string,
+  layerContext?: LayerContextSummary
+): string {
+  const contextLines: string[] = []
+
+  if (layerContext) {
+    contextLines.push('Design context for this Indian gifting platform banner:')
+    contextLines.push(`Theme/occasion: ${layerContext.occasionHint || 'general gifting'}`)
+
+    if (imageType === 'background') {
+      contextLines.push(
+        'Generate a banner BACKGROUND image.',
+        'Style: photorealistic, warm Indian aesthetic, no text, no people.',
+        'Landscape orientation, 16:5 aspect ratio.',
+      )
+      if (layerContext.existingColors && layerContext.existingColors.length > 0) {
+        contextLines.push(`Color palette to complement: ${layerContext.existingColors.slice(0, 3).join(', ')}`)
+      } else {
+        contextLines.push('Use warm, inviting colors.')
+      }
+      if (layerContext.textLayers && layerContext.textLayers.length > 0) {
+        const mainText = stripHtmlTags(layerContext.textLayers[0].html).slice(0, 60)
+        contextLines.push(`Banner promotes: "${mainText}" — image should evoke this.`)
+      }
+    }
+
+    if (imageType === 'hero') {
+      contextLines.push(
+        'Generate a HERO/SUBJECT image to overlay on the banner.',
+        'Requirements: transparent or clean background, subject centered,',
+        'suitable as PNG overlay, product photography style.',
+      )
+      if (layerContext.backgroundHasDarkTones !== undefined) {
+        contextLines.push(
+          layerContext.backgroundHasDarkTones
+            ? 'Background is dark — ensure subject has bright, vivid colors to stand out.'
+            : 'Background is light — subject can use rich, deep colors.'
+        )
+      }
+      if (layerContext.backgroundImageUrl) {
+        contextLines.push('Subject should complement (not clash with) the background image mood.')
+      }
+    }
+  }
+
+  if (contextLines.length > 0) {
+    return `${contextLines.join('\n')}\n\nSpecific request: ${userPrompt}`
+  }
+
+  return userPrompt
+}
+
 function buildPrompt(payload: JobPayload): string {
+  // If layer context is provided, use the context-aware prompt builder
+  if (payload.layerContext) {
+    return buildContextAwarePrompt(payload.imageType, payload.prompt, payload.layerContext)
+  }
+
+  // Legacy prompt building (for backward compatibility)
   const parts: string[] = []
 
   if (payload.imageType === 'background') {
