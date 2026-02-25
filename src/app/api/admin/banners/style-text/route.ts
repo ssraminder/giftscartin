@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
       backgroundImageUrl,
       overlayStyle,
       currentColors,
+      mode,
+      target,
     } = body as {
       titleHtml?: string
       subtitleHtml?: string
@@ -50,6 +52,8 @@ export async function POST(req: NextRequest) {
       backgroundImageUrl?: string
       overlayStyle?: string
       currentColors?: string[]
+      mode?: string
+      target?: 'title' | 'subtitle' | 'both'
     }
 
     if (!styleInstruction?.trim()) {
@@ -59,6 +63,63 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Anthropic client
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+    // ---- colors_only mode ----
+    if (mode === 'colors_only') {
+      const colorSystemPrompt = `You are a UI color expert. Suggest CTA button and badge colors that complement the banner's style and text. Return ONLY valid JSON with these exact keys:
+ctaBgColor, ctaTextColor, badgeBgColor, badgeTextColor, explanation.
+Use hex colors for solid values, rgba() for transparency. No markdown, no fences.`
+
+      const colorUserMessage = `Banner context:
+Title: ${titleHtml || '(empty)'}
+Subtitle: ${subtitleHtml || '(empty)'}
+CTA Text: ${ctaText || '(empty)'}
+Overlay Style: ${overlayStyle || 'dark-left'}
+
+Instruction: ${styleInstruction}`
+
+      const colorResponse = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 512,
+        system: colorSystemPrompt,
+        messages: [{ role: 'user', content: colorUserMessage }],
+      })
+
+      const colorRawText = colorResponse.content
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as Anthropic.TextBlock).text)
+        .join('')
+
+      const colorCleaned = colorRawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim()
+
+      try {
+        const colorParsed = JSON.parse(colorCleaned)
+        return NextResponse.json({
+          success: true,
+          data: {
+            ctaBgColor: colorParsed.ctaBgColor || '#E91E63',
+            ctaTextColor: colorParsed.ctaTextColor || '#FFFFFF',
+            badgeBgColor: colorParsed.badgeBgColor || 'rgba(255,255,255,0.2)',
+            badgeTextColor: colorParsed.badgeTextColor || '#FFFFFF',
+            explanation: colorParsed.explanation || '',
+          },
+        })
+      } catch {
+        console.error('[style-text] colors_only JSON parse failed:', colorRawText)
+        return NextResponse.json(
+          { success: false, error: 'AI returned invalid color response' },
+          { status: 500 }
+        )
+      }
+    }
+
+    // ---- Standard text styling mode ----
     if (!titleHtml?.trim() && !subtitleHtml?.trim()) {
       return NextResponse.json(
         { success: false, error: 'Provide at least one of titleHtml or subtitleHtml' },
@@ -66,8 +127,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Anthropic client — exact same pattern as generate-content route
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    // Build target-specific additions to system prompt
+    let targetInstruction = ''
+    if (target === 'title') {
+      targetInstruction = '\nIMPORTANT: Style ONLY the titleHtml field. Return the subtitleHtml EXACTLY as provided, unchanged.'
+    } else if (target === 'subtitle') {
+      targetInstruction = '\nIMPORTANT: Style ONLY the subtitleHtml field. Return the titleHtml EXACTLY as provided, unchanged.'
+    }
 
     const systemPrompt = `You are a banner text styling expert for an Indian gifting e-commerce platform (Gifts Cart India).
 You receive HTML banner text and styling instructions, and return improved HTML with inline styles.
@@ -79,6 +145,7 @@ Rules:
 - Keep it concise — banner text must be scannable in 2 seconds
 - Return ONLY valid JSON, no markdown, no code fences, no explanation
 - suggestedColors should be the actual hex values you used
+${targetInstruction}
 
 Response format: {"titleHtml":"...","subtitleHtml":"...","explanation":"...","suggestedColors":["#hex1","#hex2"]}`
 
@@ -95,7 +162,7 @@ Apply the styling instruction and return the JSON response.`
 
     // API call — same pattern as generate-content
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
