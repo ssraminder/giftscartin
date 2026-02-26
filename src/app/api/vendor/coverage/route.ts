@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 const saveCoverageSchema = z.object({
   selections: z.array(z.object({
-    serviceAreaId: z.string().uuid(),
+    serviceAreaId: z.string().min(1, 'serviceAreaId is required'),
     deliverySurcharge: z.number().min(0).default(0),
   })),
 })
