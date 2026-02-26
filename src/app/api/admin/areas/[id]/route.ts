@@ -4,7 +4,7 @@ import { getSessionFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
-// PATCH: activate / deactivate / update name
+// PATCH: activate / deactivate / update name / update delivery_surcharge
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -19,6 +19,16 @@ export async function PATCH(
     const data: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (body.isActive !== undefined) data.is_active = body.isActive
     if (body.name) data.name = body.name
+    if (body.delivery_surcharge !== undefined) {
+      const surcharge = Number(body.delivery_surcharge)
+      if (isNaN(surcharge) || surcharge < 0) {
+        return NextResponse.json(
+          { success: false, error: 'delivery_surcharge must be a non-negative number' },
+          { status: 400 }
+        )
+      }
+      data.delivery_surcharge = surcharge
+    }
 
     const supabase = getSupabaseAdmin()
     const { data: area, error } = await supabase
