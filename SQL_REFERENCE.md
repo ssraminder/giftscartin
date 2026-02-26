@@ -62,8 +62,9 @@
 | `menu_items` | MenuItem | id, parentId, label, slug, href, icon, sortOrder, isVisible, itemType | -> self (parent/children) |
 | `platform_settings` | PlatformSetting | id, key (unique), value, updated_at, updated_by, updatedAt, updatedBy | (standalone) |
 | `service_areas` | ServiceArea | id, name, pincode, city_id, city_name, state, lat, lng, is_active, altNames[] | -> cities |
+| `vendor_service_areas` | VendorServiceArea | id, vendor_id (FK vendors), service_area_id (FK service_areas), delivery_surcharge, status (PENDING/ACTIVE/REJECTED), is_active, requested_at, activated_at, activated_by (FK users), rejection_reason | -> vendors, service_areas, UNIQUE(vendor_id, service_area_id) |
 
-**Total: 54 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods + 1 banners + 5 new)
+**Total: 55 tables** (31 original + 10 Phase A + 1 multi-currency + 5 Sprint 1 + 1 payment methods + 1 banners + 5 new + 1 vendor_service_areas)
 
 ---
 
