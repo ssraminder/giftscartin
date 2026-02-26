@@ -601,7 +601,7 @@ export default function ProductDetailContent({
                   </span>
                 )}
                 {product.isSameDayEligible && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                  <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
                     ⚡ Same Day
                   </span>
                 )}
@@ -644,35 +644,34 @@ export default function ProductDetailContent({
               )}
             </div>
 
-            {/* 5. Variation Selector */}
+            {/* 5. Variation Selector — sorted by sortOrder then price */}
             {isVariable && variationAttrKey && (
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-2">{variationLabel}</p>
                 <div className="flex flex-wrap gap-2">
-                  {variations.map((v) => {
-                    const attrValue = v.attributes[variationAttrKey] || "—"
-                    const isSelected = v.id === selectedVariationId
-                    const isInactive = !v.isActive
-                    return (
-                      <button
-                        key={v.id}
-                        disabled={isInactive}
-                        onClick={() => setSelectedVariationId(v.id)}
-                        className={cn(
-                          "border rounded-lg p-3 w-24 text-center transition-all",
-                          isInactive && "opacity-40 cursor-not-allowed pointer-events-none",
-                          isSelected
-                            ? "border-green-500 bg-green-50 text-green-700 font-medium"
-                            : "border-gray-200 hover:border-gray-300 cursor-pointer"
-                        )}
-                      >
-                        <div className="text-sm font-medium">{attrValue}</div>
-                        <div className="text-xs mt-0.5 text-gray-600">
-                          {formatPrice(v.salePrice ?? v.price)}
-                        </div>
-                      </button>
-                    )
-                  })}
+                  {[...activeVariations]
+                    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.price - b.price)
+                    .map((v) => {
+                      const attrValue = v.attributes[variationAttrKey] || "—"
+                      const isSelected = v.id === selectedVariationId
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => setSelectedVariationId(v.id)}
+                          className={cn(
+                            "border rounded-lg p-3 w-24 text-center transition-all",
+                            isSelected
+                              ? "border-green-500 bg-green-50 text-green-700 font-medium"
+                              : "border-gray-200 hover:border-gray-300 cursor-pointer"
+                          )}
+                        >
+                          <div className="text-sm font-medium">{attrValue}</div>
+                          <div className="text-xs mt-0.5 text-gray-600">
+                            {formatPrice(v.salePrice ?? v.price)}
+                          </div>
+                        </button>
+                      )
+                    })}
                 </div>
               </div>
             )}
@@ -680,6 +679,7 @@ export default function ProductDetailContent({
             {/* 6. Addon Groups */}
             {addonGroups.length > 0 && (
               <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 mb-3">Customise Your Order</p>
                 {addonGroups.map((g) => (
                   <AddonGroup
                     key={g.id}
@@ -934,8 +934,8 @@ export default function ProductDetailContent({
               return null
             })()}
 
-            {/* 10. About the Product (Accordion) */}
-            <Accordion type="single" collapsible>
+            {/* 10. About the Product (Accordion — collapsed by default) */}
+            <Accordion type="single" collapsible defaultValue={undefined}>
               <AccordionItem value="about">
                 <AccordionTrigger className="text-base font-semibold">
                   About the Product
@@ -953,12 +953,19 @@ export default function ProductDetailContent({
                           {product.description}
                         </p>
                       )}
-                      {product.productDetails && typeof product.productDetails === "object" && (
-                        <ul className="text-sm text-gray-600 space-y-1">
-                          {Object.entries(product.productDetails).map(([key, val]) => (
-                            <li key={key}>• {key}: {val}</li>
-                          ))}
-                        </ul>
+                      {product.productDetails && typeof product.productDetails === "object" && Object.keys(product.productDetails).length > 0 && (
+                        <>
+                          <hr className="my-3" />
+                          <p className="text-sm font-semibold text-gray-700 mb-2">Product Details</p>
+                          <ul className="space-y-1">
+                            {Object.entries(product.productDetails).map(([key, val]) => (
+                              <li key={key} className="flex gap-2 text-sm text-gray-600">
+                                <span className="text-gray-400">&bull;</span>
+                                <span><span className="font-medium text-gray-700">{key}:</span> {String(val)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </>
                       )}
                     </TabsContent>
                     <TabsContent value="instructions" className="mt-3">
@@ -979,8 +986,8 @@ export default function ProductDetailContent({
             {/* 11. Upsell Section */}
             {upsells.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-3">Explore more options</h2>
-                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Explore More Options</h2>
+                <div className="flex flex-row gap-4 overflow-x-auto pb-2 -mx-4 px-4">
                   {upsells.map((up) => (
                     <div key={up.id} className="w-48 shrink-0">
                       <ProductCard
@@ -988,7 +995,7 @@ export default function ProductDetailContent({
                         name={up.name}
                         slug={up.slug}
                         basePrice={up.basePrice}
-                        images={up.images}
+                        images={up.images || []}
                       />
                     </div>
                   ))}
@@ -997,10 +1004,17 @@ export default function ProductDetailContent({
             )}
 
             {/* 12. Reviews Section */}
-            <div id="reviews">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">Customer Reviews</h2>
+            <section id="reviews" className="mt-8 pt-8 border-t border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Customer Reviews
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  ({product.totalReviews})
+                </span>
+              </h2>
               {reviews.length === 0 ? (
-                <p className="text-sm text-gray-400">No reviews yet. Be the first to review!</p>
+                <p className="text-gray-500 text-sm">
+                  No reviews yet. Be the first to share your experience!
+                </p>
               ) : (
                 <div className="space-y-4">
                   {displayedReviews.map((review) => (
@@ -1009,20 +1023,20 @@ export default function ProductDetailContent({
                         <span className="flex items-center gap-0.5">
                           {renderStars(review.rating)}
                         </span>
-                        {review.isVerified && (
-                          <span className="text-xs bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">
-                            Verified
-                          </span>
-                        )}
+                        <span className="text-sm text-gray-700">
+                          {review.user?.name?.split(" ")[0] || "Customer"}
+                        </span>
+                        <span className="text-xs text-gray-400">·</span>
+                        <span className="text-xs text-gray-400">
+                          {new Date(review.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
                       </div>
+                      {review.isVerified && (
+                        <span className="text-xs text-green-600">&#x2713; Verified Purchase</span>
+                      )}
                       {review.comment && (
                         <p className="text-sm text-gray-600 mt-1">{review.comment}</p>
                       )}
-                      <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
-                        <span>{review.user?.name?.split(" ")[0] || "Anonymous"}</span>
-                        <span>·</span>
-                        <span>{new Date(review.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
-                      </div>
                     </div>
                   ))}
                   {reviews.length > 5 && !showAllReviews && (
@@ -1030,12 +1044,12 @@ export default function ProductDetailContent({
                       onClick={() => setShowAllReviews(true)}
                       className="text-sm text-green-600 font-medium hover:text-green-700"
                     >
-                      Show more ({reviews.length - 5} more)
+                      Show all {reviews.length} reviews
                     </button>
                   )}
                 </div>
               )}
-            </div>
+            </section>
           </div>
         </div>
       </div>

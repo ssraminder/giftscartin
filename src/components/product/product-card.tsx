@@ -126,13 +126,14 @@ export function ProductCard({
       {/* IMAGE SECTION */}
       <div className="relative aspect-square overflow-hidden rounded-t-xl bg-gray-100">
         <Image
-          src={processImageUrl(images[0], 400, 75)}
+          src={processImageUrl(images?.[0] || "/placeholder-product.svg", 400, 75)}
           alt={name}
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
           quality={75}
           loading="lazy"
           className="object-cover hover:scale-105 transition-transform duration-300"
+          onError={(e) => { e.currentTarget.src = "/placeholder-product.svg" }}
         />
 
         {/* Top-left: Discount badge */}
