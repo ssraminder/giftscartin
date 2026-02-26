@@ -13,6 +13,11 @@ const serviceAreaActionSchema = z.object({
   rejectionReason: z.string().max(500).optional(),
 })
 
+const adminAddAreasSchema = z.object({
+  serviceAreaIds: z.array(z.string().uuid()).min(1),
+  deliverySurcharge: z.number().min(0).default(0),
+})
+
 // GET: Fetch all vendor_service_areas for a vendor (admin review)
 export async function GET(
   request: NextRequest,
@@ -70,17 +75,142 @@ export async function GET(
       }
     })
 
+    // Optionally include available service areas for the vendor's city
+    const includeAvailable = request.nextUrl.searchParams.get('include') === 'available'
+    let availableAreas: { id: string; name: string; pincode: string; cityName: string }[] | undefined
+    if (includeAvailable) {
+      const { data: allAreas } = await supabase
+        .from('service_areas')
+        .select('id, name, pincode, city_name')
+        .eq('city_id', vendor.cityId)
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+
+      availableAreas = (allAreas || []).map((a: { id: string; name: string; pincode: string; city_name: string }) => ({
+        id: a.id,
+        name: a.name,
+        pincode: a.pincode,
+        cityName: a.city_name,
+      }))
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        vendor: { id: vendor.id, businessName: vendor.businessName },
+        vendor: { id: vendor.id, businessName: vendor.businessName, cityId: vendor.cityId },
         areas: mapped,
+        ...(availableAreas ? { availableAreas } : {}),
       },
     })
   } catch (error) {
     console.error('Admin vendor coverage GET error:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch vendor coverage' },
+      { status: 500 }
+    )
+  }
+}
+
+// POST: Admin adds service areas on behalf of a vendor (auto-ACTIVE)
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getSessionFromRequest(request)
+    if (!user || !isAdminRole(user.role)) {
+      return NextResponse.json(
+        { success: false, error: 'Admin access required' },
+        { status: 403 }
+      )
+    }
+
+    const { id: vendorId } = await params
+    const body = await request.json()
+    const parsed = adminAddAreasSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { success: false, error: parsed.error.issues[0].message },
+        { status: 400 }
+      )
+    }
+
+    const { serviceAreaIds, deliverySurcharge } = parsed.data
+    const supabase = getSupabaseAdmin()
+
+    // Verify vendor exists
+    const { data: vendor } = await supabase
+      .from('vendors')
+      .select('id')
+      .eq('id', vendorId)
+      .maybeSingle()
+
+    if (!vendor) {
+      return NextResponse.json(
+        { success: false, error: 'Vendor not found' },
+        { status: 404 }
+      )
+    }
+
+    // Get existing service area IDs for this vendor to skip duplicates
+    const { data: existing } = await supabase
+      .from('vendor_service_areas')
+      .select('service_area_id')
+      .eq('vendor_id', vendorId)
+
+    const existingSet = new Set(
+      (existing || []).map((r: { service_area_id: string }) => r.service_area_id)
+    )
+
+    const toInsert = serviceAreaIds.filter(id => !existingSet.has(id))
+
+    if (toInsert.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: { added: 0, message: 'All selected areas are already assigned' },
+      })
+    }
+
+    const now = new Date().toISOString()
+    const rows = toInsert.map(serviceAreaId => ({
+      vendor_id: vendorId,
+      service_area_id: serviceAreaId,
+      delivery_surcharge: deliverySurcharge,
+      status: 'ACTIVE',
+      is_active: true,
+      requested_at: now,
+      activated_at: now,
+      activated_by: user.id,
+    }))
+
+    const { error: insertError } = await supabase
+      .from('vendor_service_areas')
+      .insert(rows)
+
+    if (insertError) throw insertError
+
+    // Audit log
+    await supabase.from('audit_logs').insert({
+      adminId: user.id,
+      adminRole: user.role,
+      actionType: 'vendor_coverage_admin_add',
+      entityType: 'vendor',
+      entityId: vendorId,
+      fieldChanged: 'vendor_service_areas',
+      oldValue: null,
+      newValue: { added: toInsert.length, serviceAreaIds: toInsert },
+      reason: `Admin added ${toInsert.length} service areas for vendor`,
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: { added: toInsert.length },
+    })
+  } catch (error) {
+    console.error('Admin add coverage POST error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to add service areas' },
       { status: 500 }
     )
   }

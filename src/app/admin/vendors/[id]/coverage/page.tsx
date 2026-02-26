@@ -13,7 +13,17 @@ import {
   AlertCircle,
   RefreshCw,
   ShieldCheck,
+  Plus,
+  Search,
+  X,
 } from "lucide-react"
+
+interface AvailableArea {
+  id: string
+  name: string
+  pincode: string
+  cityName: string
+}
 
 interface CoverageArea {
   id: string
@@ -36,6 +46,7 @@ export default function AdminVendorCoveragePage() {
 
   const [vendorName, setVendorName] = useState("")
   const [areas, setAreas] = useState<CoverageArea[]>([])
+  const [availableAreas, setAvailableAreas] = useState<AvailableArea[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -44,15 +55,25 @@ export default function AdminVendorCoveragePage() {
   const [rejectReason, setRejectReason] = useState("")
   const [success, setSuccess] = useState<string | null>(null)
 
+  // Add Areas panel state
+  const [showAddPanel, setShowAddPanel] = useState(false)
+  const [addSearch, setAddSearch] = useState("")
+  const [selectedToAdd, setSelectedToAdd] = useState<Set<string>>(new Set())
+  const [addSurcharge, setAddSurcharge] = useState("0")
+  const [addLoading, setAddLoading] = useState(false)
+
   const fetchData = async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/admin/vendors/${vendorId}/coverage`)
+      const res = await fetch(`/api/admin/vendors/${vendorId}/coverage?include=available`)
       const json = await res.json()
       if (json.success) {
         setVendorName(json.data.vendor.businessName)
         setAreas(json.data.areas)
+        if (json.data.availableAreas) {
+          setAvailableAreas(json.data.availableAreas)
+        }
       } else {
         setError(json.error || "Failed to load coverage")
       }
@@ -147,6 +168,64 @@ export default function AdminVendorCoveragePage() {
       setError("Failed to connect to server")
     } finally {
       setBulkLoading(false)
+    }
+  }
+
+  // Areas not yet assigned to vendor (for the Add panel)
+  const assignedAreaIds = useMemo(
+    () => new Set(areas.map((a) => a.serviceAreaId)),
+    [areas]
+  )
+
+  const unassignedAreas = useMemo(() => {
+    const list = availableAreas.filter((a) => !assignedAreaIds.has(a.id))
+    if (!addSearch.trim()) return list
+    const q = addSearch.toLowerCase()
+    return list.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        a.pincode.includes(q) ||
+        a.cityName.toLowerCase().includes(q)
+    )
+  }, [availableAreas, assignedAreaIds, addSearch])
+
+  const toggleSelectToAdd = (id: string) => {
+    setSelectedToAdd((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleAddAreas = async () => {
+    if (selectedToAdd.size === 0) return
+    setAddLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/vendors/${vendorId}/coverage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceAreaIds: Array.from(selectedToAdd),
+          deliverySurcharge: parseFloat(addSurcharge) || 0,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setSuccess(`Added ${json.data.added} area${json.data.added !== 1 ? "s" : ""} as active`)
+        setTimeout(() => setSuccess(null), 3000)
+        setSelectedToAdd(new Set())
+        setShowAddPanel(false)
+        setAddSearch("")
+        fetchData()
+      } else {
+        setError(json.error || "Failed to add areas")
+      }
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setAddLoading(false)
     }
   }
 
@@ -258,6 +337,133 @@ export default function AdminVendorCoveragePage() {
             )}
             {bulkLoading ? "Activating..." : "Activate All Pending"}
           </button>
+        </div>
+      )}
+
+      {/* Add Areas panel */}
+      {!showAddPanel ? (
+        <button
+          onClick={() => setShowAddPanel(true)}
+          className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-[#E91E63] hover:text-[#E91E63] transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Add Service Areas
+        </button>
+      ) : (
+        <div className="rounded-lg border bg-white p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">
+              Add Service Areas (auto-active)
+            </h3>
+            <button
+              onClick={() => {
+                setShowAddPanel(false)
+                setSelectedToAdd(new Set())
+                setAddSearch("")
+              }}
+              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              value={addSearch}
+              onChange={(e) => setAddSearch(e.target.value)}
+              placeholder="Search by name or pincode..."
+              className="w-full rounded-lg border pl-9 pr-3 py-2 text-sm focus:border-[#E91E63] focus:outline-none focus:ring-1 focus:ring-[#E91E63]"
+            />
+          </div>
+
+          {/* Surcharge */}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500">Default surcharge:</label>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-400">₹</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={addSurcharge}
+                onChange={(e) => setAddSurcharge(e.target.value)}
+                className="w-20 rounded border px-2 py-1 text-sm text-right focus:border-[#E91E63] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Area list */}
+          <div className="max-h-64 overflow-y-auto space-y-1 border rounded-lg p-2">
+            {unassignedAreas.length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-400">
+                {addSearch
+                  ? "No matching unassigned areas"
+                  : "All available areas are already assigned"}
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between px-2 pb-1 border-b">
+                  <button
+                    onClick={() => {
+                      if (selectedToAdd.size === unassignedAreas.length) {
+                        setSelectedToAdd(new Set())
+                      } else {
+                        setSelectedToAdd(new Set(unassignedAreas.map((a) => a.id)))
+                      }
+                    }}
+                    className="text-xs text-[#E91E63] hover:underline"
+                  >
+                    {selectedToAdd.size === unassignedAreas.length
+                      ? "Deselect all"
+                      : "Select all"}
+                  </button>
+                  <span className="text-xs text-slate-400">
+                    {selectedToAdd.size} selected
+                  </span>
+                </div>
+                {unassignedAreas.map((area) => (
+                  <label
+                    key={area.id}
+                    className="flex items-center gap-3 rounded px-2 py-1.5 cursor-pointer hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedToAdd.has(area.id)}
+                      onChange={() => toggleSelectToAdd(area.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-[#E91E63] focus:ring-[#E91E63]"
+                    />
+                    <span className="flex-1 text-sm text-slate-700">
+                      {area.name}
+                    </span>
+                    <span className="text-xs font-mono text-slate-500">
+                      {area.pincode}
+                    </span>
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* Add button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleAddAreas}
+              disabled={addLoading || selectedToAdd.size === 0}
+              className="flex items-center gap-2 rounded-lg bg-[#E91E63] px-4 py-2 text-sm font-medium text-white hover:bg-[#C2185B] disabled:opacity-50"
+            >
+              {addLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {addLoading
+                ? "Adding..."
+                : `Add ${selectedToAdd.size} Area${selectedToAdd.size !== 1 ? "s" : ""} as Active`}
+            </button>
+          </div>
         </div>
       )}
 
