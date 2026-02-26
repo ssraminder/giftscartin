@@ -4,6 +4,7 @@ import { getSupabaseAdmin, getSupabase } from '@/lib/supabase'
 import { isAdminRole } from '@/lib/roles'
 import { paginationSchema } from '@/lib/validations'
 import { generateOrderNumber } from '@/lib/utils'
+import { getPlatformSurcharges, calculatePlatformSurcharge } from '@/lib/surcharge'
 import { z } from 'zod/v4'
 
 const inlineAddressSchema = z.object({
@@ -568,18 +569,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check for active delivery surcharges on deliveryDate
+    // Server-side surcharge computation (never trust client values)
     let surcharge = 0
+    let vendorAreaSurcharge = 0
+    let platformSurchargeTotal = 0
     const deliveryDateObj = new Date(deliveryDate)
-    const { data: surcharges } = await supabase
-      .from('delivery_surcharges')
-      .select('amount')
-      .eq('isActive', true)
-      .lte('startDate', deliveryDateObj.toISOString())
-      .gte('endDate', deliveryDateObj.toISOString())
 
-    for (const s of surcharges || []) {
-      surcharge += Number(s.amount)
+    // Get cityId from the resolved zone (needed for platform surcharges)
+    const surchargesCityId = zone ? (zone.cities as { id: string }).id : null
+
+    // 1. Platform surcharges — fetch and filter by slot + product categories
+    if (surchargesCityId) {
+      const rawSurcharges = await getPlatformSurcharges(deliveryDateObj, surchargesCityId)
+
+      // Resolve category slugs for ordered products so category-specific surcharges apply
+      const categoryIds: string[] = []
+      const productCategoryIds = products
+        .map((p: Record<string, unknown>) => p.categoryId as string)
+        .filter(Boolean)
+      if (productCategoryIds.length > 0) {
+        const { data: cats } = await supabase
+          .from('categories')
+          .select('slug')
+          .in('id', productCategoryIds)
+        for (const c of cats || []) {
+          if (c.slug) categoryIds.push(c.slug)
+        }
+      }
+
+      const platformResult = calculatePlatformSurcharge(rawSurcharges, deliverySlot, categoryIds)
+      platformSurchargeTotal = platformResult.total
     }
 
     // Apply coupon discount
@@ -639,7 +658,8 @@ export async function POST(request: NextRequest) {
 
     // Add COD fee if payment method is cash on delivery
     const codFee = paymentMethod === 'cod' ? 50 : 0
-    let total = subtotal + deliveryCharge + surcharge + codFee - discount
+    // Preliminary total (vendor area surcharge added after vendor assignment below)
+    let total = subtotal + deliveryCharge + platformSurchargeTotal + codFee - discount
 
     // Determine city code for order number
     const cityCode = zone
@@ -716,7 +736,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Recalculate total with updated delivery charge (vendor pincode surcharge may have been added)
+    // 2. Vendor area surcharge — from vendor_service_areas for the resolved vendor + pincode
+    if (bestVendorId && address.pincode) {
+      // Find the service area matching the delivery pincode
+      const { data: serviceArea } = await supabase
+        .from('service_areas')
+        .select('id')
+        .eq('pincode', address.pincode as string)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+
+      if (serviceArea) {
+        const { data: vsa } = await supabase
+          .from('vendor_service_areas')
+          .select('delivery_surcharge')
+          .eq('vendor_id', bestVendorId)
+          .eq('service_area_id', serviceArea.id)
+          .eq('status', 'ACTIVE')
+          .eq('is_active', true)
+          .maybeSingle()
+
+        if (vsa && Number(vsa.delivery_surcharge) > 0) {
+          vendorAreaSurcharge = Number(vsa.delivery_surcharge)
+        }
+      }
+    }
+
+    // Total surcharge = vendor area surcharge + platform surcharge
+    surcharge = vendorAreaSurcharge + platformSurchargeTotal
+
+    // Recalculate total with updated delivery charge and surcharges
     total = subtotal + deliveryCharge + surcharge + codFee - discount
 
     // Create the order

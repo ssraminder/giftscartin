@@ -73,13 +73,18 @@ interface FixedWindow {
   available: boolean
 }
 
+interface SurchargeItem {
+  name: string
+  amount: number
+}
+
 interface SlotsApiData {
   standard: { available: boolean; charge: number }
   fixedWindows: FixedWindow[]
   earlyMorning: { available: boolean; charge: number; cutoffPassed: boolean }
   express: { available: boolean; charge: number }
   midnight: { available: boolean; charge: number; cutoffPassed: boolean }
-  surcharge: { name: string; amount: number } | null
+  surcharge: { name: string; amount: number; items?: SurchargeItem[] } | null
   fullyBlocked: boolean
   holidayReason: string | null
   maxPreparationTime?: number
@@ -212,6 +217,7 @@ export default function CheckoutPage() {
     slotCharge: 0,
     extraDeliveryCharge: 0,   // vendor-pincode area surcharge
     surchargeAmount: 0,       // date-based festival surcharge
+    surchargeItems: [] as SurchargeItem[],  // individual platform surcharges for breakdown display
     giftMessage: "",
     specialInstructions: "",
 
@@ -376,14 +382,15 @@ export default function CheckoutPage() {
       if (!json.success) throw new Error(json.error)
       const slotsData = json.data as SlotsApiData
       setSlotsApiData(slotsData)
-      // Capture date-based surcharge amount for total calculation
+      // Capture date-based surcharge amount + breakdown for total calculation and display
       setFormData((prev) => ({
         ...prev,
         surchargeAmount: slotsData.surcharge ? Number(slotsData.surcharge.amount) : 0,
+        surchargeItems: slotsData.surcharge?.items || [],
       }))
     } catch {
       setSlotsApiData(null)
-      setFormData((prev) => ({ ...prev, surchargeAmount: 0 }))
+      setFormData((prev) => ({ ...prev, surchargeAmount: 0, surchargeItems: [] }))
     } finally {
       setSlotsLoading(false)
     }
@@ -2164,17 +2171,24 @@ export default function CheckoutPage() {
                     <span>{deliveryCharge === 0 ? <span className="text-green-600">Free</span> : formatPrice(deliveryCharge)}</span>
                   </div>
                   {areaSurcharge > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Area delivery surcharge</span>
+                    <div className="flex justify-between text-sm text-amber-700">
+                      <span>Area Surcharge</span>
                       <span>+{formatPrice(areaSurcharge)}</span>
                     </div>
                   )}
-                  {festivalSurcharge > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Festival surcharge</span>
+                  {formData.surchargeItems.length > 1 ? (
+                    formData.surchargeItems.map((item, idx) => (
+                      <div key={idx} className="flex justify-between text-sm text-amber-700">
+                        <span>{item.name}</span>
+                        <span>+{formatPrice(item.amount)}</span>
+                      </div>
+                    ))
+                  ) : festivalSurcharge > 0 ? (
+                    <div className="flex justify-between text-sm text-amber-700">
+                      <span>Festival/Area Surcharge</span>
                       <span>+{formatPrice(festivalSurcharge)}</span>
                     </div>
-                  )}
+                  ) : null}
                   {formData.couponDiscount > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
                       <span>Coupon</span>
@@ -2335,19 +2349,26 @@ export default function CheckoutPage() {
 
                 {/* Area delivery surcharge */}
                 {areaSurcharge > 0 && (
-                  <div className="flex justify-between text-sm mt-1.5">
-                    <span className="text-gray-600">Area surcharge</span>
-                    <span className="text-gray-800">+{formatPrice(areaSurcharge)}</span>
+                  <div className="flex justify-between text-sm mt-1.5 text-amber-700">
+                    <span>Area Surcharge</span>
+                    <span>+{formatPrice(areaSurcharge)}</span>
                   </div>
                 )}
 
-                {/* Festival surcharge */}
-                {festivalSurcharge > 0 && (
-                  <div className="flex justify-between text-sm mt-1.5">
-                    <span className="text-gray-600">Festival surcharge</span>
-                    <span className="text-gray-800">+{formatPrice(festivalSurcharge)}</span>
+                {/* Platform surcharges — show each named item separately */}
+                {formData.surchargeItems.length > 1 ? (
+                  formData.surchargeItems.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-sm mt-1.5 text-amber-700">
+                      <span>{item.name}</span>
+                      <span>+{formatPrice(item.amount)}</span>
+                    </div>
+                  ))
+                ) : festivalSurcharge > 0 ? (
+                  <div className="flex justify-between text-sm mt-1.5 text-amber-700">
+                    <span>Festival/Area Surcharge</span>
+                    <span>+{formatPrice(festivalSurcharge)}</span>
                   </div>
-                )}
+                ) : null}
 
                 {/* Coupon discount */}
                 {formData.couponDiscount > 0 && (
