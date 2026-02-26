@@ -12,6 +12,8 @@ import {
   Loader2,
   ArrowRight,
   RefreshCw,
+  Check,
+  IndianRupee,
 } from 'lucide-react'
 
 // ==================== Types ====================
@@ -22,11 +24,15 @@ interface ServiceArea {
   pincode: string
   cityId: string
   cityName: string
+  city_id: string
+  city_name: string
   state: string
   lat: number
   lng: number
   isActive: boolean
+  is_active: boolean
   createdAt: string
+  delivery_surcharge: number | null
 }
 
 interface Stats {
@@ -86,6 +92,17 @@ function AdminAreasContent() {
   const [looking, setLooking] = useState(false)
   const [adding, setAdding] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Surcharge inline edit state
+  const [editingSurchargeId, setEditingSurchargeId] = useState<string | null>(null)
+  const [editingSurchargeValue, setEditingSurchargeValue] = useState('')
+  const [savingSurchargeId, setSavingSurchargeId] = useState<string | null>(null)
+  const [savedSurchargeId, setSavedSurchargeId] = useState<string | null>(null)
+
+  // Bulk surcharge state
+  const [bulkCityId, setBulkCityId] = useState('')
+  const [bulkSurchargeAmount, setBulkSurchargeAmount] = useState('')
+  const [bulkUpdating, setBulkUpdating] = useState(false)
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message })
@@ -245,6 +262,83 @@ function AdminAreasContent() {
     }
   }
 
+  // Surcharge badge styling
+  const getSurchargeStyle = (amount: number) => {
+    if (amount === 0) return 'bg-slate-100 text-slate-600'
+    if (amount < 50) return 'bg-blue-50 text-blue-700'
+    return 'bg-amber-50 text-amber-700'
+  }
+
+  // Save individual surcharge
+  const saveSurcharge = async (id: string, value: string) => {
+    const surcharge = Number(value)
+    if (isNaN(surcharge) || surcharge < 0) {
+      showToast('error', 'Surcharge must be a non-negative number')
+      return
+    }
+    setSavingSurchargeId(id)
+    try {
+      const res = await fetch(`/api/admin/areas/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delivery_surcharge: surcharge }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setAreas(prev => prev.map(a => a.id === id ? { ...a, delivery_surcharge: surcharge } : a))
+        setSavedSurchargeId(id)
+        setTimeout(() => setSavedSurchargeId(null), 2000)
+      } else {
+        showToast('error', json.error || 'Failed to update surcharge')
+      }
+    } catch {
+      showToast('error', 'Failed to update surcharge')
+    } finally {
+      setSavingSurchargeId(null)
+      setEditingSurchargeId(null)
+    }
+  }
+
+  // Bulk update surcharge for all areas in a city
+  const handleBulkSurcharge = async () => {
+    if (!bulkCityId) {
+      showToast('error', 'Select a city first')
+      return
+    }
+    const amount = Number(bulkSurchargeAmount)
+    if (isNaN(amount) || amount < 0) {
+      showToast('error', 'Enter a valid surcharge amount')
+      return
+    }
+    setBulkUpdating(true)
+    try {
+      const res = await fetch('/api/admin/areas/bulk-surcharge', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city_id: bulkCityId, delivery_surcharge: amount }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        showToast('success', `Updated surcharge to ₹${amount} for ${json.data.updated_count} areas`)
+        // Update local state for matching areas
+        setAreas(prev =>
+          prev.map(a =>
+            (a.city_id === bulkCityId || a.cityId === bulkCityId)
+              ? { ...a, delivery_surcharge: amount }
+              : a
+          )
+        )
+        setBulkSurchargeAmount('')
+      } else {
+        showToast('error', json.error || 'Bulk update failed')
+      }
+    } catch {
+      showToast('error', 'Bulk update failed')
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
   const totalPages = Math.ceil(total / 50)
 
   return (
@@ -374,6 +468,42 @@ function AdminAreasContent() {
         </div>
       )}
 
+      {/* Bulk surcharge update */}
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+        <IndianRupee className="h-4 w-4 text-slate-400" />
+        <span className="text-sm font-medium text-slate-600">Set surcharge for all areas in:</span>
+        <select
+          value={bulkCityId}
+          onChange={e => setBulkCityId(e.target.value)}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-500 focus:outline-none"
+        >
+          <option value="">Select city</option>
+          {cities.map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <div className="flex items-center gap-1">
+          <span className="text-sm text-slate-500">₹</span>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={bulkSurchargeAmount}
+            onChange={e => setBulkSurchargeAmount(e.target.value)}
+            placeholder="0"
+            className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:border-pink-500 focus:outline-none"
+          />
+        </div>
+        <button
+          onClick={handleBulkSurcharge}
+          disabled={bulkUpdating || !bulkCityId}
+          className="flex items-center gap-1.5 rounded-lg bg-pink-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-pink-700 disabled:opacity-50"
+        >
+          {bulkUpdating && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Apply
+        </button>
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Status tabs */}
@@ -430,6 +560,7 @@ function AdminAreasContent() {
               <th className="px-4 py-3 text-left font-medium text-slate-500">Pincode</th>
               <th className="px-4 py-3 text-left font-medium text-slate-500">City</th>
               <th className="px-4 py-3 text-left font-medium text-slate-500">State</th>
+              <th className="px-4 py-3 text-left font-medium text-slate-500">Surcharge</th>
               <th className="px-4 py-3 text-left font-medium text-slate-500">Status</th>
               <th className="px-4 py-3 text-right font-medium text-slate-500">Actions</th>
             </tr>
@@ -438,14 +569,14 @@ function AdminAreasContent() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  <td colSpan={6} className="px-4 py-3">
+                  <td colSpan={7} className="px-4 py-3">
                     <div className="h-5 w-full animate-pulse rounded bg-slate-100" />
                   </td>
                 </tr>
               ))
             ) : areas.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                   <MapPin className="mx-auto mb-2 h-8 w-8 text-slate-300" />
                   No areas found
                 </td>
@@ -460,6 +591,42 @@ function AdminAreasContent() {
                   <td className="px-4 py-3 font-mono text-slate-600">{area.pincode}</td>
                   <td className="px-4 py-3 text-slate-600">{area.cityName}</td>
                   <td className="px-4 py-3 text-slate-500">{area.state}</td>
+                  <td className="px-4 py-3">
+                    {editingSurchargeId === area.id ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        autoFocus
+                        value={editingSurchargeValue}
+                        onChange={e => setEditingSurchargeValue(e.target.value)}
+                        onBlur={() => saveSurcharge(area.id, editingSurchargeValue)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') saveSurcharge(area.id, editingSurchargeValue)
+                          if (e.key === 'Escape') setEditingSurchargeId(null)
+                        }}
+                        className="w-20 rounded border border-pink-300 px-2 py-0.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-pink-400"
+                      />
+                    ) : savingSurchargeId === area.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingSurchargeId(area.id)
+                          setEditingSurchargeValue(String(Number(area.delivery_surcharge) || 0))
+                        }}
+                        className="group relative inline-flex items-center gap-1"
+                        title="Click to edit surcharge"
+                      >
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getSurchargeStyle(Number(area.delivery_surcharge) || 0)}`}>
+                          ₹{Number(area.delivery_surcharge) || 0}
+                        </span>
+                        {savedSurchargeId === area.id && (
+                          <Check className="h-3.5 w-3.5 text-green-500" />
+                        )}
+                      </button>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     {area.isActive ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
