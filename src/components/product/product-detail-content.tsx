@@ -242,8 +242,8 @@ export default function ProductDetailContent({
       // Serviceable!
       setIsServiceable(true)
       if (d.slotGroups) setSlotGroups(d.slotGroups)
-      // Save to city context if came from input
-      if (!pincode && d.city) {
+      // Save to city context — always update on successful serviceability check
+      if (d.city) {
         setCity({
           cityId: d.city.id,
           cityName: d.city.name,
@@ -251,6 +251,11 @@ export default function ProductDetailContent({
           pincode: pc,
           areaName: d.areaName || undefined,
         })
+      } else if (!pincode) {
+        // No city data from API, but at least persist the pincode
+        if (cityId) {
+          setCity({ cityId, cityName: cityName || "", citySlug: "", pincode: pc })
+        }
       }
     } catch {
       setPincodeError("Network error. Please try again.")
@@ -266,15 +271,6 @@ export default function ProductDetailContent({
       return
     }
     fetchServiceability(pincodeInput)
-    // Also update city context
-    if (cityId) {
-      setCity({
-        cityId,
-        cityName: cityName || "",
-        citySlug: "",
-        pincode: pincodeInput,
-      })
-    }
   }
 
   const handleClearPincode = () => {

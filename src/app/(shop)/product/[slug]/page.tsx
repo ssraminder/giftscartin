@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { getProductMeta, buildProductJsonLd } from '@/lib/seo'
+import { getProductMeta, buildProductJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo'
 import { JsonLd } from '@/components/seo/json-ld'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import ProductDetailContent from '@/components/product/product-detail-content'
@@ -69,7 +69,6 @@ export default async function ProductPage({
       .from('product_variations')
       .select('*')
       .eq('productId', product.id)
-      .eq('isActive', true)
       .order('sortOrder', { ascending: true }),
     supabase
       .from('product_addon_groups')
@@ -121,6 +120,13 @@ export default async function ProductPage({
   // Build the category object in the expected format
   const category = product.categories as unknown as { id: string; name: string; slug: string } | null
 
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://giftscart.netlify.app'
+  const breadcrumbCrumbs = [
+    { name: 'Home', url: SITE_URL },
+    ...(category ? [{ name: category.name, url: `${SITE_URL}/category/${category.slug}` }] : []),
+    { name: product.name, url: `${SITE_URL}/product/${params.slug}` },
+  ]
+
   // Serialize for client component (Decimal → string, Date → ISO string)
   const serialized = JSON.parse(JSON.stringify({
     product: {
@@ -146,6 +152,7 @@ export default async function ProductPage({
           slug: params.slug,
         })}
       />
+      <JsonLd data={buildBreadcrumbJsonLd(breadcrumbCrumbs)} />
       <ProductDetailContent
         product={serialized.product}
         variations={serialized.variations}
