@@ -22,11 +22,17 @@ export interface CartItemState {
   product: Product
 }
 
+export interface CartAddResult {
+  success: boolean
+  reason?: string
+  message?: string
+}
+
 interface CartStore {
   items: CartItemState[]
   couponCode: string | null
   couponDiscount: number
-  addItem: (product: Product, quantity?: number, legacyAddons?: { addonId: string; name: string; price: number }[], legacyVariation?: { variationId: string; type: string; label: string; price: number } | null) => void
+  addItem: (product: Product, quantity?: number, legacyAddons?: { addonId: string; name: string; price: number }[], legacyVariation?: { variationId: string; type: string; label: string; price: number } | null) => CartAddResult
   addItemAdvanced: (params: {
     product: Product
     quantity: number
@@ -35,7 +41,10 @@ interface CartStore {
     selectedAttributes: Record<string, string> | null
     addonSelections: AddonSelectionRecord[]
     deliveryDate?: string | null
-  }) => void
+    deliverySlot?: string | null
+    deliveryWindow?: string | null
+    deliveryCharge?: number
+  }) => CartAddResult
   removeItem: (itemId: string) => void
   updateQuantity: (itemId: string, quantity: number) => void
   updateDelivery: (itemId: string, date: string | null, slot: string | null, window?: string | null, charge?: number) => void
@@ -82,13 +91,24 @@ export const useCart = create<CartStore>()(
           addonPrice: Number(a.price),
         }))
 
+        // Cart mixing validation — legacy addItem is always "standard" (no deliverySlot)
+        const currentItems = Array.isArray(get().items) ? get().items : []
+        const hasExpressItems = currentItems.some(item => item.deliverySlot === 'express')
+        if (hasExpressItems) {
+          return {
+            success: false,
+            reason: 'standard_conflict',
+            message: 'Your cart has an express order. Express items must be checked out separately.',
+          }
+        }
+
         set((state) => {
-          const currentItems = Array.isArray(state.items) ? state.items : []
+          const items = Array.isArray(state.items) ? state.items : []
           // For legacy calls, match by productId (simple dedup)
-          const existing = currentItems.find((i) => i.productId === normalizedProduct.id)
+          const existing = items.find((i) => i.productId === normalizedProduct.id)
           if (existing) {
             return {
-              items: currentItems.map((i) =>
+              items: items.map((i) =>
                 i.id === existing.id
                   ? { ...i, quantity: i.quantity + quantity }
                   : i
@@ -97,7 +117,7 @@ export const useCart = create<CartStore>()(
           }
           return {
             items: [
-              ...currentItems,
+              ...items,
               {
                 id: generateCartItemId(),
                 productId: normalizedProduct.id,
@@ -118,17 +138,40 @@ export const useCart = create<CartStore>()(
             ],
           }
         })
+        return { success: true }
       },
 
       // New addItemAdvanced for Phase D with full variation + addon group support
-      addItemAdvanced: ({ product, quantity, price, variationId, selectedAttributes, addonSelections, deliveryDate }) => {
+      addItemAdvanced: ({ product, quantity, price, variationId, selectedAttributes, addonSelections, deliveryDate, deliverySlot, deliveryWindow, deliveryCharge }) => {
         const normalizedProduct = { ...product, basePrice: Number(product.basePrice) }
+        const isExpressItem = deliverySlot === 'express'
+
+        // Cart mixing validation
+        const currentItems = Array.isArray(get().items) ? get().items : []
+        const hasExpressItems = currentItems.some(item => item.deliverySlot === 'express')
+        const hasStandardItems = currentItems.some(item => item.deliverySlot !== 'express')
+
+        if (isExpressItem && hasStandardItems && currentItems.length > 0) {
+          return {
+            success: false,
+            reason: 'express_conflict',
+            message: 'Express items must be ordered separately. Complete or clear your current cart first.',
+          }
+        }
+
+        if (!isExpressItem && hasExpressItems && currentItems.length > 0) {
+          return {
+            success: false,
+            reason: 'standard_conflict',
+            message: 'Your cart has an express order. Express items must be checked out separately.',
+          }
+        }
 
         set((state) => {
-          const currentItems = Array.isArray(state.items) ? state.items : []
+          const items = Array.isArray(state.items) ? state.items : []
           return {
             items: [
-              ...currentItems,
+              ...items,
               {
                 id: generateCartItemId(),
                 productId: normalizedProduct.id,
@@ -141,14 +184,15 @@ export const useCart = create<CartStore>()(
                 selectedAttributes,
                 addonSelections,
                 deliveryDate: deliveryDate ?? null,
-                deliverySlot: null,
-                deliveryWindow: null,
-                deliveryCharge: 0,
+                deliverySlot: deliverySlot ?? null,
+                deliveryWindow: deliveryWindow ?? null,
+                deliveryCharge: deliveryCharge ?? 0,
                 product: normalizedProduct,
               },
             ],
           }
         })
+        return { success: true }
       },
 
       removeItem: (itemId) => {
