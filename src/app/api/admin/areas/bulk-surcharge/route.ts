@@ -32,20 +32,20 @@ export async function PATCH(request: NextRequest) {
 
     const supabase = getSupabaseAdmin()
 
-    const { data: updated, error, count } = await supabase
+    const { data: updated, error } = await supabase
       .from('service_areas')
       .update({
         delivery_surcharge: surcharge,
         updated_at: new Date().toISOString(),
       })
       .eq('city_id', city_id)
-      .select('id', { count: 'exact' })
+      .select('id')
 
     if (error) throw error
 
     return NextResponse.json({
       success: true,
-      data: { updated_count: count ?? updated?.length ?? 0 },
+      data: { updated_count: updated?.length ?? 0 },
     })
   } catch (error) {
     console.error('Bulk surcharge update error:', error)
