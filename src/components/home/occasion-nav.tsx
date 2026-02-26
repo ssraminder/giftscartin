@@ -124,11 +124,9 @@ export function OccasionNav() {
     const max = Math.max(0, total - visible)
     setTileStep(step)
     setVisibleCount(visible)
-    setMaxOffset((_prev) => {
-      // Clamp current offset if container resized
-      if (offset > max) setOffset(max)
-      return max
-    })
+    // Clamp current offset if container resized
+    if (offset > max) setOffset(max)
+    setMaxOffset(max)
   }, [offset])
 
   useEffect(() => {
