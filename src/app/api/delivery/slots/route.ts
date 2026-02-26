@@ -106,10 +106,16 @@ export async function GET(req: NextRequest) {
       .lte('startDate', deliveryDate.toISOString())
       .gte('endDate', deliveryDate.toISOString())
 
-    const surchargeData = (surcharges && surcharges.length > 0)
+    const surchargeItems = (surcharges || []).map((s: Record<string, unknown>) => ({
+      name: s.name as string,
+      amount: Number(s.amount),
+    }))
+
+    const surchargeData = surchargeItems.length > 0
       ? {
-          name: surcharges.map((s: Record<string, unknown>) => s.name).join(', '),
-          amount: surcharges.reduce((sum: number, s: Record<string, unknown>) => sum + Number(s.amount), 0),
+          name: surchargeItems.map((s) => s.name).join(', '),
+          amount: surchargeItems.reduce((sum, s) => sum + s.amount, 0),
+          items: surchargeItems,
         }
       : null
 
