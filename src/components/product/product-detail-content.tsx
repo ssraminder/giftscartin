@@ -15,6 +15,7 @@ import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { ProductGallery } from "@/components/product/product-gallery"
 import { AddonGroup } from "@/components/product/addon-group"
 import { DeliverySlotPicker, type DeliverySlotSelection } from "@/components/product/delivery-slot-picker"
+import type { ExpressSlot } from "@/types"
 import { ProductCard } from "@/components/product/product-card"
 import {
   Accordion,
@@ -202,6 +203,7 @@ export default function ProductDetailContent({
     fixed: FixedSlotGroup | null
     midnight: MidnightSlotGroup | null
   } | null>(null)
+  const [expressSlot, setExpressSlot] = useState<ExpressSlot | null>(null)
 
   // Check serviceability when pincode already set from context
   const serviceabilityFetched = useRef(false)
@@ -242,6 +244,7 @@ export default function ProductDetailContent({
       // Serviceable!
       setIsServiceable(true)
       if (d.slotGroups) setSlotGroups(d.slotGroups)
+      if (d.expressSlot) setExpressSlot(d.expressSlot)
       // Save to city context — always update on successful serviceability check
       if (d.city) {
         setCity({
@@ -277,6 +280,7 @@ export default function ProductDetailContent({
     clearPincode()
     setIsServiceable(null)
     setSlotGroups(null)
+    setExpressSlot(null)
     setSelectedDate(null)
     setSlotSelection(null)
     serviceabilityFetched.current = false
@@ -291,10 +295,41 @@ export default function ProductDetailContent({
   })
 
   const ist = getISTDate()
-  const istHour = ist.getHours()
   const minLead = product.minLeadTimeHours ?? 2
 
-  const isTodayDisabled = istHour >= (24 - minLead)
+  // IST time in minutes from midnight (using UTC-based IST calculation)
+  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000)
+  const istTotalMinutes = istNow.getUTCHours() * 60 + istNow.getUTCMinutes()
+
+  // Helper: is today valid for a given slot end time and cutoff
+  function isTodayValidForSlot(slotEndTime: string, cutoffHours: number, minLeadTimeHours: number): boolean {
+    const [h, m] = slotEndTime.split(':').map(Number)
+    const slotEndMinutes = h * 60 + (m || 0)
+    const latestOrderMinutes = slotEndMinutes - (cutoffHours * 60) - (minLeadTimeHours * 60)
+    return istTotalMinutes <= latestOrderMinutes
+  }
+
+  // TODAY VALID FOR STANDARD SLOTS?
+  const isTodayValidStandard = useMemo(() => {
+    if (!slotGroups) return false
+    const { standard, fixed, midnight } = slotGroups
+    const standardOk = standard?.available && isTodayValidForSlot("21:00", standard.cutoffHours, minLead)
+    const fixedOk = fixed?.available && fixed.slots?.some(
+      (slot) => isTodayValidForSlot(slot.endTime, slot.cutoffHours, minLead)
+    )
+    const midnightOk = midnight?.available && isTodayValidForSlot("23:59", midnight.cutoffHours, minLead)
+    return !!(standardOk || fixedOk || midnightOk)
+  }, [slotGroups, istTotalMinutes, minLead]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // TODAY VALID FOR EXPRESS?
+  const isTodayValidExpress = useMemo(() => {
+    if (!product.isExpressEligible) return false
+    if (!expressSlot?.available) return false
+    return isTodayValidForSlot("23:59", expressSlot.cutoffHours, 0)
+  }, [product.isExpressEligible, expressSlot, istTotalMinutes]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isTodayValid = isTodayValidStandard || isTodayValidExpress
+  const isTodayExpressOnly = !isTodayValidStandard && isTodayValidExpress
 
   const tomorrow = useMemo(() => {
     const t = new Date(ist)
@@ -302,9 +337,31 @@ export default function ProductDetailContent({
     return t
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-select default date on mount/change: Today if valid, else Tomorrow
+  useEffect(() => {
+    if (!isServiceable || !pincode) return
+    if (selectedDate) return // already selected
+    if (isTodayValid) {
+      setSelectedDate(toYMD(ist))
+    } else {
+      setSelectedDate(toYMD(tomorrow))
+    }
+  }, [isServiceable, pincode, isTodayValid]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleDateSelect = (dateStr: string) => {
     setSelectedDate(dateStr)
-    setSlotSelection(null)
+    // If selecting today and only express is valid, auto-select express slot
+    const todayStr = toYMD(ist)
+    if (dateStr === todayStr && !isTodayValidStandard && isTodayValidExpress && expressSlot) {
+      setSlotSelection({
+        slotGroup: 'express',
+        slotSlug: 'express',
+        slotName: 'Express Delivery',
+        deliveryCharge: expressSlot.baseCharge,
+      })
+    } else {
+      setSlotSelection(null)
+    }
   }
 
   // ---- Slot selection ----
@@ -382,12 +439,15 @@ export default function ProductDetailContent({
 
   const canAddToCart = isServiceable && selectedDate && slotSelection
 
+  // ---- Error toast state ----
+  const [errorToast, setErrorToast] = useState<string | null>(null)
+
   const handleAddToCart = async () => {
     if (!canAddToCart) return
     if (!validateAddons()) return
     setAdding(true)
     try {
-      addItemAdvanced({
+      const result = addItemAdvanced({
         product: product as Product,
         quantity: 1,
         price: displayPrice,
@@ -395,9 +455,17 @@ export default function ProductDetailContent({
         selectedAttributes: selectedVariation?.attributes ?? null,
         addonSelections: buildAddonRecords(),
         deliveryDate: selectedDate,
+        deliverySlot: slotSelection?.slotSlug ?? null,
+        deliveryWindow: slotSelection?.slotName ?? null,
+        deliveryCharge: slotSelection?.deliveryCharge ?? 0,
       })
-      setAddedToast(true)
-      setTimeout(() => setAddedToast(false), 3000)
+      if (result && !result.success) {
+        setErrorToast(result.message ?? 'Cannot add item to cart')
+        setTimeout(() => setErrorToast(null), 4000)
+      } else {
+        setAddedToast(true)
+        setTimeout(() => setAddedToast(false), 3000)
+      }
     } finally {
       setAdding(false)
     }
@@ -408,7 +476,7 @@ export default function ProductDetailContent({
     if (!validateAddons()) return
     setAdding(true)
     try {
-      addItemAdvanced({
+      const result = addItemAdvanced({
         product: product as Product,
         quantity: 1,
         price: displayPrice,
@@ -416,8 +484,16 @@ export default function ProductDetailContent({
         selectedAttributes: selectedVariation?.attributes ?? null,
         addonSelections: buildAddonRecords(),
         deliveryDate: selectedDate,
+        deliverySlot: slotSelection?.slotSlug ?? null,
+        deliveryWindow: slotSelection?.slotName ?? null,
+        deliveryCharge: slotSelection?.deliveryCharge ?? 0,
       })
-      router.push("/cart")
+      if (result && !result.success) {
+        setErrorToast(result.message ?? 'Cannot add item to cart')
+        setTimeout(() => setErrorToast(null), 4000)
+      } else {
+        router.push("/cart")
+      }
     } finally {
       setAdding(false)
     }
@@ -426,11 +502,11 @@ export default function ProductDetailContent({
   // ---- Countdown timer ----
   const [countdown, setCountdown] = useState("")
   useEffect(() => {
-    if (isTodayDisabled) return
+    if (!isTodayValid) return
     const tick = () => {
       const now = getISTDate()
-      const endHour = 24 - minLead
-      const endMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), endHour, 0, 0).getTime()
+      // Use 9 PM (21:00) as reference for standard delivery end
+      const endMs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 21 - minLead, 0, 0).getTime()
       const diff = endMs - now.getTime()
       if (diff <= 0) { setCountdown(""); return }
       const h = Math.floor(diff / 3600000)
@@ -441,7 +517,7 @@ export default function ProductDetailContent({
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
-  }, [isTodayDisabled, minLead])
+  }, [isTodayValid, minLead])
 
   // ---- Variation attribute key ----
   const variationAttrKey = useMemo(() => {
@@ -476,11 +552,11 @@ export default function ProductDetailContent({
       const today = getISTDate()
       today.setHours(0, 0, 0, 0)
       if (d < today) return true
-      if (isSameDay(d, today) && isTodayDisabled) return true
+      if (isSameDay(d, today) && !isTodayValid) return true
       if (d > maxDate) return true
       return false
     },
-    [isTodayDisabled, maxDate]
+    [isTodayValid, maxDate]
   )
 
   // ---- Reviews ----
@@ -675,20 +751,27 @@ export default function ProductDetailContent({
                 <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Date</p>
                 <div className="flex gap-2">
                   {/* Today */}
-                  <button
-                    disabled={isTodayDisabled}
-                    onClick={() => handleDateSelect(toYMD(ist))}
-                    className={cn(
-                      "flex-1 border rounded-lg py-3 px-2 text-center transition-all",
-                      isTodayDisabled && "opacity-40 cursor-not-allowed bg-gray-50",
-                      selectedDate === toYMD(ist)
-                        ? "border-green-500 bg-green-50 text-green-700"
-                        : !isTodayDisabled && "border-gray-200 hover:border-gray-400 cursor-pointer"
+                  <div className="flex-1 relative group">
+                    <button
+                      disabled={!isTodayValid}
+                      onClick={() => handleDateSelect(toYMD(ist))}
+                      className={cn(
+                        "w-full border rounded-lg py-3 px-2 text-center transition-all",
+                        !isTodayValid && "opacity-40 cursor-not-allowed bg-gray-50",
+                        selectedDate === toYMD(ist)
+                          ? "border-green-500 bg-green-50 text-green-700"
+                          : isTodayValid && "border-gray-200 hover:border-gray-400 cursor-pointer"
+                      )}
+                    >
+                      <div className="text-sm font-medium">Today</div>
+                      <div className="text-xs text-gray-500">{formatDateShort(ist)}</div>
+                    </button>
+                    {!isTodayValid && (
+                      <div className="hidden group-hover:block absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap shadow-lg">
+                        Order window closed for today. Please select tomorrow or later.
+                      </div>
                     )}
-                  >
-                    <div className="text-sm font-medium">Today</div>
-                    <div className="text-xs text-gray-500">{formatDateShort(ist)}</div>
-                  </button>
+                  </div>
 
                   {/* Tomorrow */}
                   <button
@@ -800,18 +883,56 @@ export default function ProductDetailContent({
               </div>
             )}
 
-            {/* 9. Delivery Slot Picker */}
-            {isServiceable && selectedDate && slotGroups && (
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Slot</p>
-                <DeliverySlotPicker
-                  productId={product.id}
-                  slotGroups={slotGroups}
-                  selectedDate={selectedDate}
-                  onSelectionChange={setSlotSelection}
-                />
-              </div>
-            )}
+            {/* 9. Delivery Slot Picker or Express Card */}
+            {isServiceable && selectedDate && (() => {
+              const todayStr = toYMD(ist)
+              const isTodaySelected = selectedDate === todayStr
+              const showExpressOnly = isTodaySelected && isTodayExpressOnly && expressSlot
+
+              if (showExpressOnly) {
+                // Express-only card — today selected but standard slots past cutoff
+                const deliveryTime = new Date(Date.now() + 5.5 * 60 * 60 * 1000 + 3 * 60 * 60 * 1000)
+                const deliveryTimeStr = deliveryTime.toLocaleTimeString('en-IN', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true,
+                  timeZone: 'UTC',
+                })
+                return (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Slot</p>
+                    <div className="border-2 border-orange-400 bg-orange-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">&#x26A1;</span>
+                          <span className="font-medium text-gray-900">Express Delivery</span>
+                        </div>
+                        <span className="font-semibold text-gray-700">&#x20B9;{expressSlot.baseCharge}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1 ml-7">Delivered within 3 hours</p>
+                      <p className="text-xs text-gray-500 mt-0.5 ml-7">
+                        Order now, receive by {deliveryTimeStr}
+                      </p>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (slotGroups) {
+                return (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Slot</p>
+                    <DeliverySlotPicker
+                      productId={product.id}
+                      slotGroups={slotGroups}
+                      selectedDate={selectedDate}
+                      onSelectionChange={setSlotSelection}
+                    />
+                  </div>
+                )
+              }
+              return null
+            })()}
 
             {/* 10. About the Product (Accordion) */}
             <Accordion type="single" collapsible>
@@ -955,8 +1076,12 @@ export default function ProductDetailContent({
               Buy Now <ArrowRight className="h-4 w-4" />
             </button>
           </div>
+          {/* Error toast */}
+          {errorToast && (
+            <p className="text-center text-sm text-red-600 bg-red-50 rounded-lg py-2 mt-2">{errorToast}</p>
+          )}
           {/* Countdown timer */}
-          {!isTodayDisabled && countdown && (
+          {isTodayValid && countdown && (
             <p className="text-center text-sm text-gray-500 mt-2">
               <Timer className="inline h-3.5 w-3.5 mr-1" />
               Time left to get delivered today: {countdown}
