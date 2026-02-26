@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import {
@@ -10,7 +10,13 @@ import {
   SheetTitle,
   SheetFooter,
 } from '@/components/ui/sheet'
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Info } from 'lucide-react'
 import { useCity } from '@/hooks/use-city'
 
 // -- Slot cutoff type for fast calendar ----------------------------------------
@@ -80,6 +86,21 @@ export interface SlotOption {
   priceLabel: string
   reason?: string
   windows?: DeliveryWindow[]
+  // Surcharge breakdown fields (from serviceability API)
+  baseCharge?: number
+  vendorAreaSurcharge?: number
+  platformSurcharges?: { total: number; breakdown: { name: string; amount: number }[] }
+  totalSurcharge?: number
+  totalCharge?: number
+}
+
+/** Per-slot charge info returned by the serviceability API's enrichSlotsWithSurcharges */
+export interface SlotChargeInfo {
+  baseCharge: number
+  vendorAreaSurcharge: number
+  platformSurcharges: { total: number; breakdown: { name: string; amount: number }[] }
+  totalSurcharge: number
+  totalCharge: number
 }
 
 export interface DeliverySelection {
@@ -151,6 +172,116 @@ export function toDateString(d: Date): string {
 
 export function formatDateDisplay(date: Date): string {
   return date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+}
+
+// -- Surcharge Breakdown Display Components ----------------------------------
+
+/** Tooltip showing full charge breakdown on hover */
+export function SurchargeBreakdownTooltip({
+  chargeInfo,
+  children,
+}: {
+  chargeInfo: SlotChargeInfo
+  children: React.ReactNode
+}) {
+  const { baseCharge, vendorAreaSurcharge, platformSurcharges, totalCharge } = chargeInfo
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[220px] p-3 space-y-1.5">
+          <div className="flex justify-between text-xs">
+            <span className="text-gray-500">Delivery</span>
+            <span className="font-medium">{baseCharge === 0 ? 'Free' : `₹${baseCharge}`}</span>
+          </div>
+          {platformSurcharges.breakdown.map((item, i) => (
+            <div key={i} className="flex justify-between text-xs">
+              <span className="text-gray-500">{item.name}</span>
+              <span className="font-medium">₹{item.amount}</span>
+            </div>
+          ))}
+          {vendorAreaSurcharge > 0 && (
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Area charge</span>
+              <span className="font-medium">₹{vendorAreaSurcharge}</span>
+            </div>
+          )}
+          <div className="border-t pt-1.5 flex justify-between text-xs font-semibold">
+            <span>Total</span>
+            <span>₹{totalCharge}</span>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/**
+ * Displays slot price with surcharge breakdown.
+ *
+ * Display rules:
+ * - totalSurcharge = 0 → existing behaviour ("Free" or "₹{baseCharge}")
+ * - totalSurcharge > 0 && baseCharge = 0 → "₹{totalSurcharge} festival charge" (amber)
+ * - totalSurcharge > 0 && baseCharge > 0 → "₹{totalCharge}" main + breakdown subtitle
+ *
+ * Wraps content in a SurchargeBreakdownTooltip when surcharges exist.
+ */
+export function SlotPriceDisplay({
+  chargeInfo,
+  freeDeliveryThresholdMet = false,
+}: {
+  chargeInfo: SlotChargeInfo
+  freeDeliveryThresholdMet?: boolean
+}) {
+  const { baseCharge, totalSurcharge } = chargeInfo
+
+  // Effective base: 0 if free delivery threshold is met
+  const effectiveBase = freeDeliveryThresholdMet ? 0 : baseCharge
+  const effectiveTotal = effectiveBase + totalSurcharge
+
+  // No surcharge → simple display
+  if (totalSurcharge === 0) {
+    if (effectiveBase === 0) {
+      return <span className="text-green-600 font-semibold text-sm">Free</span>
+    }
+    return <span className="text-gray-900 font-semibold text-sm">₹{effectiveBase}</span>
+  }
+
+  // Surcharge exists → wrap in tooltip
+  const tooltipInfo: SlotChargeInfo = {
+    ...chargeInfo,
+    baseCharge: effectiveBase,
+    totalCharge: effectiveTotal,
+  }
+
+  // Surcharge > 0, base = 0 (free delivery threshold met)
+  if (effectiveBase === 0) {
+    return (
+      <SurchargeBreakdownTooltip chargeInfo={tooltipInfo}>
+        <span className="inline-flex items-center gap-1 cursor-help">
+          <span className="text-amber-600 font-semibold text-sm">₹{totalSurcharge}</span>
+          <span className="text-amber-500 text-xs">festival charge</span>
+          <Info className="h-3 w-3 text-amber-400" />
+        </span>
+      </SurchargeBreakdownTooltip>
+    )
+  }
+
+  // Surcharge > 0, base > 0
+  return (
+    <SurchargeBreakdownTooltip chargeInfo={tooltipInfo}>
+      <span className="inline-flex flex-col items-end cursor-help">
+        <span className="inline-flex items-center gap-1">
+          <span className="text-gray-900 font-semibold text-sm">₹{effectiveTotal}</span>
+          <Info className="h-3 w-3 text-gray-400" />
+        </span>
+        <span className="text-[11px] text-gray-400 leading-tight">
+          ₹{effectiveBase} delivery + ₹{totalSurcharge} surcharge
+        </span>
+      </span>
+    </SurchargeBreakdownTooltip>
+  )
 }
 
 // -- Calendar Component (exported for reuse in checkout) ---------------------
