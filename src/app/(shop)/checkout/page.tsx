@@ -234,6 +234,12 @@ export default function CheckoutPage() {
   const [fixedExpanded, setFixedExpanded] = useState(false)
   const [slotAdvanceNotice, setSlotAdvanceNotice] = useState<string | null>(null)
 
+  // Step 2 — Express delivery eligibility
+  const [expressEligible, setExpressEligible] = useState(false)
+  const [expressCharge, setExpressCharge] = useState(0)
+  const [expressCutoffHours, setExpressCutoffHours] = useState(3)
+  const [expressSelected, setExpressSelected] = useState(false)
+
   // Step 2 — date change calendar state
   const [changeDateOpen, setChangeDateOpen] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => {
@@ -560,6 +566,26 @@ export default function CheckoutPage() {
     }
   }, [currentStep, formData.deliveryDate, fetchSlots])
 
+  // Fetch express eligibility when entering Step 2
+  useEffect(() => {
+    if (currentStep !== 2 || !cityId) return
+    const productIds = items.map(i => i.productId).filter(Boolean)
+    if (productIds.length === 0) return
+
+    fetch(`/api/checkout/express-eligibility?cityId=${cityId}&productIds=${productIds.join(',')}`)
+      .then(res => res.json())
+      .then(json => {
+        if (json.success && json.data) {
+          setExpressEligible(json.data.eligible)
+          setExpressCharge(json.data.expressCharge || 0)
+          setExpressCutoffHours(json.data.cutoffHours || 3)
+        } else {
+          setExpressEligible(false)
+        }
+      })
+      .catch(() => setExpressEligible(false))
+  }, [currentStep, cityId, items])
+
   // ─── Navigation Helpers ───
 
   const goToStep = useCallback(
@@ -724,6 +750,7 @@ export default function CheckoutPage() {
   // ─── Step 2 Helpers ───
 
   const handleSlotSelect = useCallback((slotType: SlotType, charge: number, name: string) => {
+    setExpressSelected(false) // reset express when picking a standard slot
     if (slotType === 'fixed') {
       // Selecting "Choose a Time Window" just expands — no charge until sub-window picked
       setFixedExpanded(true)
@@ -745,6 +772,38 @@ export default function CheckoutPage() {
       deliverySlotSlug: slotType,
       deliveryWindow: null,
       slotCharge: charge,
+    }))
+  }, [])
+
+  const handleExpressSelect = useCallback(() => {
+    // Set today's date as delivery date
+    const nowMs = Date.now() + 5.5 * 60 * 60 * 1000
+    const nowIST = new Date(nowMs)
+    const todayStr = `${nowIST.getUTCFullYear()}-${String(nowIST.getUTCMonth() + 1).padStart(2, '0')}-${String(nowIST.getUTCDate()).padStart(2, '0')}`
+
+    setExpressSelected(true)
+    setFixedExpanded(false)
+    setFormData((prev) => ({
+      ...prev,
+      deliveryDate: todayStr,
+      deliverySlot: 'express',
+      deliverySlotName: 'Express Delivery',
+      deliverySlotSlug: 'express',
+      deliveryWindow: null,
+      slotCharge: expressCharge,
+    }))
+    setDeliveryDateForAll(todayStr)
+  }, [expressCharge, setDeliveryDateForAll])
+
+  const handleExpressDeselect = useCallback(() => {
+    setExpressSelected(false)
+    setFormData((prev) => ({
+      ...prev,
+      deliverySlot: null,
+      deliverySlotName: null,
+      deliverySlotSlug: null,
+      deliveryWindow: null,
+      slotCharge: 0,
     }))
   }, [])
 
@@ -1685,7 +1744,64 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {slotsLoading ? (
+                {/* Express Delivery Card — shown conditionally */}
+                {expressEligible && !expressSelected && (
+                  <div
+                    onClick={handleExpressSelect}
+                    className={`rounded-xl border-2 transition-all cursor-pointer mb-4 ${
+                      formData.deliverySlot === 'express'
+                        ? 'border-pink-500 bg-pink-50'
+                        : 'border-amber-300 bg-amber-50 hover:border-amber-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between p-4">
+                      <div className="flex items-center gap-3">
+                        <RadioDot selected={formData.deliverySlot === 'express'} />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">
+                            &#x26A1; Express Delivery
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Delivered within {expressCutoffHours} hours &middot; Today only
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-700 shrink-0">
+                        &#x20B9;{expressCharge}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Express Selected Summary */}
+                {expressSelected && (
+                  <div className="rounded-xl border-2 border-pink-500 bg-pink-50 p-4 mb-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-pink-500 shrink-0">
+                          <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-pink-700">
+                            &#x26A1; Express Delivery — &#x20B9;{expressCharge}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Delivered within {expressCutoffHours} hours &middot; Today
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleExpressDeselect}
+                        className="text-sm text-pink-600 hover:text-pink-700 font-semibold"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Standard slot cards — hidden when express is selected */}
+                {expressSelected ? null : slotsLoading ? (
                   <div className="space-y-3">
                     {[1, 2, 3].map(i => (
                       <div key={i} className="h-16 rounded-xl bg-gray-100 animate-pulse" />
