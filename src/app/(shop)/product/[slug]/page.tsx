@@ -58,11 +58,11 @@ export default async function ProductPage({
     return <ProductNotFound />
   }
 
-  // Step 2: Fetch ALL related data IN PARALLEL
+  // Step 2: Fetch variations, addon groups, upsell IDs, and reviews IN PARALLEL
   const [
     variationsRes,
     addonGroupsRes,
-    upsellRowsRes,
+    upsellRecordsRes,
     reviewsRes,
   ] = await Promise.all([
     supabase
@@ -76,9 +76,10 @@ export default async function ProductPage({
       .eq('productId', product.id)
       .eq('isActive', true)
       .order('sortOrder', { ascending: true }),
+    // Two-step upsell fetch: first get upsell record IDs (avoids FK hint issues)
     supabase
       .from('product_upsells')
-      .select('*, products!upsellProductId(id, name, slug, images, basePrice, isActive, categories(name))')
+      .select('id, "productId", "upsellProductId", "sortOrder"')
       .eq('productId', product.id)
       .order('sortOrder', { ascending: true }),
     supabase
@@ -90,31 +91,64 @@ export default async function ProductPage({
       .limit(20),
   ])
 
+  if (variationsRes.error) console.error('[product] variations error:', variationsRes.error.message)
+  if (addonGroupsRes.error) console.error('[product] addonGroups error:', addonGroupsRes.error.message)
+  if (upsellRecordsRes.error) console.error('[product] upsellRecords error:', upsellRecordsRes.error.message)
+  if (reviewsRes.error) console.error('[product] reviews error:', reviewsRes.error.message)
+
   const variations = variationsRes.data || []
 
   const addonGroups = (addonGroupsRes.data || []).map((group: Record<string, unknown>) => ({
     ...group,
-    options: ((group.product_addon_options as Array<{ isActive: boolean; sortOrder: number }>) || [])
-      .filter((o) => o.isActive)
-      .sort((a, b) => a.sortOrder - b.sortOrder),
+    product_addon_options: undefined,
+    options: ((group.product_addon_options as Array<Record<string, unknown>>) || [])
+      .filter((o) => o.isActive !== false)
+      .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)),
   }))
 
-  // Flatten upsells to only active products
-  const upsellRows = upsellRowsRes.data || []
-  const upsells = upsellRows
-    .filter((u: { products: { isActive: boolean } | null }) => u.products?.isActive)
-    .map((u: { products: { id: string; name: string; slug: string; images: string[]; basePrice: number; categories: { name: string } | null } }) => ({
-      id: u.products.id,
-      name: u.products.name,
-      slug: u.products.slug,
-      images: u.products.images,
-      basePrice: u.products.basePrice,
-      category: u.products.categories,
-    }))
+  // Step 3: Fetch upsell products by ID (two-step approach — reliable across column-naming conventions)
+  let upsells: Array<{
+    id: string
+    name: string
+    slug: string
+    images: string[]
+    basePrice: number
+    category: { name: string } | null
+  }> = []
+
+  const upsellRecords = upsellRecordsRes.data || []
+  if (upsellRecords.length > 0) {
+    const upsellIds = upsellRecords.map((u: Record<string, unknown>) => u.upsellProductId as string)
+    const { data: upsellProducts, error: upsellProductsError } = await supabase
+      .from('products')
+      .select('id, name, slug, images, "basePrice", "isActive", categories(name)')
+      .in('id', upsellIds)
+      .eq('isActive', true)
+
+    if (upsellProductsError) console.error('[product] upsellProducts error:', upsellProductsError.message)
+
+    // Maintain sort order from upsell records
+    const upsellMap = new Map(
+      (upsellProducts || []).map((p: Record<string, unknown>) => [p.id as string, p])
+    )
+
+    upsells = upsellRecords
+      .map((u: Record<string, unknown>) => upsellMap.get(u.upsellProductId as string))
+      .filter((p: unknown): p is Record<string, unknown> => !!p)
+      .map((p: Record<string, unknown>) => ({
+        id: p.id as string,
+        name: p.name as string,
+        slug: p.slug as string,
+        images: (p.images as string[]) || [],
+        basePrice: p.basePrice as number,
+        category: p.categories as { name: string } | null,
+      }))
+  }
 
   const reviews = (reviewsRes.data || []).map((r: Record<string, unknown>) => ({
     ...r,
     user: (r.users as Record<string, unknown>) || null,
+    users: undefined,
   }))
 
   // Build the category object in the expected format

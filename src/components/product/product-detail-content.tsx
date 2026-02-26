@@ -570,7 +570,7 @@ export default function ProductDetailContent({
         <div className="flex flex-col lg:flex-row lg:gap-8">
           {/* LEFT COLUMN — Image Gallery */}
           <div className="lg:w-[55%] lg:shrink-0">
-            <ProductGallery images={product.images} />
+            <ProductGallery images={product.images || []} />
           </div>
 
           {/* RIGHT COLUMN */}
