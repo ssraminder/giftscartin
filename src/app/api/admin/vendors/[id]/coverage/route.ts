@@ -9,13 +9,13 @@ import { z } from 'zod/v4'
 export const dynamic = 'force-dynamic'
 
 const serviceAreaActionSchema = z.object({
-  vendorServiceAreaId: z.string().uuid(),
+  vendorServiceAreaId: z.string().min(1, 'vendorServiceAreaId is required'),
   action: z.enum(['activate', 'reject', 'deactivate', 'reconsider']),
   rejectionReason: z.string().max(500).optional(),
 })
 
 const adminAddAreasSchema = z.object({
-  serviceAreaIds: z.array(z.string().uuid()).min(1),
+  serviceAreaIds: z.array(z.string().min(1)).min(1, 'At least one service area is required'),
   deliverySurcharge: z.number().min(0).default(0),
 })
 
@@ -157,6 +157,7 @@ export async function POST(
     if (body.pincode) {
       const parsed = adminCreateAreaSchema.safeParse(body)
       if (!parsed.success) {
+        console.error('Admin coverage POST (create area) validation error:', parsed.error.issues, 'body:', JSON.stringify(body))
         return NextResponse.json(
           { success: false, error: parsed.error.issues[0].message },
           { status: 400 }
@@ -301,6 +302,7 @@ export async function POST(
     const parsed = adminAddAreasSchema.safeParse(body)
 
     if (!parsed.success) {
+      console.error('Admin coverage POST (add areas) validation error:', parsed.error.issues, 'body:', JSON.stringify(body))
       return NextResponse.json(
         { success: false, error: parsed.error.issues[0].message },
         { status: 400 }
@@ -524,6 +526,7 @@ export async function PATCH(
     if (body.vendorServiceAreaId) {
       const parsed = serviceAreaActionSchema.safeParse(body)
       if (!parsed.success) {
+        console.error('Admin coverage PATCH validation error:', parsed.error.issues, 'body:', JSON.stringify(body))
         return NextResponse.json(
           { success: false, error: parsed.error.issues[0].message },
           { status: 400 }
