@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   X,
+  MapPin,
 } from "lucide-react"
 
 interface AvailableArea {
@@ -61,6 +62,17 @@ export default function AdminVendorCoveragePage() {
   const [selectedToAdd, setSelectedToAdd] = useState<Set<string>>(new Set())
   const [addSurcharge, setAddSurcharge] = useState("0")
   const [addLoading, setAddLoading] = useState(false)
+
+  // Create New Area state
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createPincode, setCreatePincode] = useState("")
+  const [createAreaName, setCreateAreaName] = useState("")
+  const [createSurcharge, setCreateSurcharge] = useState("0")
+  const [createLoading, setCreateLoading] = useState(false)
+  const [lookupResult, setLookupResult] = useState<{
+    areaName: string; cityName: string; pincode: string
+  } | null>(null)
+  const [lookupLoading, setLookupLoading] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -226,6 +238,78 @@ export default function AdminVendorCoveragePage() {
       setError("Failed to connect to server")
     } finally {
       setAddLoading(false)
+    }
+  }
+
+  const handlePincodeLookup = async () => {
+    if (!/^\d{6}$/.test(createPincode)) return
+    setLookupLoading(true)
+    setLookupResult(null)
+    try {
+      const res = await fetch("/api/city/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: createPincode }),
+      })
+      const json = await res.json()
+      if (json.success && json.data.length > 0) {
+        const r = json.data[0]
+        setLookupResult({
+          areaName: r.areaName || "",
+          cityName: r.cityName || "",
+          pincode: createPincode,
+        })
+        if (r.areaName && !createAreaName) {
+          setCreateAreaName(r.areaName)
+        }
+      } else {
+        setLookupResult({ areaName: "", cityName: "", pincode: createPincode })
+      }
+    } catch {
+      setError("Failed to lookup pincode")
+    } finally {
+      setLookupLoading(false)
+    }
+  }
+
+  const handleCreateArea = async () => {
+    if (!/^\d{6}$/.test(createPincode)) {
+      setError("Enter a valid 6-digit pincode")
+      return
+    }
+    setCreateLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/admin/vendors/${vendorId}/coverage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pincode: createPincode,
+          areaName: createAreaName || undefined,
+          deliverySurcharge: parseFloat(createSurcharge) || 0,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        const area = json.data.area
+        const msg = json.data.serviceAreaCreated
+          ? `New area "${area?.name || createPincode}" created and added as active`
+          : `Area "${area?.name || createPincode}" added as active`
+        setSuccess(msg)
+        setTimeout(() => setSuccess(null), 3000)
+        setCreatePincode("")
+        setCreateAreaName("")
+        setCreateSurcharge("0")
+        setLookupResult(null)
+        setShowCreateForm(false)
+        fetchData()
+      } else {
+        setError(json.error || "Failed to create area")
+      }
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setCreateLoading(false)
     }
   }
 
@@ -462,6 +546,148 @@ export default function AdminVendorCoveragePage() {
               {addLoading
                 ? "Adding..."
                 : `Add ${selectedToAdd.size} Area${selectedToAdd.size !== 1 ? "s" : ""} as Active`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create New Area by Pincode */}
+      {!showCreateForm ? (
+        <button
+          onClick={() => setShowCreateForm(true)}
+          className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-[#E91E63] hover:text-[#E91E63] transition-colors"
+        >
+          <MapPin className="h-4 w-4" />
+          Create New Area by Pincode
+        </button>
+      ) : (
+        <div className="rounded-lg border bg-white p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">
+              Create New Area by Pincode (auto-active)
+            </h3>
+            <button
+              onClick={() => {
+                setShowCreateForm(false)
+                setCreatePincode("")
+                setCreateAreaName("")
+                setCreateSurcharge("0")
+                setLookupResult(null)
+              }}
+              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Enter a pincode to create a new service area. If the area doesn&apos;t
+            exist in the system, it will be auto-created and added to the
+            serviceable areas list.
+          </p>
+
+          {/* Pincode lookup */}
+          <div className="flex items-end gap-2">
+            <div className="flex-1 max-w-xs">
+              <label className="text-xs font-medium text-slate-600">
+                Pincode
+              </label>
+              <input
+                type="text"
+                maxLength={6}
+                value={createPincode}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "")
+                  setCreatePincode(v)
+                  if (v.length < 6) setLookupResult(null)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && createPincode.length === 6)
+                    handlePincodeLookup()
+                }}
+                placeholder="e.g. 110001"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono focus:border-[#E91E63] focus:outline-none focus:ring-1 focus:ring-[#E91E63]"
+              />
+            </div>
+            <button
+              onClick={handlePincodeLookup}
+              disabled={createPincode.length !== 6 || lookupLoading}
+              className="flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+            >
+              {lookupLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              Lookup
+            </button>
+          </div>
+
+          {/* Lookup result */}
+          {lookupResult && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+              {lookupResult.cityName ? (
+                <p className="text-blue-800">
+                  Found: <strong>{lookupResult.areaName || "Unknown area"}</strong>
+                  {lookupResult.cityName && `, ${lookupResult.cityName}`}
+                </p>
+              ) : (
+                <p className="text-amber-700">
+                  Pincode not found in our database. A new service area will be
+                  created.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Area name + surcharge */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-slate-600">
+                Area Name{" "}
+                <span className="text-slate-400">(auto-filled or enter manually)</span>
+              </label>
+              <input
+                type="text"
+                value={createAreaName}
+                onChange={(e) => setCreateAreaName(e.target.value)}
+                placeholder="e.g. Connaught Place"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:border-[#E91E63] focus:outline-none focus:ring-1 focus:ring-[#E91E63]"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600">
+                Delivery Surcharge
+              </label>
+              <div className="mt-1 flex items-center gap-1">
+                <span className="text-sm text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={createSurcharge}
+                  onChange={(e) => setCreateSurcharge(e.target.value)}
+                  className="w-24 rounded-lg border px-3 py-2 text-sm text-right focus:border-[#E91E63] focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Create button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleCreateArea}
+              disabled={createLoading || createPincode.length !== 6}
+              className="flex items-center gap-2 rounded-lg bg-[#E91E63] px-4 py-2 text-sm font-medium text-white hover:bg-[#C2185B] disabled:opacity-50"
+            >
+              {createLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {createLoading
+                ? "Creating..."
+                : "Create & Add as Active"}
             </button>
           </div>
         </div>

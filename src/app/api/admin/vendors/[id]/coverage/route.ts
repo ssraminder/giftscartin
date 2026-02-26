@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSessionFromRequest } from '@/lib/auth'
 import { isAdminRole } from '@/lib/roles'
-import { ensureServiceAreas } from '@/lib/pincode-resolver'
+import { ensureServiceAreas, resolvePincode } from '@/lib/pincode-resolver'
+import { lookupPincode } from '@/lib/nominatim'
 import { z } from 'zod/v4'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,12 @@ const serviceAreaActionSchema = z.object({
 
 const adminAddAreasSchema = z.object({
   serviceAreaIds: z.array(z.string().uuid()).min(1),
+  deliverySurcharge: z.number().min(0).default(0),
+})
+
+const adminCreateAreaSchema = z.object({
+  pincode: z.string().regex(/^\d{6}$/, 'Valid 6-digit pincode required'),
+  areaName: z.string().min(1).max(100).optional(),
   deliverySurcharge: z.number().min(0).default(0),
 })
 
@@ -112,6 +119,9 @@ export async function GET(
 }
 
 // POST: Admin adds service areas on behalf of a vendor (auto-ACTIVE)
+// Supports two modes:
+//   1. Add existing areas: { serviceAreaIds: [...], deliverySurcharge }
+//   2. Create new area by pincode: { pincode: "110001", areaName?, deliverySurcharge }
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -127,6 +137,167 @@ export async function POST(
 
     const { id: vendorId } = await params
     const body = await request.json()
+    const supabase = getSupabaseAdmin()
+
+    // Verify vendor exists
+    const { data: vendor } = await supabase
+      .from('vendors')
+      .select('id, cityId')
+      .eq('id', vendorId)
+      .maybeSingle()
+
+    if (!vendor) {
+      return NextResponse.json(
+        { success: false, error: 'Vendor not found' },
+        { status: 404 }
+      )
+    }
+
+    // Mode 2: Create new area by pincode
+    if (body.pincode) {
+      const parsed = adminCreateAreaSchema.safeParse(body)
+      if (!parsed.success) {
+        return NextResponse.json(
+          { success: false, error: parsed.error.issues[0].message },
+          { status: 400 }
+        )
+      }
+
+      const { pincode, areaName, deliverySurcharge } = parsed.data
+
+      // Check if service_area already exists for this pincode
+      const { data: existingArea } = await supabase
+        .from('service_areas')
+        .select('id, name, pincode, city_name')
+        .eq('pincode', pincode)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle()
+
+      let serviceAreaId: string
+      let serviceAreaCreated = false
+
+      if (existingArea) {
+        serviceAreaId = existingArea.id
+      } else {
+        // Resolve pincode
+        const resolved = await resolvePincode(pincode)
+
+        // Get vendor's city info for fallback
+        const { data: city } = await supabase
+          .from('cities')
+          .select('id, name, state, lat, lng')
+          .eq('id', vendor.cityId)
+          .single()
+
+        const name = areaName || resolved?.name || pincode
+        let lat = resolved?.lat || 0
+        let lng = resolved?.lng || 0
+        if (!lat || !lng) {
+          const nominatim = await lookupPincode(pincode)
+          if (nominatim) { lat = nominatim.lat; lng = nominatim.lng }
+          else { lat = Number(city?.lat || 0); lng = Number(city?.lng || 0) }
+        }
+        const cityId = resolved?.cityId || vendor.cityId
+        const cityName = resolved?.cityName || city?.name || ''
+        const state = resolved?.state || city?.state || ''
+
+        const { data: newArea, error: createError } = await supabase
+          .from('service_areas')
+          .insert({
+            name,
+            pincode,
+            city_id: cityId,
+            city_name: cityName,
+            state,
+            lat,
+            lng,
+            is_active: true,
+          })
+          .select('id')
+          .single()
+
+        if (createError) {
+          console.error('Create service_area error:', createError)
+          return NextResponse.json(
+            { success: false, error: 'Failed to create service area' },
+            { status: 500 }
+          )
+        }
+
+        serviceAreaId = newArea.id
+        serviceAreaCreated = true
+      }
+
+      // Check if vendor already has this area
+      const { data: existingVsa } = await supabase
+        .from('vendor_service_areas')
+        .select('id, status')
+        .eq('vendor_id', vendorId)
+        .eq('service_area_id', serviceAreaId)
+        .maybeSingle()
+
+      if (existingVsa) {
+        return NextResponse.json({
+          success: false,
+          error: `This area is already assigned to vendor (${existingVsa.status})`,
+        }, { status: 409 })
+      }
+
+      // Create vendor_service_area as ACTIVE (admin-added)
+      const now = new Date().toISOString()
+      const { data: vsa, error: vsaError } = await supabase
+        .from('vendor_service_areas')
+        .insert({
+          vendor_id: vendorId,
+          service_area_id: serviceAreaId,
+          delivery_surcharge: deliverySurcharge,
+          status: 'ACTIVE',
+          is_active: true,
+          requested_at: now,
+          activated_at: now,
+          activated_by: user.id,
+        })
+        .select('*, service_areas(name, pincode, city_name)')
+        .single()
+
+      if (vsaError) throw vsaError
+
+      const sa = vsa.service_areas as { name: string; pincode: string; city_name: string } | null
+
+      // Audit log
+      await supabase.from('audit_logs').insert({
+        adminId: user.id,
+        adminRole: user.role,
+        actionType: 'vendor_coverage_admin_create',
+        entityType: 'vendor',
+        entityId: vendorId,
+        fieldChanged: 'vendor_service_areas',
+        oldValue: null,
+        newValue: { pincode, serviceAreaId, serviceAreaCreated },
+        reason: `Admin created area ${pincode} for vendor`,
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          added: 1,
+          serviceAreaCreated,
+          area: {
+            id: vsa.id,
+            serviceAreaId: vsa.service_area_id,
+            name: sa?.name || '',
+            pincode: sa?.pincode || '',
+            cityName: sa?.city_name || '',
+            deliverySurcharge: Number(vsa.delivery_surcharge),
+            status: vsa.status,
+            isActive: vsa.is_active,
+          },
+        },
+      })
+    }
+
+    // Mode 1: Add existing service areas by ID
     const parsed = adminAddAreasSchema.safeParse(body)
 
     if (!parsed.success) {
@@ -137,21 +308,6 @@ export async function POST(
     }
 
     const { serviceAreaIds, deliverySurcharge } = parsed.data
-    const supabase = getSupabaseAdmin()
-
-    // Verify vendor exists
-    const { data: vendor } = await supabase
-      .from('vendors')
-      .select('id')
-      .eq('id', vendorId)
-      .maybeSingle()
-
-    if (!vendor) {
-      return NextResponse.json(
-        { success: false, error: 'Vendor not found' },
-        { status: 404 }
-      )
-    }
 
     // Get existing service area IDs for this vendor to skip duplicates
     const { data: existing } = await supabase

@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  Plus,
+  Search,
 } from "lucide-react"
 
 interface AvailableArea {
@@ -53,6 +55,17 @@ export default function VendorCoveragePage() {
   const [selections, setSelections] = useState<
     Record<string, { selected: boolean; surcharge: string }>
   >({})
+
+  // Create New Area state
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createPincode, setCreatePincode] = useState("")
+  const [createAreaName, setCreateAreaName] = useState("")
+  const [createSurcharge, setCreateSurcharge] = useState("0")
+  const [createLoading, setCreateLoading] = useState(false)
+  const [lookupResult, setLookupResult] = useState<{
+    areaName: string; cityName: string; pincode: string
+  } | null>(null)
+  const [lookupLoading, setLookupLoading] = useState(false)
 
   const fetchData = async () => {
     setLoading(true)
@@ -191,6 +204,77 @@ export default function VendorCoveragePage() {
       setError("Failed to connect to server")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePincodeLookup = async () => {
+    if (!/^\d{6}$/.test(createPincode)) return
+    setLookupLoading(true)
+    setLookupResult(null)
+    try {
+      const res = await fetch("/api/city/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: createPincode }),
+      })
+      const json = await res.json()
+      if (json.success && json.data.length > 0) {
+        const r = json.data[0]
+        setLookupResult({
+          areaName: r.areaName || "",
+          cityName: r.cityName || "",
+          pincode: createPincode,
+        })
+        if (r.areaName && !createAreaName) {
+          setCreateAreaName(r.areaName)
+        }
+      } else {
+        setLookupResult({ areaName: "", cityName: "", pincode: createPincode })
+      }
+    } catch {
+      setError("Failed to lookup pincode")
+    } finally {
+      setLookupLoading(false)
+    }
+  }
+
+  const handleCreateArea = async () => {
+    if (!/^\d{6}$/.test(createPincode)) {
+      setError("Enter a valid 6-digit pincode")
+      return
+    }
+    setCreateLoading(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/vendor/coverage/create-area", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pincode: createPincode,
+          areaName: createAreaName || undefined,
+          deliverySurcharge: parseFloat(createSurcharge) || 0,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        const msg = json.data.serviceAreaCreated
+          ? `New area "${json.data.name}" (${json.data.pincode}) created and added as pending`
+          : `Area "${json.data.name}" (${json.data.pincode}) added as pending`
+        setSuccess(msg)
+        setTimeout(() => setSuccess(null), 5000)
+        setCreatePincode("")
+        setCreateAreaName("")
+        setCreateSurcharge("0")
+        setLookupResult(null)
+        setShowCreateForm(false)
+        fetchData()
+      } else {
+        setError(json.error || "Failed to create area")
+      }
+    } catch {
+      setError("Failed to connect to server")
+    } finally {
+      setCreateLoading(false)
     }
   }
 
@@ -527,6 +611,151 @@ export default function VendorCoveragePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Create New Area */}
+      {!showCreateForm ? (
+        <button
+          onClick={() => setShowCreateForm(true)}
+          className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-teal-500 hover:text-teal-600 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Create New Area by Pincode
+        </button>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Plus className="h-5 w-5" />
+              Create New Area
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-slate-500">
+              Can&apos;t find your area? Enter a pincode to add a new delivery
+              area. It will be pending admin approval.
+            </p>
+
+            {/* Pincode lookup */}
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-slate-600">
+                  Pincode
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={createPincode}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "")
+                    setCreatePincode(v)
+                    if (v.length < 6) setLookupResult(null)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && createPincode.length === 6)
+                      handlePincodeLookup()
+                  }}
+                  placeholder="e.g. 110001"
+                  className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                />
+              </div>
+              <button
+                onClick={handlePincodeLookup}
+                disabled={
+                  createPincode.length !== 6 || lookupLoading
+                }
+                className="flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              >
+                {lookupLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="h-4 w-4" />
+                )}
+                Lookup
+              </button>
+            </div>
+
+            {/* Lookup result */}
+            {lookupResult && (
+              <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm">
+                {lookupResult.cityName ? (
+                  <p className="text-teal-800">
+                    Found: <strong>{lookupResult.areaName || "Unknown area"}</strong>
+                    {lookupResult.cityName && `, ${lookupResult.cityName}`}
+                  </p>
+                ) : (
+                  <p className="text-amber-700">
+                    Pincode not found in our database. You can still add it
+                    manually.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Area name */}
+            <div>
+              <label className="text-xs font-medium text-slate-600">
+                Area Name{" "}
+                <span className="text-slate-400">(auto-filled or enter manually)</span>
+              </label>
+              <input
+                type="text"
+                value={createAreaName}
+                onChange={(e) => setCreateAreaName(e.target.value)}
+                placeholder="e.g. Connaught Place"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+              />
+            </div>
+
+            {/* Surcharge */}
+            <div>
+              <label className="text-xs font-medium text-slate-600">
+                Delivery Surcharge
+              </label>
+              <div className="mt-1 flex items-center gap-1">
+                <span className="text-sm text-slate-400">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={createSurcharge}
+                  onChange={(e) => setCreateSurcharge(e.target.value)}
+                  className="w-24 rounded-lg border px-3 py-2 text-sm text-right focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setShowCreateForm(false)
+                  setCreatePincode("")
+                  setCreateAreaName("")
+                  setCreateSurcharge("0")
+                  setLookupResult(null)
+                }}
+                className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateArea}
+                disabled={
+                  createLoading || createPincode.length !== 6
+                }
+                className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+              >
+                {createLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                {createLoading ? "Creating..." : "Create & Add Area"}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Save button */}
       <div className="flex justify-end">
