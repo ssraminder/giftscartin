@@ -224,7 +224,7 @@ async function handleCoordinateSearch(
   })
 }
 
-/** Full serviceability check: 3-tier vendor matching (pincode + zone + radius) */
+/** Full serviceability check: vendor_service_areas + radius fallback */
 async function handleFullServiceability(
   pincode: string,
   cityId: string,
@@ -243,57 +243,51 @@ async function handleFullServiceability(
 ) {
   const supabase = getSupabaseAdmin()
 
-  // Method 1: Pincode match
-  // vendor_pincodes: vendorId, isActive are camelCase (no @map)
-  // vendors: isOnline is camelCase (no @map)
-  const { data: pincodeVendors } = await supabase
-    .from('vendor_pincodes')
-    .select('vendorId, vendors(status, isOnline)')
+  // Primary method: vendor_service_areas matching by pincode
+  // Look up service_area IDs for this pincode, then find vendors with active coverage
+  const { data: matchingServiceAreas } = await supabase
+    .from('service_areas')
+    .select('id')
     .eq('pincode', pincode)
-    .eq('isActive', true)
+    .eq('is_active', true)
 
-  const pincodeVendorIds = (pincodeVendors || [])
-    .filter((vp: Record<string, unknown>) => {
-      const vendor = vp.vendors as { status: string; isOnline: boolean } | null
+  const serviceAreaIds = (matchingServiceAreas || []).map((sa: { id: string }) => sa.id)
+
+  let vsaVendorIds: string[] = []
+  let minSurcharge = 0
+
+  if (serviceAreaIds.length > 0) {
+    const { data: vsaRows } = await supabase
+      .from('vendor_service_areas')
+      .select('vendor_id, delivery_surcharge, vendors(id, status, isOnline)')
+      .in('service_area_id', serviceAreaIds)
+      .eq('status', 'ACTIVE')
+      .eq('is_active', true)
+
+    const validRows = (vsaRows || []).filter((row: Record<string, unknown>) => {
+      const vendor = row.vendors as { id: string; status: string; isOnline: boolean } | null
       return vendor?.status === 'APPROVED' && vendor?.isOnline === true
     })
-    .map((vp: { vendorId: string }) => vp.vendorId)
 
-  // Method 2: Zone match
-  // city_zones: isActive, cityId are camelCase (no @map)
-  const { data: zones } = await supabase
-    .from('city_zones')
-    .select('id')
-    .contains('pincodes', [pincode])
-    .eq('isActive', true)
-    .eq('cityId', cityId)
+    vsaVendorIds = validRows.map((row: { vendor_id: string }) => row.vendor_id)
 
-  const zoneIds = (zones || []).map((z: { id: string }) => z.id)
-  let zoneVendorIds: string[] = []
-  if (zoneIds.length > 0) {
-    // vendor_zones: vendorId, zoneId are camelCase (no @map)
-    const { data: vendorZones } = await supabase
-      .from('vendor_zones')
-      .select('vendorId, vendors(status, isOnline)')
-      .in('zoneId', zoneIds)
-
-    zoneVendorIds = (vendorZones || [])
-      .filter((vz: Record<string, unknown>) => {
-        const vendor = vz.vendors as { status: string; isOnline: boolean } | null
-        return vendor?.status === 'APPROVED' && vendor?.isOnline === true
-      })
-      .map((vz: { vendorId: string }) => vz.vendorId)
+    // Get minimum surcharge across matching vendors (most favorable to customer)
+    const surcharges = validRows
+      .map((row: { delivery_surcharge: unknown }) => Number(row.delivery_surcharge))
+      .filter((s: number) => s > 0)
+    if (surcharges.length > 0) {
+      minSurcharge = Math.min(...surcharges)
+    }
   }
 
-  // Method 3: Radius match
+  // Fallback: Radius match (vendors within delivery radius of coordinates)
   const radiusVendorIds = await getRadiusVendorIds(
     lat !== null && lng !== null ? { lat, lng } : null
   )
 
   // Merge all vendor IDs (deduplicate)
   const allVendorIdSet = new Set<string>()
-  for (const id of pincodeVendorIds) allVendorIdSet.add(id)
-  for (const id of zoneVendorIds) allVendorIdSet.add(id)
+  for (const id of vsaVendorIds) allVendorIdSet.add(id)
   for (const id of radiusVendorIds) allVendorIdSet.add(id)
 
   const vendorCount = allVendorIdSet.size
@@ -322,7 +316,6 @@ async function handleFullServiceability(
   let productAvailable = true
   if (productId) {
     const allVendorIds = Array.from(allVendorIdSet)
-    // vendor_products: productId, isAvailable, vendorId are camelCase (no @map)
     const { data: vendorProduct } = await supabase
       .from('vendor_products')
       .select('id')
@@ -335,7 +328,6 @@ async function handleFullServiceability(
     productAvailable = !!vendorProduct
   }
 
-  // city_slot_cutoff: city_id, is_available have @map → snake_case correct
   const { data: slotCutoffs } = await supabase
     .from('city_slot_cutoff')
     .select('*')
@@ -345,25 +337,6 @@ async function handleFullServiceability(
   const availableSlots = await buildSlotsListWithFallback(slotCutoffs || [])
   const deliveryCharge = Number(city.baseDeliveryCharge)
   const freeDeliveryAbove = Number(city.freeDeliveryAbove)
-
-  // Check if any vendors have extra delivery charges for this pincode
-  let extraDeliveryCharge = 0
-  const allVendorIds = Array.from(allVendorIdSet)
-  if (allVendorIds.length > 0) {
-    const { data: vpCharges } = await supabase
-      .from('vendor_pincodes')
-      .select('deliveryCharge')
-      .eq('pincode', pincode)
-      .in('vendorId', allVendorIds)
-      .gt('deliveryCharge', 0)
-
-    if (vpCharges && vpCharges.length > 0) {
-      // Return the minimum surcharge (most favorable to customer)
-      extraDeliveryCharge = Math.min(
-        ...vpCharges.map((vc: { deliveryCharge: unknown }) => Number(vc.deliveryCharge))
-      )
-    }
-  }
 
   return NextResponse.json({
     success: true,
@@ -375,7 +348,7 @@ async function handleFullServiceability(
       vendorCount,
       productAvailable,
       deliveryCharge,
-      extraDeliveryCharge,
+      extraDeliveryCharge: minSurcharge,
       freeDeliveryAbove,
       availableSlots,
       deliverySlots: availableSlots,

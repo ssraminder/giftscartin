@@ -8,6 +8,7 @@ import {
   Package,
   IndianRupee,
   Settings,
+  MapPin,
   Store,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ const sidebarLinks = [
   { href: "/vendor/orders", label: "Orders", icon: ShoppingBag },
   { href: "/vendor/products", label: "Products", icon: Package },
   { href: "/vendor/earnings", label: "Earnings", icon: IndianRupee },
+  { href: "/vendor/settings/coverage", label: "Coverage", icon: MapPin },
   { href: "/vendor/settings", label: "Settings", icon: Settings },
 ]
 
@@ -103,7 +105,9 @@ export default function VendorLayout({
               const isActive =
                 link.href === "/vendor"
                   ? pathname === "/vendor"
-                  : pathname.startsWith(link.href)
+                  : link.href === "/vendor/settings"
+                    ? pathname === "/vendor/settings"
+                    : pathname.startsWith(link.href)
               return (
                 <Link
                   key={link.href}

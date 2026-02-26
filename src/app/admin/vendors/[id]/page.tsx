@@ -11,6 +11,7 @@ import {
   Star,
   Calendar,
   Package,
+  MapPin,
 } from "lucide-react"
 
 interface WorkingHoursData {
@@ -183,6 +184,21 @@ export default function EditVendorPage() {
           </p>
           <p className="mt-1 text-xs text-[#E91E63] opacity-0 group-hover:opacity-100 transition-opacity">
             Manage Products &rarr;
+          </p>
+        </Link>
+        <Link
+          href={`/admin/vendors/${id}/coverage`}
+          className="rounded-lg border bg-white p-4 hover:border-[#E91E63]/30 hover:bg-pink-50/30 transition-colors group"
+        >
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <MapPin className="h-4 w-4" />
+            Coverage
+          </div>
+          <p className="mt-1 text-sm font-medium text-slate-600">
+            Service Areas
+          </p>
+          <p className="mt-1 text-xs text-[#E91E63] opacity-0 group-hover:opacity-100 transition-opacity">
+            Manage Coverage &rarr;
           </p>
         </Link>
         <div className="rounded-lg border bg-white p-4">
