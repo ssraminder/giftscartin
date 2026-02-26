@@ -3,6 +3,7 @@ export const runtime = 'edge'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod/v4'
+import { getPlatformSurcharges, calculatePlatformSurcharge, type SurchargeResult } from '@/lib/surcharge'
 
 const serviceabilitySchema = z.object({
   pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode (6 digits)').optional(),
@@ -191,6 +192,11 @@ async function handleCoordinateSearch(
         productAvailable = !!vendorProduct
       }
 
+      // Enrich slots with surcharges (vendorAreaSurcharge = 0 for radius path)
+      const today = new Date()
+      const platformSurcharges = await getPlatformSurcharges(today, vendorWithCity.cityId)
+      const enrichedSlots = enrichSlotsWithSurcharges(availableSlots, 0, platformSurcharges)
+
       return NextResponse.json({
         success: true,
         data: {
@@ -202,8 +208,8 @@ async function handleCoordinateSearch(
           productAvailable,
           deliveryCharge,
           freeDeliveryAbove,
-          availableSlots,
-          deliverySlots: availableSlots,
+          availableSlots: enrichedSlots,
+          deliverySlots: enrichedSlots,
         },
       })
     }
@@ -224,7 +230,30 @@ async function handleCoordinateSearch(
   })
 }
 
-/** Full serviceability check: vendor_service_areas + radius fallback */
+/** Enrich base slots with surcharge breakdown */
+function enrichSlotsWithSurcharges(
+  slots: Array<{ id: string; name: string; slug: string; startTime: string; endTime: string; charge: number }>,
+  vendorAreaSurcharge: number,
+  platformSurcharges: SurchargeResult[]
+) {
+  return slots.map((slot) => {
+    const platformResult = calculatePlatformSurcharge(platformSurcharges, slot.slug, [])
+    const totalSurcharge = vendorAreaSurcharge + platformResult.total
+    const baseCharge = slot.charge
+    const totalCharge = baseCharge + totalSurcharge
+
+    return {
+      ...slot,
+      vendorAreaSurcharge,
+      platformSurcharges: platformResult,
+      totalSurcharge,
+      baseCharge,
+      totalCharge,
+    }
+  })
+}
+
+/** Full serviceability check: vendor_service_areas + vendor_pincodes fallback + radius fallback */
 async function handleFullServiceability(
   pincode: string,
   cityId: string,
@@ -280,6 +309,24 @@ async function handleFullServiceability(
     }
   }
 
+  // Fallback: vendor_pincodes (legacy pincode-based coverage)
+  // vendorAreaSurcharge = 0 for vendors found via this path
+  let pinVendorIds: string[] = []
+  {
+    const { data: pinRows } = await supabase
+      .from('vendor_pincodes')
+      .select('vendorId, vendors(id, status, isOnline)')
+      .eq('pincode', pincode)
+      .eq('isActive', true)
+
+    const validPinRows = (pinRows || []).filter((row: Record<string, unknown>) => {
+      const vendor = row.vendors as { id: string; status: string; isOnline: boolean } | null
+      return vendor?.status === 'APPROVED' && vendor?.isOnline === true
+    })
+
+    pinVendorIds = validPinRows.map((row: Record<string, unknown>) => row.vendorId as string)
+  }
+
   // Fallback: Radius match (vendors within delivery radius of coordinates)
   const radiusVendorIds = await getRadiusVendorIds(
     lat !== null && lng !== null ? { lat, lng } : null
@@ -288,6 +335,7 @@ async function handleFullServiceability(
   // Merge all vendor IDs (deduplicate)
   const allVendorIdSet = new Set<string>()
   for (const id of vsaVendorIds) allVendorIdSet.add(id)
+  for (const id of pinVendorIds) allVendorIdSet.add(id)
   for (const id of radiusVendorIds) allVendorIdSet.add(id)
 
   const vendorCount = allVendorIdSet.size
@@ -338,6 +386,11 @@ async function handleFullServiceability(
   const deliveryCharge = Number(city.baseDeliveryCharge)
   const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
+  // Fetch platform surcharges and enrich slots
+  const today = new Date()
+  const platformSurcharges = await getPlatformSurcharges(today, cityId)
+  const enrichedSlots = enrichSlotsWithSurcharges(availableSlots, minSurcharge, platformSurcharges)
+
   return NextResponse.json({
     success: true,
     data: {
@@ -350,8 +403,8 @@ async function handleFullServiceability(
       deliveryCharge,
       extraDeliveryCharge: minSurcharge,
       freeDeliveryAbove,
-      availableSlots,
-      deliverySlots: availableSlots,
+      availableSlots: enrichedSlots,
+      deliverySlots: enrichedSlots,
     },
   })
 }
