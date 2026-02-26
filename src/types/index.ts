@@ -423,6 +423,41 @@ export interface LocationResult {
   isComingSoon: boolean
 }
 
+// ==================== SLOT GROUPS (Serviceability API) ====================
+
+export interface SlotGroup {
+  available: boolean
+  label: string
+  description: string
+  baseCharge: number
+  cutoffHours: number
+  totalCharge: number
+}
+
+export interface FixedSlotGroup extends SlotGroup {
+  slots: {
+    id: string
+    name: string
+    slug: string
+    startTime: string
+    endTime: string
+    baseCharge: number
+    cutoffHours: number
+    totalCharge: number
+  }[]
+}
+
+export interface MidnightSlotGroup extends SlotGroup {
+  cutoffTime: string
+}
+
+export interface ExpressSlot {
+  available: boolean
+  baseCharge: number
+  cutoffHours: number
+  totalCharge: number
+}
+
 // ==================== API RESPONSE ====================
 
 export interface ApiResponse<T = unknown> {

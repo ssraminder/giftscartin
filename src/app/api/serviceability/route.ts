@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { z } from 'zod/v4'
 import { getPlatformSurcharges, calculatePlatformSurcharge, type SurchargeResult } from '@/lib/surcharge'
+import type { SlotGroup, FixedSlotGroup, MidnightSlotGroup, ExpressSlot } from '@/types'
 
 const serviceabilitySchema = z.object({
   pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode (6 digits)').optional(),
@@ -22,6 +23,174 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
+
+// ==================== Slot Group Helpers ====================
+
+interface CitySlotCutoffRow {
+  id: string
+  city_id: string
+  slot_id: string
+  slot_name: string
+  slot_slug: string
+  slot_start: string
+  slot_end: string
+  cutoff_hours: number
+  base_charge: unknown
+  is_available: boolean
+  slot_group: string | null
+  updated_at: string | null
+}
+
+function calculateTotalCharge(
+  slotBaseCharge: number,
+  slotGroup: string,
+  vendorAreaSurcharge: number,
+  platformSurcharges: SurchargeResult[]
+): number {
+  // Sum of 'all' type platform surcharges
+  const allSurchargeTotal = platformSurcharges
+    .filter((s) => s.appliesTo === 'all')
+    .reduce((sum, s) => sum + s.amount, 0)
+
+  // Sum of slot-specific platform surcharges
+  const slotSurchargeTotal = platformSurcharges
+    .filter((s) => s.appliesTo === `slot:${slotGroup}`)
+    .reduce((sum, s) => sum + s.amount, 0)
+
+  return slotBaseCharge + vendorAreaSurcharge + allSurchargeTotal + slotSurchargeTotal
+}
+
+function buildSlotGroupsResponse(
+  allSlotCutoffs: CitySlotCutoffRow[],
+  vendorAreaSurcharge: number,
+  platformSurcharges: SurchargeResult[]
+): {
+  slotGroups: { standard: SlotGroup | null; fixed: FixedSlotGroup | null; midnight: MidnightSlotGroup | null }
+  expressSlot: ExpressSlot | null
+} {
+  // Group rows by slot_group
+  const standardRows = allSlotCutoffs.filter((r) => r.slot_group === 'standard')
+  const fixedRows = allSlotCutoffs.filter((r) => r.slot_group === 'fixed')
+  const midnightRows = allSlotCutoffs.filter((r) => r.slot_group === 'midnight')
+  const expressRows = allSlotCutoffs.filter((r) => r.slot_group === 'express')
+
+  // Standard slot group
+  const availableStandard = standardRows.find((r) => r.is_available)
+  const standard: SlotGroup | null = availableStandard
+    ? {
+        available: true,
+        label: 'Standard Delivery',
+        description: '9 AM – 9 PM, any time',
+        baseCharge: Number(availableStandard.base_charge),
+        cutoffHours: availableStandard.cutoff_hours,
+        totalCharge: calculateTotalCharge(
+          Number(availableStandard.base_charge),
+          'standard',
+          vendorAreaSurcharge,
+          platformSurcharges
+        ),
+      }
+    : null
+
+  // Fixed slot group
+  const availableFixed = fixedRows.filter((r) => r.is_available)
+  const fixed: FixedSlotGroup | null = availableFixed.length > 0
+    ? {
+        available: true,
+        label: 'Specific Time Slot',
+        description: 'Choose a 2-hour delivery window',
+        baseCharge: Number(availableFixed[0].base_charge),
+        cutoffHours: availableFixed[0].cutoff_hours,
+        totalCharge: calculateTotalCharge(
+          Number(availableFixed[0].base_charge),
+          'fixed',
+          vendorAreaSurcharge,
+          platformSurcharges
+        ),
+        slots: availableFixed.map((row) => ({
+          id: row.slot_id,
+          name: row.slot_name,
+          slug: row.slot_slug,
+          startTime: row.slot_start,
+          endTime: row.slot_end,
+          baseCharge: Number(row.base_charge),
+          cutoffHours: row.cutoff_hours,
+          totalCharge: calculateTotalCharge(
+            Number(row.base_charge),
+            'fixed',
+            vendorAreaSurcharge,
+            platformSurcharges
+          ),
+        })),
+      }
+    : null
+
+  // Midnight slot group
+  const availableMidnight = midnightRows.find((r) => r.is_available)
+  const midnight: MidnightSlotGroup | null = availableMidnight
+    ? {
+        available: true,
+        label: 'Midnight Delivery',
+        description: '11 PM – 12 AM',
+        baseCharge: Number(availableMidnight.base_charge),
+        cutoffHours: availableMidnight.cutoff_hours,
+        cutoffTime: deriveCutoffTime(availableMidnight.cutoff_hours),
+        totalCharge: calculateTotalCharge(
+          Number(availableMidnight.base_charge),
+          'midnight',
+          vendorAreaSurcharge,
+          platformSurcharges
+        ),
+      }
+    : null
+
+  // Express slot — always return if row exists (even if not available)
+  const expressRow = expressRows[0] || null
+  const expressSlot: ExpressSlot | null = expressRow
+    ? {
+        available: expressRow.is_available,
+        baseCharge: Number(expressRow.base_charge),
+        cutoffHours: expressRow.cutoff_hours,
+        totalCharge: calculateTotalCharge(
+          Number(expressRow.base_charge),
+          'express',
+          vendorAreaSurcharge,
+          platformSurcharges
+        ),
+      }
+    : null
+
+  return {
+    slotGroups: { standard, fixed, midnight },
+    expressSlot,
+  }
+}
+
+/** Derive cutoff time string from cutoff_hours before midnight (24:00).
+ *  e.g. cutoff_hours=6 → "18:00"
+ */
+function deriveCutoffTime(cutoffHours: number): string {
+  const hour = 24 - cutoffHours
+  return `${hour.toString().padStart(2, '0')}:00`
+}
+
+function buildPlatformSurchargeBreakdown(
+  platformSurcharges: SurchargeResult[]
+): { name: string; amount: number; appliesTo: string }[] {
+  return platformSurcharges.map((s) => ({
+    name: s.name,
+    amount: s.amount,
+    appliesTo: s.appliesTo,
+  }))
+}
+
+function calculatePlatformSurchargeTotal(platformSurcharges: SurchargeResult[]): number {
+  return platformSurcharges
+    .filter((s) => s.appliesTo === 'all')
+    .reduce((sum, s) => sum + s.amount, 0)
+}
+
+// ==================== Main Handler ====================
 
 export async function POST(request: NextRequest) {
   try {
@@ -167,13 +336,19 @@ async function handleCoordinateSearch(
       const city = vendorWithCity.cities as unknown as { id: string; name: string; slug: string; isActive: boolean; baseDeliveryCharge: unknown; freeDeliveryAbove: unknown }
 
       // city_slot_cutoff: city_id and is_available have @map → snake_case correct
-      const { data: slotCutoffs } = await supabase
+      // Fetch ALL rows (not just is_available=true) for slot group building
+      const { data: allSlotCutoffs } = await supabase
         .from('city_slot_cutoff')
         .select('*')
         .eq('city_id', vendorWithCity.cityId)
-        .eq('is_available', true)
+        .order('slot_group')
+        .order('slot_start')
 
-      const availableSlots = buildSlotsList(slotCutoffs || [])
+      const slotCutoffRows = (allSlotCutoffs || []) as CitySlotCutoffRow[]
+
+      // Build flat slots list (only available ones — backward compat)
+      const availableSlotCutoffs = slotCutoffRows.filter((r) => r.is_available)
+      const availableSlots = buildSlotsList(availableSlotCutoffs as unknown as Array<Record<string, unknown>>)
       const deliveryCharge = Number(city.baseDeliveryCharge)
       const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
@@ -193,9 +368,17 @@ async function handleCoordinateSearch(
       }
 
       // Enrich slots with surcharges (vendorAreaSurcharge = 0 for radius path)
+      const vendorAreaSurcharge = 0
       const today = new Date()
       const platformSurcharges = await getPlatformSurcharges(today, vendorWithCity.cityId)
-      const enrichedSlots = enrichSlotsWithSurcharges(availableSlots, 0, platformSurcharges)
+      const enrichedSlots = enrichSlotsWithSurcharges(availableSlots, vendorAreaSurcharge, platformSurcharges)
+
+      // Build grouped response
+      const { slotGroups, expressSlot } = buildSlotGroupsResponse(
+        slotCutoffRows,
+        vendorAreaSurcharge,
+        platformSurcharges
+      )
 
       return NextResponse.json({
         success: true,
@@ -210,6 +393,11 @@ async function handleCoordinateSearch(
           freeDeliveryAbove,
           availableSlots: enrichedSlots,
           deliverySlots: enrichedSlots,
+          vendorAreaSurcharge,
+          platformSurchargeTotal: calculatePlatformSurchargeTotal(platformSurcharges),
+          platformSurchargeBreakdown: buildPlatformSurchargeBreakdown(platformSurcharges),
+          slotGroups,
+          expressSlot,
         },
       })
     }
@@ -376,20 +564,34 @@ async function handleFullServiceability(
     productAvailable = !!vendorProduct
   }
 
-  const { data: slotCutoffs } = await supabase
+  // Fetch ALL city_slot_cutoff rows (not just available) for grouped response
+  const { data: allSlotCutoffs } = await supabase
     .from('city_slot_cutoff')
     .select('*')
     .eq('city_id', cityId)
-    .eq('is_available', true)
+    .order('slot_group')
+    .order('slot_start')
 
-  const availableSlots = await buildSlotsListWithFallback(slotCutoffs || [])
+  const slotCutoffRows = (allSlotCutoffs || []) as CitySlotCutoffRow[]
+
+  // Build flat slots (only available — backward compat)
+  const availableSlotCutoffs = slotCutoffRows.filter((r) => r.is_available)
+  const availableSlots = await buildSlotsListWithFallback(availableSlotCutoffs as unknown as Array<Record<string, unknown>>)
   const deliveryCharge = Number(city.baseDeliveryCharge)
   const freeDeliveryAbove = Number(city.freeDeliveryAbove)
 
   // Fetch platform surcharges and enrich slots
+  const vendorAreaSurcharge = minSurcharge
   const today = new Date()
   const platformSurcharges = await getPlatformSurcharges(today, cityId)
-  const enrichedSlots = enrichSlotsWithSurcharges(availableSlots, minSurcharge, platformSurcharges)
+  const enrichedSlots = enrichSlotsWithSurcharges(availableSlots, vendorAreaSurcharge, platformSurcharges)
+
+  // Build grouped response
+  const { slotGroups, expressSlot } = buildSlotGroupsResponse(
+    slotCutoffRows,
+    vendorAreaSurcharge,
+    platformSurcharges
+  )
 
   return NextResponse.json({
     success: true,
@@ -405,6 +607,11 @@ async function handleFullServiceability(
       freeDeliveryAbove,
       availableSlots: enrichedSlots,
       deliverySlots: enrichedSlots,
+      vendorAreaSurcharge,
+      platformSurchargeTotal: calculatePlatformSurchargeTotal(platformSurcharges),
+      platformSurchargeBreakdown: buildPlatformSurchargeBreakdown(platformSurcharges),
+      slotGroups,
+      expressSlot,
     },
   })
 }
