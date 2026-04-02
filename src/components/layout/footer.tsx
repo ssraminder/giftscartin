@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import {
   Facebook,
   Gift,
@@ -40,7 +41,7 @@ const SOCIAL_LINKS = [
   { href: "#", label: "YouTube", icon: Youtube },
 ]
 
-export function Footer() {
+export function Footer({ logoUrl }: { logoUrl?: string | null }) {
   return (
     <footer className="bg-[#1A1A2E] text-gray-300 pb-20 md:pb-0">
       {/* Main Footer Content */}
@@ -49,13 +50,27 @@ export function Footer() {
           {/* Brand & Contact */}
           <div className="col-span-2 md:col-span-1">
             <Link href="/" className="inline-flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
-                <Gift className="h-4 w-4 text-white" />
-              </div>
-              <div>
-                <span className="text-xl font-bold text-pink-400">Gifts</span>
-                <span className="text-xl font-bold text-white">Cart India</span>
-              </div>
+              {logoUrl ? (
+                <Image
+                  src={logoUrl}
+                  alt="Gifts Cart India"
+                  width={160}
+                  height={40}
+                  className="object-contain invert brightness-0 invert"
+                  style={{ filter: "brightness(0) invert(1)" }}
+                  unoptimized
+                />
+              ) : (
+                <>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
+                    <Gift className="h-4 w-4 text-white" />
+                  </div>
+                  <div>
+                    <span className="text-xl font-bold text-pink-400">Gifts</span>
+                    <span className="text-xl font-bold text-white">Cart India</span>
+                  </div>
+                </>
+              )}
             </Link>
             <p className="mt-3 text-xs text-gray-500">A project by Cital Enterprises</p>
             <p className="mt-3 text-sm leading-relaxed text-gray-400">
