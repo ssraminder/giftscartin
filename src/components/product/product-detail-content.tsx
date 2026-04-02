@@ -952,6 +952,75 @@ export default function ProductDetailContent({
               return null
             })()}
 
+            {/* 9b. Inline Add to Cart / Buy Now */}
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => {
+                  if (!canAddToCart) {
+                    // Show guidance about what's missing
+                    if (!isServiceable || !pincode) {
+                      setErrorToast("Please enter your delivery pincode first")
+                    } else if (!selectedDate) {
+                      setErrorToast("Please select a delivery date")
+                    } else if (!slotSelection) {
+                      setErrorToast("Please select a delivery slot")
+                    }
+                    setTimeout(() => setErrorToast(null), 4000)
+                    return
+                  }
+                  handleAddToCart()
+                }}
+                disabled={adding}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200",
+                  canAddToCart && !adding
+                    ? "bg-white border-2 border-pink-600 text-pink-700 hover:bg-pink-50 cursor-pointer"
+                    : adding
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed border-2 border-gray-100"
+                      : "bg-white border-2 border-pink-300 text-pink-400 cursor-pointer"
+                )}
+              >
+                {adding ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShoppingCart className="h-4 w-4" />
+                )}
+                {addedToast ? "Added!" : "Add to Cart"}
+              </button>
+              <button
+                onClick={() => {
+                  if (!canAddToCart) {
+                    if (!isServiceable || !pincode) {
+                      setErrorToast("Please enter your delivery pincode first")
+                    } else if (!selectedDate) {
+                      setErrorToast("Please select a delivery date")
+                    } else if (!slotSelection) {
+                      setErrorToast("Please select a delivery slot")
+                    }
+                    setTimeout(() => setErrorToast(null), 4000)
+                    return
+                  }
+                  handleBuyNow()
+                }}
+                disabled={adding}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200",
+                  canAddToCart && !adding
+                    ? "bg-pink-600 text-white hover:bg-pink-700 cursor-pointer shadow-md shadow-pink-600/20"
+                    : adding
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                      : "bg-pink-300 text-white cursor-pointer"
+                )}
+              >
+                {adding && <Loader2 className="h-4 w-4 animate-spin" />}
+                Buy Now <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            {/* Inline error/guidance toast */}
+            {errorToast && (
+              <p className="text-center text-sm text-red-600 bg-red-50 rounded-xl py-2.5 px-4 border border-red-100 animate-in fade-in duration-200">{errorToast}</p>
+            )}
+
             {/* 10. About the Product (Accordion — collapsed by default) */}
             <Accordion type="single" collapsible defaultValue={undefined}>
               <AccordionItem value="about">
@@ -1086,7 +1155,7 @@ export default function ProductDetailContent({
       </div>
 
       {/* STICKY BOTTOM BAR */}
-      <div className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 py-3 safe-area-bottom shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+      <div className="fixed bottom-0 inset-x-0 z-50 bg-white border-t border-gray-200 px-4 py-4 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
         <div className="max-w-7xl mx-auto">
           {/* Countdown timer */}
           {isTodayValid && countdown && (
@@ -1097,14 +1166,28 @@ export default function ProductDetailContent({
           )}
           <div className="flex gap-3">
             <button
-              onClick={handleAddToCart}
-              disabled={!canAddToCart || adding}
-              title={!canAddToCart ? "Select delivery date and slot" : undefined}
+              onClick={() => {
+                if (!canAddToCart) {
+                  if (!isServiceable || !pincode) {
+                    setErrorToast("Please enter your delivery pincode first")
+                  } else if (!selectedDate) {
+                    setErrorToast("Please select a delivery date")
+                  } else if (!slotSelection) {
+                    setErrorToast("Please select a delivery slot")
+                  }
+                  setTimeout(() => setErrorToast(null), 4000)
+                  return
+                }
+                handleAddToCart()
+              }}
+              disabled={adding}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all duration-200",
+                "flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200",
                 canAddToCart && !adding
                   ? "bg-white border-2 border-pink-600 text-pink-700 hover:bg-pink-50 cursor-pointer"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed border-2 border-gray-100"
+                  : adding
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed border-2 border-gray-100"
+                    : "bg-white border-2 border-pink-300 text-pink-400 cursor-pointer"
               )}
             >
               {adding ? (
@@ -1115,13 +1198,28 @@ export default function ProductDetailContent({
               {addedToast ? "Added!" : "Add to Cart"}
             </button>
             <button
-              onClick={handleBuyNow}
-              disabled={!canAddToCart || adding}
+              onClick={() => {
+                if (!canAddToCart) {
+                  if (!isServiceable || !pincode) {
+                    setErrorToast("Please enter your delivery pincode first")
+                  } else if (!selectedDate) {
+                    setErrorToast("Please select a delivery date")
+                  } else if (!slotSelection) {
+                    setErrorToast("Please select a delivery slot")
+                  }
+                  setTimeout(() => setErrorToast(null), 4000)
+                  return
+                }
+                handleBuyNow()
+              }}
+              disabled={adding}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all duration-200",
+                "flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200",
                 canAddToCart && !adding
                   ? "bg-pink-600 text-white hover:bg-pink-700 cursor-pointer shadow-md shadow-pink-600/20"
-                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  : adding
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-pink-300 text-white cursor-pointer"
               )}
             >
               {adding && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -1136,7 +1234,7 @@ export default function ProductDetailContent({
       </div>
 
       {/* Spacer for sticky bar */}
-      <div className="h-28" />
+      <div className="h-32" />
     </>
   )
 }
