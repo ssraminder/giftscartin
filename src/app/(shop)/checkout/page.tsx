@@ -493,8 +493,6 @@ export default function CheckoutPage() {
     setOrderError("")
 
     try {
-      const t0 = Date.now()
-
       const isNewAddress = !formData.selectedAddressId
       const isGuestCheckout = !user
 
@@ -551,7 +549,7 @@ export default function CheckoutPage() {
       setOrderError("Something went wrong creating your order. Please try again.")
       setCreatingOrder(false)
     }
-  }, [formData, items, createdOrderId, goToStep, user])
+  }, [formData, items, createdOrderId, goToStep, user, slotSelection])
 
   // Formatted date for display - use first cart item's delivery date
   const effectiveDeliveryDate = items[0]?.deliveryDate ?? formData.deliveryDate
@@ -709,7 +707,6 @@ export default function CheckoutPage() {
     setPaymentStep("Initializing payment...")
 
     try {
-      const t0 = Date.now()
       const paymentGateway = formData.paymentMethod === "cod" ? "cod" : (gateway || "razorpay")
 
       const paymentRes = await fetch("/api/payments/create-order", {
@@ -719,8 +716,6 @@ export default function CheckoutPage() {
       })
 
       const paymentData = await paymentRes.json()
-      console.log(`[checkout] payment_create: ${Date.now() - t0}ms`)
-      console.log(`[checkout] total_before_popup: ${Date.now() - t0}ms`)
 
       if (!paymentData.success) {
         setOrderError(paymentData.error || "Failed to initiate payment. Please try again.")
