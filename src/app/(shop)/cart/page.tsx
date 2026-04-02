@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2, CalendarDays } from "lucide-react"
+import { ArrowLeft, ShoppingCart, Tag, ChevronDown, ChevronUp, Sparkles, Loader2 } from "lucide-react"
 
 import { Separator } from "@/components/ui/separator"
 import { CartItem } from "@/components/cart/cart-item"
@@ -53,16 +53,6 @@ export default function CartPage() {
   const subtotal = getSubtotal()
   const baseDeliveryCharge = subtotal >= FREE_DELIVERY_ABOVE ? 0 : BASE_DELIVERY_CHARGE
   const deliveryCharge = baseDeliveryCharge
-
-  // Get delivery date from first cart item (all items share the same date)
-  const deliveryDateStr = items.length > 0 ? items[0].deliveryDate : null
-  const deliveryDateDisplay = deliveryDateStr
-    ? new Date(deliveryDateStr + "T00:00:00").toLocaleDateString("en-IN", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-      })
-    : null
 
   const handleApplyCoupon = async (code: string) => {
     setCouponLoading(true)
@@ -191,24 +181,6 @@ export default function CartPage() {
                 </div>
               ))}
             </div>
-
-            {/* Delivery Date Display */}
-            {deliveryDateDisplay && (
-              <div className="card-premium overflow-hidden">
-                <div className="px-4 py-3 sm:px-5 flex items-center gap-3">
-                  <CalendarDays className="h-5 w-5 text-[#E91E63]" />
-                  <div>
-                    <p className="text-xs text-gray-500">Delivery Date</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {deliveryDateDisplay}
-                    </p>
-                  </div>
-                  <p className="ml-auto text-xs text-gray-400">
-                    Time slot selected at checkout
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Coupon Section */}
             <div className="card-premium overflow-hidden">
