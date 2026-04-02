@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Heart, Star } from "lucide-react"
+import { Heart, Star, Clock, ShoppingCart } from "lucide-react"
 
 import { useCart } from "@/hooks/use-cart"
 import { useCurrency } from "@/hooks/use-currency"
@@ -111,7 +111,7 @@ export function ProductCard({
   }
 
   const deliveryBadgeConfig = {
-    "same-day": { label: "Same Day", className: "bg-green-500" },
+    "same-day": { label: "Same Day", className: "bg-green-600" },
     midnight: { label: "Midnight", className: "bg-indigo-600" },
     express: { label: "Express", className: "bg-orange-500" },
   }
@@ -121,10 +121,10 @@ export function ProductCard({
     <Link
       href={`/product/${slug}`}
       prefetch={true}
-      className="group block rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden"
+      className="group block rounded-2xl bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer border border-gray-100"
     >
       {/* IMAGE SECTION */}
-      <div className="relative aspect-square overflow-hidden rounded-t-xl bg-gray-100">
+      <div className="relative aspect-square overflow-hidden bg-gray-50">
         <Image
           src={processImageUrl(images?.[0] || "/placeholder-product.svg", 400, 75)}
           alt={name}
@@ -132,20 +132,20 @@ export function ProductCard({
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 280px"
           quality={75}
           loading="lazy"
-          className="object-cover hover:scale-105 transition-transform duration-300"
+          className="object-cover group-hover:scale-105 transition-transform duration-300"
           onError={(e) => { e.currentTarget.src = "/placeholder-product.svg" }}
         />
 
         {/* Top-left: Discount badge */}
         {discount > 0 && (
-          <div className="absolute top-0 left-0 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-br-lg">
+          <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg">
             {discount}% OFF
           </div>
         )}
 
         {/* Top-right: Delivery badge */}
         <div
-          className={`absolute top-0 right-0 ${badge.className} text-white text-xs font-bold px-2 py-1 rounded-bl-lg`}
+          className={`absolute top-2 right-2 ${badge.className} text-white text-[10px] font-bold px-2 py-1 rounded-lg`}
         >
           {badge.label}
         </div>
@@ -153,33 +153,30 @@ export function ProductCard({
         {/* Wishlist heart */}
         <button
           onClick={handleWishlist}
-          className="absolute top-8 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-white/80 hover:bg-white transition-colors shadow-sm"
+          className="absolute bottom-2 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-white/90 hover:bg-white cursor-pointer transition-colors duration-200 shadow-sm"
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
         >
           <Heart
-            className={`h-4 w-4 transition-colors ${
+            className={`h-4 w-4 transition-colors duration-200 ${
               wishlisted ? "fill-red-500 text-red-500" : "text-gray-500"
             }`}
           />
         </button>
-
-        {/* Bottom hover overlay */}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       </div>
 
       {/* CONTENT SECTION */}
-      <div className="px-3 pt-2 pb-3">
+      <div className="px-3 pt-3 pb-3">
         {/* Product name */}
-        <h3 className="font-semibold text-gray-800 text-sm line-clamp-2 leading-tight min-h-[2.5rem]">
+        <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 leading-snug min-h-[2.5rem]">
           {name}
         </h3>
 
         {/* Rating row */}
         {(totalReviews ?? 0) > 0 && (
-          <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-            <span>{Number(avgRating ?? 0).toFixed(1)}</span>
-            <span>&middot;</span>
+          <div className="mt-1.5 flex items-center gap-1 text-xs text-gray-500">
+            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+            <span className="font-medium text-gray-700">{Number(avgRating ?? 0).toFixed(1)}</span>
+            <span className="text-gray-300">&middot;</span>
             <span>{totalReviews} reviews</span>
           </div>
         )}
@@ -190,7 +187,7 @@ export function ProductCard({
         )}
 
         {/* Price row */}
-        <div className="mt-1.5 flex items-baseline gap-2">
+        <div className="mt-2 flex items-baseline gap-2">
           <span className="font-bold text-lg text-gray-900">
             {formatPrice(basePrice)}
           </span>
@@ -203,7 +200,8 @@ export function ProductCard({
 
         {/* Urgency text */}
         {urgency && (
-          <p className="mt-1 text-xs text-orange-600 font-medium">
+          <p className="mt-1.5 flex items-center gap-1 text-xs text-orange-600 font-medium">
+            <Clock className="h-3 w-3 flex-shrink-0" />
             {urgency}
           </p>
         )}
@@ -211,13 +209,20 @@ export function ProductCard({
         {/* Add to Cart button */}
         <button
           onClick={handleAddToCart}
-          className={`mt-2 w-full py-2 rounded-lg text-sm font-medium transition-colors ${
+          className={`mt-3 w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 flex items-center justify-center gap-1.5 ${
             added
               ? "bg-green-600 text-white"
-              : "bg-pink-600 hover:bg-pink-700 text-white"
+              : "bg-pink-600 hover:bg-pink-700 text-white shadow-sm hover:shadow"
           }`}
         >
-          {added ? "Added \u2713" : "Add to Cart"}
+          {added ? (
+            "Added \u2713"
+          ) : (
+            <>
+              <ShoppingCart className="h-3.5 w-3.5" />
+              Add to Cart
+            </>
+          )}
         </button>
       </div>
     </Link>

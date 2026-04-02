@@ -1,15 +1,16 @@
 "use client"
 
 import { useState } from "react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 
 export function SeoTextBlock() {
   const [expanded, setExpanded] = useState(false)
 
   return (
-    <section className="py-8 md:py-12">
+    <section className="py-10 md:py-14">
       <div className="max-w-7xl mx-auto px-4">
-        <div className="bg-gray-50 rounded-xl p-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-3">
+        <div className="bg-gray-50 rounded-2xl p-6 md:p-8">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">
             Online Gift Delivery in India — Gifts Cart India
           </h2>
           <div
@@ -40,9 +41,13 @@ export function SeoTextBlock() {
           </div>
           <button
             onClick={() => setExpanded(!expanded)}
-            className="mt-3 text-sm font-medium text-pink-600 hover:text-pink-700 md:hidden"
+            className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-pink-600 hover:text-pink-700 cursor-pointer transition-colors duration-200 md:hidden"
           >
-            {expanded ? "Show less" : "Read more"}
+            {expanded ? (
+              <>Show less <ChevronUp className="h-4 w-4" /></>
+            ) : (
+              <>Read more <ChevronDown className="h-4 w-4" /></>
+            )}
           </button>
         </div>
       </div>
