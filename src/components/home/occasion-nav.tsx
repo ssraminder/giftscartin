@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import {
-  ChevronLeft, ChevronRight, Zap, Cake, Heart, Palette, Award,
+  ChevronLeft, ChevronRight, Zap, Cake, Heart, Palette,
   Church, GraduationCap, Baby, Flower2, TreePine, Briefcase, Sparkles,
 } from 'lucide-react'
 
