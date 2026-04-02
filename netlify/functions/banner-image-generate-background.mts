@@ -98,14 +98,26 @@ function buildContextAwarePrompt(
   return userPrompt
 }
 
+const BANNER_SYSTEM_RULES = [
+  'ALWAYS follow these rules when generating banner images for Gifts Cart India:',
+  '1. NEVER include any text, watermarks, logos, brand names, or written words in the image.',
+  '2. NEVER include human faces, hands, fingers, or any body parts.',
+  '3. Use photorealistic, high-quality photography style with warm, inviting colors.',
+  '4. For backgrounds: soft bokeh or gradient effects, Indian festive aesthetic, no clutter.',
+  '5. For hero/subject images: product centered, clean edges, suitable for overlay on banners.',
+  '6. Colors must be true-to-life — do not over-saturate or add artificial color casts.',
+  '7. Lighting should be warm and professional — soft studio or natural golden-hour style.',
+  '8. Indian cultural context: use elements like marigolds, diyas, rangoli patterns, gift boxes, ribbons where appropriate.',
+].join('\n')
+
 function buildPrompt(payload: JobPayload): string {
   // If layer context is provided, use the context-aware prompt builder
   if (payload.layerContext) {
-    return buildContextAwarePrompt(payload.imageType, payload.prompt, payload.layerContext)
+    return `${BANNER_SYSTEM_RULES}\n\n${buildContextAwarePrompt(payload.imageType, payload.prompt, payload.layerContext)}`
   }
 
   // Legacy prompt building (for backward compatibility)
-  const parts: string[] = []
+  const parts: string[] = [BANNER_SYSTEM_RULES]
 
   if (payload.imageType === 'background') {
     parts.push('Homepage banner background image for an Indian online gifting platform called Gifts Cart India.')

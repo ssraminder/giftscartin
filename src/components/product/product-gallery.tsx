@@ -45,7 +45,7 @@ export function ProductGallery({ images }: ProductGalleryProps) {
             src={processImageUrl(heroSrc)}
             alt="Product image"
             fill
-            className="object-cover"
+            className="object-contain"
             sizes="(max-width: 768px) 100vw, 55vw"
             quality={80}
             priority
@@ -124,7 +124,7 @@ export function ProductGallery({ images }: ProductGalleryProps) {
             src={processImageUrl(heroSrc)}
             alt="Product image"
             fill
-            className="object-cover"
+            className="object-contain"
             sizes="(max-width: 768px) 100vw, 45vw"
             quality={80}
             priority
