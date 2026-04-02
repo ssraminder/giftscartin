@@ -84,7 +84,7 @@ export default async function ShopLayout({
           <Header logoUrl={logoUrl} menuItems={serializedMenu} />
         </div>
         <main className="flex-1">{children}</main>
-        <Footer />
+        <Footer logoUrl={logoUrl} />
         <BottomNav />
         <LocationModal />
       </div>

@@ -121,7 +121,7 @@ export function ProductCard({
     <Link
       href={`/product/${slug}`}
       prefetch={true}
-      className="group block rounded-2xl bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer border border-gray-100"
+      className="group flex flex-col h-full rounded-2xl bg-white shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer border border-gray-100"
     >
       {/* IMAGE SECTION */}
       <div className="relative aspect-square overflow-hidden bg-gray-50">
@@ -165,65 +165,70 @@ export function ProductCard({
       </div>
 
       {/* CONTENT SECTION */}
-      <div className="px-3 pt-3 pb-3">
+      <div className="px-3 pt-3 pb-3 flex flex-col flex-1">
         {/* Product name */}
         <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 leading-snug min-h-[2.5rem]">
           {name}
         </h3>
 
-        {/* Rating row */}
-        {(totalReviews ?? 0) > 0 && (
-          <div className="mt-1.5 flex items-center gap-1 text-xs text-gray-500">
-            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-            <span className="font-medium text-gray-700">{Number(avgRating ?? 0).toFixed(1)}</span>
-            <span className="text-gray-300">&middot;</span>
-            <span>{totalReviews} reviews</span>
-          </div>
-        )}
-
-        {/* Weight */}
-        {weight && (
-          <div className="mt-1 text-xs text-gray-400">{weight}</div>
-        )}
-
-        {/* Price row */}
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="font-bold text-lg text-gray-900">
-            {formatPrice(basePrice)}
-          </span>
-          {mrp && mrp > basePrice && (
-            <span className="text-sm text-gray-400 line-through">
-              {formatPrice(mrp)}
-            </span>
+        {/* Rating row — always reserve space */}
+        <div className="mt-1.5 h-4">
+          {(totalReviews ?? 0) > 0 && (
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+              <span className="font-medium text-gray-700">{Number(avgRating ?? 0).toFixed(1)}</span>
+              <span className="text-gray-300">&middot;</span>
+              <span>{totalReviews} reviews</span>
+            </div>
           )}
         </div>
 
-        {/* Urgency text */}
-        {urgency && (
-          <p className="mt-1.5 flex items-center gap-1 text-xs text-orange-600 font-medium">
-            <Clock className="h-3 w-3 flex-shrink-0" />
-            {urgency}
-          </p>
-        )}
+        {/* Weight — always reserve space */}
+        <div className="mt-1 h-4 text-xs text-gray-400">
+          {weight || "\u00A0"}
+        </div>
 
-        {/* Add to Cart button */}
-        <button
-          onClick={handleAddToCart}
-          className={`mt-3 w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 flex items-center justify-center gap-1.5 ${
-            added
-              ? "bg-green-600 text-white"
-              : "bg-pink-600 hover:bg-pink-700 text-white shadow-sm hover:shadow"
-          }`}
-        >
-          {added ? (
-            "Added \u2713"
-          ) : (
-            <>
-              <ShoppingCart className="h-3.5 w-3.5" />
-              Add to Cart
-            </>
+        {/* Push remaining content to bottom */}
+        <div className="mt-auto">
+          {/* Price row */}
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="font-bold text-lg text-gray-900">
+              {formatPrice(basePrice)}
+            </span>
+            {mrp && mrp > basePrice && (
+              <span className="text-sm text-gray-400 line-through">
+                {formatPrice(mrp)}
+              </span>
+            )}
+          </div>
+
+          {/* Urgency text */}
+          {urgency && (
+            <p className="mt-1.5 flex items-center gap-1 text-xs text-orange-600 font-medium">
+              <Clock className="h-3 w-3 flex-shrink-0" />
+              {urgency}
+            </p>
           )}
-        </button>
+
+          {/* Add to Cart button */}
+          <button
+            onClick={handleAddToCart}
+            className={`mt-3 w-full py-2.5 rounded-xl text-sm font-medium cursor-pointer transition-all duration-200 flex items-center justify-center gap-1.5 ${
+              added
+                ? "bg-green-600 text-white"
+                : "bg-pink-600 hover:bg-pink-700 text-white shadow-sm hover:shadow"
+            }`}
+          >
+            {added ? (
+              "Added \u2713"
+            ) : (
+              <>
+                <ShoppingCart className="h-3.5 w-3.5" />
+                Add to Cart
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </Link>
   )
