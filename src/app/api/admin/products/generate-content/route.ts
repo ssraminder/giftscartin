@@ -47,7 +47,7 @@ Return ONLY valid JSON, no markdown backticks:
   "metaDescription": "Meta description max 155 chars. Include product name, features, soft CTA.",
   "metaKeywords": ["keyword1", "keyword2"],
   "tags": ["tag1", "tag2"],
-  "imagePrompt": "Professional product photo description, 60-80 words. Studio lighting, white background, Indian celebration props. Photorealistic. No text or logos."
+  "imagePrompt": "60-80 word prompt for AI image generation. MUST follow these rules: (1) Describe a single product centered on a plain white or soft gradient background, filling 70-80% of the frame. (2) Specify soft studio lighting with gentle shadows. (3) Photorealistic e-commerce product photography style. (4) NEVER include text, watermarks, logos, human hands, faces, or body parts. (5) For food: fresh, appetizing plating. For flowers: vibrant fresh arrangements. For gifts: clean packaging with ribbon details. (6) Square 1:1 composition. (7) True-to-life colors, no over-saturation."
 }`
 
     const messages: Anthropic.MessageParam[] = []
