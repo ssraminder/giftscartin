@@ -12,6 +12,8 @@ interface PhoneInputProps {
   disabled?: boolean
   error?: string
   label?: string
+  /** ISO country code (e.g. 'US', 'IN') to pre-select on mount */
+  initialCountryCode?: string
 }
 
 function parsePhoneValue(value: string): { country: Country; digits: string } {
@@ -45,9 +47,18 @@ export function PhoneInput({
   disabled,
   error,
   label,
+  initialCountryCode,
 }: PhoneInputProps) {
   const parsed = parsePhoneValue(value)
-  const [selectedCountry, setSelectedCountry] = useState<Country>(parsed.country)
+  const [selectedCountry, setSelectedCountry] = useState<Country>(() => {
+    // If no value yet and initialCountryCode provided, use it
+    if ((!value || value === '+91') && initialCountryCode) {
+      const allCountries = [...TOP_COUNTRIES, ...OTHER_COUNTRIES]
+      const match = allCountries.find((c) => c.code === initialCountryCode.toUpperCase())
+      if (match) return match
+    }
+    return parsed.country
+  })
   const [digits, setDigits] = useState(parsed.digits)
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -57,9 +68,23 @@ export function PhoneInput({
   // Sync from external value changes
   useEffect(() => {
     const p = parsePhoneValue(value)
-    setSelectedCountry(p.country)
+    // Don't override the geo-detected country if user hasn't typed anything yet
+    if (p.digits || !initialCountryCode) {
+      setSelectedCountry(p.country)
+    }
     setDigits(p.digits)
-  }, [value])
+  }, [value]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When initialCountryCode arrives (async geo detection), update if user hasn't typed yet
+  useEffect(() => {
+    if (!initialCountryCode || digits) return
+    const allCountries = [...TOP_COUNTRIES, ...OTHER_COUNTRIES]
+    const match = allCountries.find((c) => c.code === initialCountryCode.toUpperCase())
+    if (match && match.code !== selectedCountry.code) {
+      setSelectedCountry(match)
+      onChange(`+${match.dialCode}`)
+    }
+  }, [initialCountryCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close dropdown on outside click
   useEffect(() => {

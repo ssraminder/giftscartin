@@ -42,9 +42,11 @@ interface SenderDetailsStepProps {
   onContinue: () => void
   onBack: () => void
   hideButtons?: boolean
+  /** ISO country code from geo detection (e.g. 'US', 'IN') */
+  detectedCountryCode?: string
 }
 
-export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideButtons }: SenderDetailsStepProps) {
+export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideButtons, detectedCountryCode }: SenderDetailsStepProps) {
   const { user } = useAuth()
   const [errors, setErrors] = useState<Partial<Record<keyof SenderDetails, string>>>({})
 
@@ -126,6 +128,7 @@ export function SenderDetailsStep({ value, onChange, onContinue, onBack, hideBut
           onChange={(v) => onChange({ ...value, senderPhone: v })}
           required
           error={errors.senderPhone}
+          initialCountryCode={detectedCountryCode}
         />
         <p className="text-xs text-gray-400 mt-1">For delivery coordination if needed</p>
       </div>
