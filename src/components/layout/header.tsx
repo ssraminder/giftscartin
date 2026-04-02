@@ -45,13 +45,13 @@ const MARQUEE_ITEMS = [
 ]
 
 const CATEGORY_NAV = [
-  { label: "Birthday", href: "/category/birthday" },
-  { label: "Anniversary", href: "/category/anniversary" },
+  { label: "Birthday", href: "/category/cakes" },
+  { label: "Anniversary", href: "/category/combos" },
   { label: "Cakes", href: "/category/cakes" },
   { label: "Flowers", href: "/category/flowers" },
   { label: "Combos", href: "/category/combos" },
   { label: "Plants", href: "/category/plants" },
-  { label: "Same Day", href: "/category/same-day" },
+  { label: "Same Day", href: "/same-day" },
   { label: "Under \u20B9499", href: "/category/gifts?maxPrice=499" },
 ]
 
