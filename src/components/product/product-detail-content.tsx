@@ -819,67 +819,6 @@ export default function ProductDetailContent({
         </div>
       </div>
 
-      {/* STICKY BOTTOM BAR */}
-      <div className="fixed bottom-0 inset-x-0 z-50 bg-white border-t border-gray-200 px-4 py-4 safe-area-bottom shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                if (!canAddToCart) {
-                  setErrorToast("Please enter your delivery pincode first")
-                  setTimeout(() => setErrorToast(null), 4000)
-                  return
-                }
-                handleAddToCart()
-              }}
-              disabled={adding}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200",
-                canAddToCart && !adding
-                  ? "bg-white border-2 border-pink-600 text-pink-700 hover:bg-pink-50 cursor-pointer"
-                  : adding
-                    ? "bg-gray-100 text-gray-400 cursor-not-allowed border-2 border-gray-100"
-                    : "bg-white border-2 border-pink-300 text-pink-400 cursor-pointer"
-              )}
-            >
-              {adding ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ShoppingCart className="h-4 w-4" />
-              )}
-              {addedToast ? "Added!" : "Add to Cart"}
-            </button>
-            <button
-              onClick={() => {
-                if (!canAddToCart) {
-                  setErrorToast("Please enter your delivery pincode first")
-                  setTimeout(() => setErrorToast(null), 4000)
-                  return
-                }
-                handleBuyNow()
-              }}
-              disabled={adding}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold text-sm transition-all duration-200",
-                canAddToCart && !adding
-                  ? "bg-pink-600 text-white hover:bg-pink-700 cursor-pointer shadow-md shadow-pink-600/20"
-                  : adding
-                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    : "bg-pink-300 text-white cursor-pointer"
-              )}
-            >
-              {adding && <Loader2 className="h-4 w-4 animate-spin" />}
-              Buy Now <ArrowRight className="h-4 w-4" />
-            </button>
-          </div>
-          {errorToast && (
-            <p className="text-center text-sm text-red-600 bg-red-50 rounded-xl py-2 mt-2 border border-red-100">{errorToast}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Spacer for sticky bar */}
-      <div className="h-24" />
     </>
   )
 }
