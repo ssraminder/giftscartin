@@ -177,6 +177,29 @@ export default function CheckoutPage() {
   const [paymentStep, setPaymentStep] = useState<string | null>(null)
   const [orderError, setOrderError] = useState("")
 
+  // Cart validation — check product availability on load
+  const [invalidProductIds, setInvalidProductIds] = useState<Set<string>>(new Set())
+  const removeItem = useCart((s) => s.removeItem)
+
+  useEffect(() => {
+    if (items.length === 0) return
+    const productIds = items.map((item) => item.productId)
+    fetch('/api/cart/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productIds }),
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data?.invalid?.length > 0) {
+          setInvalidProductIds(new Set(json.data.invalid))
+        }
+      })
+      .catch(() => {})
+  }, [items])
+
+  const hasInvalidProducts = invalidProductIds.size > 0
+
   // Order created in step 2→3 transition (stored for step 3 payment)
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null)
   const [createdOrderNumber, setCreatedOrderNumber] = useState<string | null>(null)
@@ -787,7 +810,7 @@ export default function CheckoutPage() {
       formData.pincodeStatus === "invalid" ||
       formData.pincodeStatus === "checking")
 
-  const isContinueDisabled = isSenderIncomplete || isAddressIncomplete
+  const isContinueDisabled = isSenderIncomplete || isAddressIncomplete || hasInvalidProducts
 
   // ─── Auth Gate ───
 
@@ -1505,6 +1528,33 @@ export default function CheckoutPage() {
                     />
                   </div>
 
+                  {/* Unavailable products warning */}
+                  {hasInvalidProducts && (
+                    <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                      <p className="text-sm font-medium text-red-800 mb-2">Some products in your cart are no longer available:</p>
+                      <ul className="space-y-2">
+                        {items.filter((item) => invalidProductIds.has(item.productId)).map((item) => (
+                          <li key={item.id} className="flex items-center justify-between text-sm">
+                            <span className="text-red-700">{item.productName}</span>
+                            <button
+                              onClick={() => {
+                                removeItem(item.id)
+                                setInvalidProductIds((prev) => {
+                                  const next = new Set(prev)
+                                  next.delete(item.productId)
+                                  return next
+                                })
+                              }}
+                              className="text-red-600 underline hover:text-red-800 text-xs font-medium"
+                            >
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Order creation error */}
                   {orderError && !creatingOrder && (
                     <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
@@ -1515,7 +1565,7 @@ export default function CheckoutPage() {
                   {/* Continue Button */}
                   <button
                     onClick={handleContinueStep2}
-                    disabled={!formData.deliveryDate || !slotSelection || creatingOrder}
+                    disabled={!formData.deliveryDate || !slotSelection || creatingOrder || hasInvalidProducts}
                     className="w-full mt-6 bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-xl text-base font-semibold transition-colors flex items-center justify-center gap-2"
                   >
                     {creatingOrder ? (
@@ -1847,8 +1897,10 @@ export default function CheckoutPage() {
                       )
                       const lineTotal = (unitPrice + addonTotal) * item.quantity
 
+                      const isUnavailable = invalidProductIds.has(item.productId)
+
                       return (
-                        <div key={item.id || item.productId} className="flex items-center gap-3">
+                        <div key={item.id || item.productId} className={`flex items-center gap-3 ${isUnavailable ? 'opacity-50' : ''}`}>
                           {/* Image */}
                           <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-gray-100">
                             <Image
@@ -1866,17 +1918,35 @@ export default function CheckoutPage() {
 
                           {/* Name + Qty */}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">
+                            <p className={`text-sm font-medium truncate ${isUnavailable ? 'text-red-600 line-through' : 'text-gray-800'}`}>
                               {item.productName || item.product?.name}
                             </p>
-                            <p className="text-xs text-gray-500">
-                              &times; {item.quantity}
-                            </p>
+                            {isUnavailable ? (
+                              <p className="text-xs text-red-500">Unavailable</p>
+                            ) : (
+                              <p className="text-xs text-gray-500">
+                                &times; {item.quantity}
+                              </p>
+                            )}
                           </div>
 
                           {/* Price */}
                           <span className="text-sm font-semibold text-gray-800 ml-auto shrink-0">
-                            {formatPrice(lineTotal)}
+                            {isUnavailable ? (
+                              <button
+                                onClick={() => {
+                                  removeItem(item.id)
+                                  setInvalidProductIds((prev) => {
+                                    const next = new Set(prev)
+                                    next.delete(item.productId)
+                                    return next
+                                  })
+                                }}
+                                className="text-xs text-red-600 underline"
+                              >
+                                Remove
+                              </button>
+                            ) : formatPrice(lineTotal)}
                           </span>
                         </div>
                       )
