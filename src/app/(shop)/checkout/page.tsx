@@ -101,6 +101,14 @@ export default function CheckoutPage() {
   // Track whether pincode field is in locked (pre-filled) or edit mode
   const [pincodeEditMode, setPincodeEditMode] = useState(!contextPincode)
 
+  // Sync pincodeEditMode after Zustand hydration — contextPincode may not
+  // be available on the initial render due to persisted store hydration delay
+  useEffect(() => {
+    if (contextPincode && pincodeEditMode) {
+      setPincodeEditMode(false)
+    }
+  }, [contextPincode]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Step 1 State ───
 
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
@@ -295,14 +303,14 @@ export default function CheckoutPage() {
     })
   }, [cityName, contextPincode, areaName])
 
-  // ─── Run serviceability check on mount if pincode available ───
+  // ─── Run serviceability check when pincode is available ───
 
   useEffect(() => {
-    if (contextPincode && contextPincode.length === 6) {
+    if (contextPincode && contextPincode.length === 6 && formData.pincodeStatus !== 'valid') {
       checkPincode(contextPincode)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // intentionally only on mount
+  }, [contextPincode])
 
   // ─── Navigation Helpers ───
 
