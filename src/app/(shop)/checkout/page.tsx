@@ -14,7 +14,7 @@ import { useCart } from "@/hooks/use-cart"
 import { useCity } from "@/hooks/use-city"
 import { useCurrency } from "@/hooks/use-currency"
 import { useReferral } from "@/components/providers/referral-provider"
-import { AreaSearchInput } from "@/components/layout/area-search-input"
+
 import { DeliverySlotPicker, type DeliverySlotSelection } from "@/components/product/delivery-slot-picker"
 import type { SlotGroup, FixedSlotGroup, MidnightSlotGroup } from "@/types"
 
@@ -174,9 +174,10 @@ export default function CheckoutPage() {
   const [createdOrderNumber, setCreatedOrderNumber] = useState<string | null>(null)
   const [creatingOrder, setCreatingOrder] = useState(false)
 
-  // Geo-based payment gateway
+  // Geo-based payment gateway + country detection
   const [gateway, setGateway] = useState<'razorpay' | 'stripe' | null>(null)
   const [usdRate, setUsdRate] = useState(84)
+  const [detectedCountryCode, setDetectedCountryCode] = useState<string | undefined>(undefined)
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -204,6 +205,7 @@ export default function CheckoutPage() {
       .then((data) => {
         setGateway(data.gateway === 'razorpay' ? 'razorpay' : 'stripe')
         if (data.usdRate) setUsdRate(data.usdRate)
+        if (data.country) setDetectedCountryCode(data.country)
       })
       .catch(() => {
         // Default to razorpay (India) on error
@@ -952,6 +954,7 @@ export default function CheckoutPage() {
                     onContinue={() => {}}
                     onBack={() => router.push("/cart")}
                     hideButtons
+                    detectedCountryCode={detectedCountryCode}
                   />
                 </div>
 
@@ -1123,26 +1126,17 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
-                    {/* Area / Landmark — Google Places autocomplete */}
+                    {/* Area / Landmark */}
                     <div className="mb-4">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Area / Landmark
                       </label>
-                      <AreaSearchInput
-                        cityName={cityName || 'India'}
-                        onAreaSelect={(area) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            pincode: area.pincode ?? prev.pincode,
-                            landmark: area.displayName,
-                          }))
-                          // Auto-check serviceability when pincode is filled
-                          if (area.pincode && /^\d{6}$/.test(area.pincode)) {
-                            checkPincode(area.pincode)
-                          }
-                        }}
-                        placeholder="Search area or landmark"
-                        defaultValue={formData.landmark}
+                      <input
+                        type="text"
+                        value={formData.landmark}
+                        onChange={(e) => updateField("landmark", e.target.value)}
+                        placeholder="e.g. Near City Hospital, Sector 22"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base focus:border-pink-500 focus:ring-1 focus:ring-pink-500 outline-none"
                       />
                     </div>
 
