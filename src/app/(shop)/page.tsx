@@ -45,17 +45,17 @@ export default function HomePage() {
       {/* 5. Gifts by Occasion — one row per occasion */}
       <OccasionProductRow
         occasion="birthday"
-        title="🎂 Birthday Gifts"
+        title="Birthday Gifts"
         linkUrl="/category/gifts?occasion=birthday"
       />
       <OccasionProductRow
         occasion="anniversary"
-        title="💍 Anniversary Gifts"
+        title="Anniversary Gifts"
         linkUrl="/category/gifts?occasion=anniversary"
       />
       <OccasionProductRow
         occasion="valentines-day"
-        title="💝 Valentine's Gifts"
+        title="Valentine's Gifts"
         linkUrl="/category/gifts?occasion=valentines-day"
       />
 

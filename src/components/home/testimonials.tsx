@@ -1,4 +1,4 @@
-import { Star } from "lucide-react"
+import { Star, Quote } from "lucide-react"
 
 const TESTIMONIALS = [
   {
@@ -26,22 +26,30 @@ const TESTIMONIALS = [
 
 export function Testimonials() {
   return (
-    <section className="py-8 md:py-12">
+    <section className="py-10 md:py-14">
       <div className="max-w-7xl mx-auto px-4">
-        <h2 className="text-xl md:text-2xl font-bold text-gray-900 text-center mb-6">
-          What Our Customers Say
-        </h2>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="text-center mb-8">
+          <h2 className="section-title text-xl md:text-2xl font-bold text-gray-900">
+            What Our Customers Say
+          </h2>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
           {TESTIMONIALS.map((t) => (
             <div
               key={t.id}
-              className="border border-gray-200 rounded-xl p-4"
+              className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow duration-200 relative"
             >
-              <div className="flex items-center gap-0.5 mb-2">
+              {/* Quote icon */}
+              <div className="absolute top-4 right-4">
+                <Quote className="h-8 w-8 text-pink-100" strokeWidth={1.5} />
+              </div>
+
+              {/* Stars */}
+              <div className="flex items-center gap-0.5 mb-3">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star
                     key={i}
-                    className={`h-3.5 w-3.5 ${
+                    className={`h-4 w-4 ${
                       i < t.rating
                         ? "fill-amber-400 text-amber-400"
                         : "fill-gray-200 text-gray-200"
@@ -49,15 +57,19 @@ export function Testimonials() {
                   />
                 ))}
               </div>
-              <p className="text-sm text-gray-600 italic line-clamp-3 leading-relaxed">
+
+              {/* Review text */}
+              <p className="text-sm text-gray-600 leading-relaxed line-clamp-4 mb-4">
                 &ldquo;{t.text}&rdquo;
               </p>
-              <div className="mt-3 flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-pink-100 text-pink-600 flex items-center justify-center text-xs font-bold">
+
+              {/* Author */}
+              <div className="flex items-center gap-3 pt-3 border-t border-gray-50">
+                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-pink-500 to-rose-400 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">
                   {t.name.charAt(0)}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800">
+                  <p className="text-sm font-semibold text-gray-900">
                     {t.name}
                   </p>
                   <p className="text-xs text-gray-500">{t.city}</p>

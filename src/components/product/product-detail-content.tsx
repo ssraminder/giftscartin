@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Star, ShoppingCart, ArrowRight, X, ChevronLeft, ChevronRight, Timer, Loader2,
+  Star, ShoppingCart, ArrowRight, X, ChevronLeft, ChevronRight, Timer, Loader2, Zap, MapPin, Calendar, Clock, Truck,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -567,14 +567,14 @@ export default function ProductDetailContent({
   return (
     <>
       <div className="max-w-7xl mx-auto px-4 py-4 lg:py-8">
-        <div className="flex flex-col lg:flex-row lg:gap-8">
+        <div className="flex flex-col lg:flex-row lg:gap-10">
           {/* LEFT COLUMN — Image Gallery */}
           <div className="lg:w-[55%] lg:shrink-0">
             <ProductGallery images={product.images || []} />
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="lg:w-[45%] mt-6 lg:mt-0 space-y-5">
+          <div className="lg:w-[45%] mt-6 lg:mt-0 space-y-6">
             {/* 1. Breadcrumb */}
             <Breadcrumb
               items={[
@@ -587,22 +587,23 @@ export default function ProductDetailContent({
 
             {/* 2. Title + Veg Badge */}
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-              <div className="flex items-center gap-2 mt-1">
+              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 leading-tight">{product.name}</h1>
+              <div className="flex items-center gap-2.5 mt-2">
                 {product.isVeg ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                    <span className="h-3 w-3 rounded-full bg-green-600 inline-block" />
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-lg border border-green-100">
+                    <span className="h-2.5 w-2.5 rounded-sm border-2 border-green-600 inline-block" />
                     Veg
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                    <span className="h-3 w-3 rounded-full bg-red-600 inline-block" />
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 px-2 py-1 rounded-lg border border-red-100">
+                    <span className="h-2.5 w-2.5 rounded-sm border-2 border-red-600 inline-block" />
                     Non-Veg
                   </span>
                 )}
                 {product.isSameDayEligible && (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium bg-green-100 text-green-700 px-2 py-0.5 rounded-full border border-green-200">
-                    ⚡ Same Day
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
+                    <Zap className="h-3 w-3" />
+                    Same Day
                   </span>
                 )}
               </div>
@@ -611,10 +612,11 @@ export default function ProductDetailContent({
             {/* 3. Rating */}
             <div>
               {product.totalReviews > 0 ? (
-                <a href="#reviews" className="inline-flex items-center gap-1.5 hover:opacity-80">
+                <a href="#reviews" className="inline-flex items-center gap-2 hover:opacity-80 cursor-pointer transition-opacity duration-200">
                   <span className="flex items-center gap-0.5">{renderStars(Number(product.avgRating))}</span>
-                  <span className="text-sm font-medium text-gray-700">{Number(product.avgRating).toFixed(1)}</span>
-                  <span className="text-sm text-gray-500">· {product.totalReviews} Reviews</span>
+                  <span className="text-sm font-semibold text-gray-800">{Number(product.avgRating).toFixed(1)}</span>
+                  <span className="text-sm text-gray-400">|</span>
+                  <span className="text-sm text-gray-500">{product.totalReviews} Reviews</span>
                 </a>
               ) : (
                 <p className="text-sm text-gray-400">No reviews yet</p>
@@ -622,21 +624,21 @@ export default function ProductDetailContent({
             </div>
 
             {/* 4. Price */}
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-gray-900">
+            <div className="flex items-baseline gap-3 bg-gray-50 rounded-xl px-4 py-3">
+              <span className="text-3xl font-bold">
                 {originalPrice ? (
                   <span className="text-green-700">{formatPrice(displayPrice)}</span>
                 ) : (
-                  formatPrice(displayPrice)
+                  <span className="text-gray-900">{formatPrice(displayPrice)}</span>
                 )}
               </span>
               {originalPrice && (
                 <>
-                  <span className="text-lg text-gray-400 line-through ml-2">
+                  <span className="text-lg text-gray-400 line-through">
                     {formatPrice(originalPrice)}
                   </span>
                   {discountPercent > 0 && (
-                    <span className="bg-orange-100 text-orange-700 text-sm font-medium px-2 py-0.5 rounded ml-2">
+                    <span className="bg-green-100 text-green-700 text-sm font-semibold px-2.5 py-1 rounded-lg">
                       {discountPercent}% Off
                     </span>
                   )}
@@ -647,8 +649,8 @@ export default function ProductDetailContent({
             {/* 5. Variation Selector — sorted by sortOrder then price */}
             {isVariable && variationAttrKey && (
               <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">{variationLabel}</p>
-                <div className="flex flex-wrap gap-2">
+                <p className="text-sm font-semibold text-gray-800 mb-3">{variationLabel}</p>
+                <div className="flex flex-wrap gap-2.5">
                   {[...activeVariations]
                     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.price - b.price)
                     .map((v) => {
@@ -659,13 +661,13 @@ export default function ProductDetailContent({
                           key={v.id}
                           onClick={() => setSelectedVariationId(v.id)}
                           className={cn(
-                            "border rounded-lg p-3 w-24 text-center transition-all",
+                            "border-2 rounded-xl p-3 w-24 text-center cursor-pointer transition-all duration-200",
                             isSelected
-                              ? "border-green-500 bg-green-50 text-green-700 font-medium"
-                              : "border-gray-200 hover:border-gray-300 cursor-pointer"
+                              ? "border-pink-500 bg-pink-50 text-pink-700 shadow-sm"
+                              : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                           )}
                         >
-                          <div className="text-sm font-medium">{attrValue}</div>
+                          <div className="text-sm font-semibold">{attrValue}</div>
                           <div className="text-xs mt-0.5 text-gray-600">
                             {formatPrice(v.salePrice ?? v.price)}
                           </div>
@@ -679,7 +681,7 @@ export default function ProductDetailContent({
             {/* 6. Addon Groups */}
             {addonGroups.length > 0 && (
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-gray-700 mb-3">Customise Your Order</p>
+                <p className="text-sm font-semibold text-gray-800 mb-3">Customise Your Order</p>
                 {addonGroups.map((g) => (
                   <AddonGroup
                     key={g.id}
@@ -695,18 +697,20 @@ export default function ProductDetailContent({
             )}
 
             {/* 7. Gift Receiver's Location */}
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Gift Receiver&apos;s Location</p>
+            <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+              <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-pink-600" />
+                Gift Receiver&apos;s Location
+              </p>
               {pincode ? (
-                <div className="border rounded-lg px-3 py-2 flex items-center gap-2">
-                  <span className="text-sm">🇮🇳 IND</span>
-                  <span className="text-gray-300">|</span>
-                  <span className="flex-1 text-sm text-gray-700">
+                <div className="border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3 bg-gray-50">
+                  <span className="text-xs font-medium text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-200">IND</span>
+                  <span className="flex-1 text-sm text-gray-800 font-medium">
                     {pincode}{areaName ? `, ${areaName}` : ""}{cityName ? `, ${cityName}` : ""}
                   </span>
                   <button
                     onClick={handleClearPincode}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 cursor-pointer transition-colors duration-200 p-1 rounded-lg hover:bg-gray-200"
                     aria-label="Clear pincode"
                   >
                     <X className="h-4 w-4" />
@@ -726,45 +730,48 @@ export default function ProductDetailContent({
                       setComingSoonMsg(null)
                     }}
                     placeholder="Enter delivery pincode"
-                    className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
                   />
                   <button
                     onClick={handlePincodeCheck}
                     disabled={pincodeChecking}
-                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    className="px-5 py-2.5 bg-pink-600 text-white text-sm font-medium rounded-xl hover:bg-pink-700 disabled:opacity-50 cursor-pointer transition-colors duration-200 shadow-sm"
                   >
                     {pincodeChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Check"}
                   </button>
                 </div>
               )}
               {pincodeError && (
-                <p className="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{pincodeError}</p>
+                <p className="mt-3 text-sm text-red-600 bg-red-50 px-4 py-2.5 rounded-xl border border-red-100">{pincodeError}</p>
               )}
               {comingSoonMsg && (
-                <p className="mt-2 text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded-lg">{comingSoonMsg}</p>
+                <p className="mt-3 text-sm text-blue-600 bg-blue-50 px-4 py-2.5 rounded-xl border border-blue-100">{comingSoonMsg}</p>
               )}
             </div>
 
             {/* 8. Select Delivery Date */}
             {isServiceable && pincode && (
               <div>
-                <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Date</p>
-                <div className="flex gap-2">
+                <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-pink-600" />
+                  Select Delivery Date
+                </p>
+                <div className="flex gap-2.5">
                   {/* Today */}
                   <div className="flex-1 relative group">
                     <button
                       disabled={!isTodayValid}
                       onClick={() => handleDateSelect(toYMD(ist))}
                       className={cn(
-                        "w-full border rounded-lg py-3 px-2 text-center transition-all",
+                        "w-full border-2 rounded-xl py-3 px-2 text-center transition-all duration-200",
                         !isTodayValid && "opacity-40 cursor-not-allowed bg-gray-50",
                         selectedDate === toYMD(ist)
-                          ? "border-green-500 bg-green-50 text-green-700"
-                          : isTodayValid && "border-gray-200 hover:border-gray-400 cursor-pointer"
+                          ? "border-pink-500 bg-pink-50 text-pink-700 shadow-sm"
+                          : isTodayValid && "border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer"
                       )}
                     >
-                      <div className="text-sm font-medium">Today</div>
-                      <div className="text-xs text-gray-500">{formatDateShort(ist)}</div>
+                      <div className="text-sm font-semibold">Today</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{formatDateShort(ist)}</div>
                     </button>
                     {!isTodayValid && (
                       <div className="hidden group-hover:block absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg whitespace-nowrap shadow-lg">
@@ -777,36 +784,36 @@ export default function ProductDetailContent({
                   <button
                     onClick={() => handleDateSelect(toYMD(tomorrow))}
                     className={cn(
-                      "flex-1 border rounded-lg py-3 px-2 text-center cursor-pointer transition-all",
+                      "flex-1 border-2 rounded-xl py-3 px-2 text-center cursor-pointer transition-all duration-200",
                       selectedDate === toYMD(tomorrow)
-                        ? "border-green-500 bg-green-50 text-green-700"
-                        : "border-gray-200 hover:border-gray-400"
+                        ? "border-pink-500 bg-pink-50 text-pink-700 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                     )}
                   >
-                    <div className="text-sm font-medium">Tomorrow</div>
-                    <div className="text-xs text-gray-500">{formatDateShort(tomorrow)}</div>
+                    <div className="text-sm font-semibold">Tomorrow</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{formatDateShort(tomorrow)}</div>
                   </button>
 
                   {/* Later */}
                   <button
                     onClick={() => setCalendarOpen(true)}
                     className={cn(
-                      "flex-1 border rounded-lg py-3 px-2 text-center cursor-pointer transition-all",
+                      "flex-1 border-2 rounded-xl py-3 px-2 text-center cursor-pointer transition-all duration-200",
                       selectedDate && selectedDate !== toYMD(ist) && selectedDate !== toYMD(tomorrow)
-                        ? "border-green-500 bg-green-50 text-green-700"
-                        : "border-gray-200 hover:border-gray-400"
+                        ? "border-pink-500 bg-pink-50 text-pink-700 shadow-sm"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                     )}
                   >
-                    <div className="text-sm font-medium">
+                    <div className="text-sm font-semibold">
                       {selectedDate && selectedDate !== toYMD(ist) && selectedDate !== toYMD(tomorrow)
                         ? formatDateShort(new Date(selectedDate + "T00:00:00"))
                         : "Later"
                       }
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-gray-500 mt-0.5">
                       {selectedDate && selectedDate !== toYMD(ist) && selectedDate !== toYMD(tomorrow)
                         ? ""
-                        : "▼"
+                        : "Pick a date"
                       }
                     </div>
                   </button>
@@ -900,19 +907,27 @@ export default function ProductDetailContent({
                 })
                 return (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Slot</p>
-                    <div className="border-2 border-orange-400 bg-orange-50 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-pink-600" />
+                      Select Delivery Slot
+                    </p>
+                    <div className="border-2 border-amber-400 bg-amber-50 rounded-xl p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">&#x26A1;</span>
-                          <span className="font-medium text-gray-900">Express Delivery</span>
+                          <Zap className="h-5 w-5 text-amber-600" />
+                          <span className="font-semibold text-gray-900">Express Delivery</span>
                         </div>
-                        <span className="font-semibold text-gray-700">&#x20B9;{expressSlot.baseCharge}</span>
+                        <span className="font-bold text-gray-900">&#x20B9;{expressSlot.baseCharge}</span>
                       </div>
-                      <p className="text-sm text-gray-600 mt-1 ml-7">Delivered within 3 hours</p>
-                      <p className="text-xs text-gray-500 mt-0.5 ml-7">
-                        Order now, receive by {deliveryTimeStr}
-                      </p>
+                      <div className="ml-7 mt-1.5">
+                        <p className="text-sm text-gray-700 flex items-center gap-1.5">
+                          <Truck className="h-3.5 w-3.5 text-gray-500" />
+                          Delivered within 3 hours
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Order now, receive by {deliveryTimeStr}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )
@@ -921,7 +936,10 @@ export default function ProductDetailContent({
               if (slotGroups) {
                 return (
                   <div>
-                    <p className="text-sm font-semibold text-gray-700 mb-2">Select Delivery Slot</p>
+                    <p className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-pink-600" />
+                      Select Delivery Slot
+                    </p>
                     <DeliverySlotPicker
                       productId={product.id}
                       slotGroups={slotGroups}
@@ -985,9 +1003,9 @@ export default function ProductDetailContent({
 
             {/* 11. Upsell Section */}
             {upsells.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Explore More Options</h2>
-                <div className="flex flex-row gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+              <div className="pt-2">
+                <h2 className="text-lg font-bold text-gray-900 mb-4">Explore More Options</h2>
+                <div className="flex flex-row gap-4 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
                   {upsells.map((up) => (
                     <div key={up.id} className="w-48 shrink-0">
                       <ProductCard
@@ -1005,44 +1023,57 @@ export default function ProductDetailContent({
 
             {/* 12. Reviews Section */}
             <section id="reviews" className="mt-8 pt-8 border-t border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <h2 className="text-lg font-bold text-gray-900 mb-5 flex items-center gap-2">
                 Customer Reviews
-                <span className="text-sm font-normal text-gray-500 ml-2">
-                  ({product.totalReviews})
-                </span>
+                {product.totalReviews > 0 && (
+                  <span className="text-sm font-normal text-gray-400 bg-gray-100 px-2 py-0.5 rounded-lg">
+                    {product.totalReviews}
+                  </span>
+                )}
               </h2>
               {reviews.length === 0 ? (
-                <p className="text-gray-500 text-sm">
-                  No reviews yet. Be the first to share your experience!
-                </p>
+                <div className="text-center py-8 bg-gray-50 rounded-2xl">
+                  <Star className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-500 text-sm">
+                    No reviews yet. Be the first to share your experience!
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {displayedReviews.map((review) => (
-                    <div key={review.id} className="border-b border-gray-100 pb-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="flex items-center gap-0.5">
-                          {renderStars(review.rating)}
-                        </span>
-                        <span className="text-sm text-gray-700">
-                          {review.user?.name?.split(" ")[0] || "Customer"}
-                        </span>
-                        <span className="text-xs text-gray-400">·</span>
-                        <span className="text-xs text-gray-400">
-                          {new Date(review.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                        </span>
+                    <div key={review.id} className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 to-rose-400 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                            {(review.user?.name?.charAt(0) || "C").toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="text-sm font-semibold text-gray-800">
+                              {review.user?.name?.split(" ")[0] || "Customer"}
+                            </span>
+                            <span className="text-xs text-gray-400 ml-2">
+                              {new Date(review.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                            </span>
+                          </div>
+                        </div>
+                        {review.isVerified && (
+                          <span className="text-xs text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-lg border border-green-100">
+                            Verified
+                          </span>
+                        )}
                       </div>
-                      {review.isVerified && (
-                        <span className="text-xs text-green-600">&#x2713; Verified Purchase</span>
-                      )}
+                      <div className="flex items-center gap-0.5 mb-2">
+                        {renderStars(review.rating)}
+                      </div>
                       {review.comment && (
-                        <p className="text-sm text-gray-600 mt-1">{review.comment}</p>
+                        <p className="text-sm text-gray-600 leading-relaxed">{review.comment}</p>
                       )}
                     </div>
                   ))}
                   {reviews.length > 5 && !showAllReviews && (
                     <button
                       onClick={() => setShowAllReviews(true)}
-                      className="text-sm text-green-600 font-medium hover:text-green-700"
+                      className="w-full text-sm text-pink-600 font-semibold hover:text-pink-700 cursor-pointer transition-colors duration-200 py-3 rounded-xl border border-pink-200 hover:bg-pink-50"
                     >
                       Show all {reviews.length} reviews
                     </button>
@@ -1055,18 +1086,25 @@ export default function ProductDetailContent({
       </div>
 
       {/* STICKY BOTTOM BAR */}
-      <div className="fixed bottom-0 inset-x-0 z-50 bg-white border-t border-gray-200 px-4 py-3 safe-area-bottom">
+      <div className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 py-3 safe-area-bottom shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
         <div className="max-w-7xl mx-auto">
+          {/* Countdown timer */}
+          {isTodayValid && countdown && (
+            <p className="text-center text-xs text-orange-600 font-medium mb-2 flex items-center justify-center gap-1.5">
+              <Timer className="h-3.5 w-3.5" />
+              Order within {countdown} for today&apos;s delivery
+            </p>
+          )}
           <div className="flex gap-3">
             <button
               onClick={handleAddToCart}
               disabled={!canAddToCart || adding}
               title={!canAddToCart ? "Select delivery date and slot" : undefined}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium text-sm transition-all",
+                "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all duration-200",
                 canAddToCart && !adding
-                  ? "bg-white border-2 border-green-600 text-green-700 hover:bg-green-50"
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  ? "bg-white border-2 border-pink-600 text-pink-700 hover:bg-pink-50 cursor-pointer"
+                  : "bg-gray-100 text-gray-400 cursor-not-allowed border-2 border-gray-100"
               )}
             >
               {adding ? (
@@ -1080,9 +1118,9 @@ export default function ProductDetailContent({
               onClick={handleBuyNow}
               disabled={!canAddToCart || adding}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium text-sm transition-all",
+                "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all duration-200",
                 canAddToCart && !adding
-                  ? "bg-green-600 text-white hover:bg-green-700"
+                  ? "bg-pink-600 text-white hover:bg-pink-700 cursor-pointer shadow-md shadow-pink-600/20"
                   : "bg-gray-200 text-gray-400 cursor-not-allowed"
               )}
             >
@@ -1092,20 +1130,13 @@ export default function ProductDetailContent({
           </div>
           {/* Error toast */}
           {errorToast && (
-            <p className="text-center text-sm text-red-600 bg-red-50 rounded-lg py-2 mt-2">{errorToast}</p>
-          )}
-          {/* Countdown timer */}
-          {isTodayValid && countdown && (
-            <p className="text-center text-sm text-gray-500 mt-2">
-              <Timer className="inline h-3.5 w-3.5 mr-1" />
-              Time left to get delivered today: {countdown}
-            </p>
+            <p className="text-center text-sm text-red-600 bg-red-50 rounded-xl py-2 mt-2 border border-red-100">{errorToast}</p>
           )}
         </div>
       </div>
 
       {/* Spacer for sticky bar */}
-      <div className="h-24" />
+      <div className="h-28" />
     </>
   )
 }
